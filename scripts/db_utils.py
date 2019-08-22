@@ -44,3 +44,12 @@ def get_lookup_table(engine, table, index_col='code', value_col='name'):
 
     return data[value_col].to_dict()
 
+
+def get_db_columns(table_name, engine):
+
+    with engine.connect() as conn, conn.begin():
+        db_columns = pd.read_sql("SELECT column_name FROM information_schema.columns WHERE table_name = '%s';" % table_name,
+                                 conn)\
+            .squeeze()
+
+    return db_columns
