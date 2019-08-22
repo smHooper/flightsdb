@@ -2,12 +2,11 @@ import sys, os
 import re
 import pytz
 import math
+import pyproj
 import subprocess
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-import sqlalchemy
-from geoalchemy2 import Geometry, WKTElement
 from datetime import datetime
 from shapely.geometry import LineString as shapely_LineString, Point as shapely_Point
 
@@ -87,22 +86,19 @@ def read_gpx(path):
 
     # Calculate speed and bearing because GPX files don't have it
     gdf.sort_values(by='utc_datetime', inplace=True)
-    gdf_albers = gdf.to_crs(epsg=3338) #to AK Albers Equal Area Conic
-    gdf_albers['x'] = gdf_albers.geometry.x
-    gdf_albers['y'] = gdf_albers.geometry.y
-    gdf_albers['diff_x'] = gdf_albers.x.diff()
-    gdf_albers['diff_y'] = gdf_albers.y.diff()
-    gdf_albers['diff_seconds'] = gdf_albers.utc_datetime.diff().dt.seconds
-    # 1m/s == 1.94384 knots
-    gdf['knots'] = ((gdf_albers.diff_x**2 + gdf_albers.diff_y**2)**0.5 / gdf_albers.diff_seconds * 1.94384)\
-        .round().astype(int)
+    in_proj = pyproj.Proj(init='epsg:4326')
+    out_proj = pyproj.Proj(init='epsg:3338')
+    gdf['x_albers'], gdf['y_albers'] = pyproj.transform(in_proj, out_proj, gdf.longitude.values, gdf.latitude.values)
+    gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
+    gdf.diff_seconds[gdf.diff_seconds.isna() | (gdf.diff_seconds == 0)] = -1
+    gdf['m_per_sec'] = (gdf.x_albers.diff()**2 + gdf.y_albers.diff()**2)**0.5 / gdf.diff_seconds()
+    gdf['knots'] = (gdf.m_per_sec * 1.94384).round().astype(int)# 1m/s == 1.94384 knots
 
     gdf['previous_lat'] = gdf.shift().latitude
     gdf['previous_lon'] = gdf.shift().longitude
     gdf['heading'] = gdf.apply(lambda row:
                                     calc_bearing(*row[['previous_lat', 'previous_lon', 'latitude', 'longitude']]),
                                axis=1).round().astype(int)
-
 
     return gdf
 
@@ -189,7 +185,12 @@ def format_spy(path):
         raise KeyError('"Speed" column for file %s not found. Expected either "Speed(mph)" or "Speed(knots)" but columns in this file are:\n\t-%s' % (path, '\n\t-'.join(df.columns.sort_values)))
 
     df.rename(columns=CSV_OUTPUT_COLUMNS['spy'], inplace=True)
-    df[['latitude', 'longitude']] = df[['latitude', 'longitude']].astype(float)
+    expected_lat_fields = [k for k, v in CSV_OUTPUT_COLUMNS.items() if v == 'latitude']
+    expected_lon_fields = [k for k, v in CSV_OUTPUT_COLUMNS.items() if v == 'longitude']
+    try:
+        df[['latitude', 'longitude']] = df[['latitude', 'longitude']].astype(float)
+    except KeyError as e:
+        raise KeyError('No latitude and/or longitude fields found. Expected one of %s for latitude fields and %s for longitude fields. Input fields were:\n\t-')
     df.altitude_ft = df.altitude_ft.astype(int)
     df.utc_datetime = pd.to_datetime(df.utc_datetime, errors='coerce')
 
@@ -225,6 +226,13 @@ def format_tms(path):
 
 
 def read_csv(path):
+    """
+    Read and format a CSV of track data. CSVs can from from 4 different sources, so figure out which source it comes
+    from and format accordingly
+
+    :param path: path to track CSV
+    :return: GeoDataframe of points
+    """
 
     df = pd.read_csv(path, encoding='ISO-8859-1')#ISO encoding handles symbols like '°'
 
@@ -283,7 +291,10 @@ def main(path, connection_txt, seg_time_diff=15, registration='', submission_met
                       '.gdb': read_gdb,
                       '.csv': read_csv
                       }
-
+    if not extension.lower() in READ_FUNCTIONS:
+        sorted_extensions = [c.replace('.', '').upper() for c in sorted(READ_FUNCTIONS.keys())]
+        raise IOError('Unexpected file type found: %s. Only %s, and %s currently accepted.' %
+                      (extension.replace('.', '').upper(), sorted_extensions[:-1], sorted_extensions[-1]))
     # apply function from dict based on file extension
     gdf = READ_FUNCTIONS[extension.lower()](path)
 
@@ -351,6 +362,9 @@ def main(path, connection_txt, seg_time_diff=15, registration='', submission_met
             .to_sql('flight_points', conn, if_exists='append', index=False)
         lines.loc[lines.flight_id.isin(new_flights.flight_id)]\
             .to_sql('flight_points', conn, if_exists='append', index=False)
+
+
+
 
 
 if __name__ == '__main__':
