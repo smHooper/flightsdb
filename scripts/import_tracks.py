@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from datetime import datetime
+from geoalchemy2 import Geometry, WKTElement
 from shapely.geometry import LineString as shapely_LineString, Point as shapely_Point
 
 import db_utils
@@ -178,7 +179,17 @@ def parse_gsat_coordinates(coordinates):
 
 def format_gsat(path):
 
+    # Try to get the registration number. It's stored in the third row, even though the metadata header is the first row
+    try:
+        registration = 'N' + pd.read_csv(path, encoding='ISO-8859-1').loc[2, 'Asset']
+    except:
+        registration = ''
+
     df = pd.read_csv(path, encoding='ISO-8859-1', skiprows=5)
+
+    # If this didn't fail, add a registration column
+    if registration:
+        df['registration'] = registration
 
     # Convert coordinates to separate decimal degree lat and lon fields
     df['latitude'], df['longitude'] = list(zip(*df['Lat/Lng'].apply(parse_gsat_coordinates)))
@@ -230,11 +241,13 @@ def format_tms(path):
     # Lat and lon are (annoyingly) in the format DDMM.MMMM without any separator between degrees and minutes, so attempt
     #   to parse them
     try:
-        df['latitude'] = df['latitude'].astype(str).str[:2].astype(float) + df['latitude'].astype(str).str[2:].astype(float)/60
+        coefficient = df['HemNS'].apply(lambda x: 1 if x == 'N' else -1)
+        df['latitude'] = (df['latitude'].astype(str).str[:2].astype(float) + df['latitude'].astype(str).str[2:].astype(float)/60) * coefficient
     except Exception as e:
         raise AttributeError('Could not parse latitude field for %s because of %s' % (path, e))
     try:
-        df['longitude'] = df['longitude'].astype(str).str[:2].astype(float) + df['longitude'].astype(str).str[2:].astype(float)/60
+        coefficient = df['HemEW'].apply(lambda x: -1 if x == 'W' else 1)
+        df['longitude'] = (df['longitude'].astype(str).str[:3].astype(float) + df['longitude'].astype(str).str[3:].astype(float)/60) * coefficient
     except Exception as e:
         raise AttributeError('Could not parse longitude field for %s because of %s' % (path, e))
 
@@ -350,18 +363,21 @@ def import_tracks(path, connection_txt, seg_time_diff=15, min_point_distance=500
     if not len(flights):
         raise ValueError('No flight segments found in this file.')
 
-    points = gdf.rename(columns={'geometry': 'geom'}).set_geometry('geom')[[c for c in point_columns if c in gdf]]
+    points = gdf.copy()
+    points['geom'] = gdf.geometry.apply(lambda g: WKTElement(g.wkt, srid=4326))
+    points.drop(columns=points.columns[~points.columns.isin(point_columns)], inplace=True)
 
     line_geom = gdf.groupby('flight_id').geometry.apply(lambda g: shapely_LineString(g.to_list()))
-    lines = gpd.GeoDataFrame(flights.set_index('flight_id'), geometry=line_geom)\
-        .rename(columns={'geometry': 'geom'}).set_geometry('geom')
+    lines = gpd.GeoDataFrame(flights.set_index('flight_id'), geometry=line_geom)
+    lines['geom'] = lines.geometry.apply(lambda g: WKTElement(g.wkt, srid=4326))
     lines['flight_id'] = lines.index
     lines.drop(columns=lines.columns[~lines.columns.isin(line_columns)], inplace=True)
+    lines.index.name = None
 
     with engine.connect() as conn, conn.begin():
         # Insert only new flights because if there were already tracks for these flights that were already processed,
         #   the flights are already in the DB
-        existing_flight_ids = pd.read_sql("SELECT flight_id FROM flights", conn).squeeze()
+        existing_flight_ids = pd.read_sql("SELECT flight_id FROM flights", conn).squeeze(axis=1)
         new_flights = flights.loc[~flights.flight_id.isin(existing_flight_ids)]
         new_flights.to_sql('flights', conn, if_exists='append', index=False)
 
@@ -386,17 +402,27 @@ def import_tracks(path, connection_txt, seg_time_diff=15, min_point_distance=500
         flight_ids = pd.read_sql("SELECT id, flight_id FROM flights WHERE flight_id IN ('%s')"
                                  % "', '".join(flights.flight_id),
                                  conn)
-        points = points.merge(flight_ids, on='flight_id').rename(columns={'id': 'flight_id'})
+        points = points.merge(flight_ids, on='flight_id')
         points.loc[~points.flight_id.isin(existing_flight_ids)]\
-            .drop('flight_id', axis=1)\
-            .to_sql('concession_fees', conn, if_exists='append', index=False)
-        lines = lines.merge(flight_ids, on='flight_id').rename(columns={'id': 'flight_id'})
+            .drop('flight_id', axis=1) \
+            .rename(columns={'id': 'flight_id'})\
+            .to_sql('flight_points',
+                    conn,
+                    if_exists='append',
+                    index=False,
+                    dtype={'geom': Geometry('POINT Z', srid=4326)})
+        lines = lines.merge(flight_ids, on='flight_id')
         lines.loc[~lines.flight_id.isin(existing_flight_ids)]\
-            .drop('flight_id', axis=1)\
-            .to_sql('concession_fees', conn, if_exists='append', index=False)
+            .drop('flight_id', axis=1) \
+            .rename(columns={'id': 'flight_id'})\
+            .to_sql('flight_lines',
+                    conn,
+                    if_exists='append',
+                    index=False,
+                    dtype={'geom': Geometry('LineStringZ', srid=4326)})
 
-        sys.stdout.log('%s flight tracks imported:\n\t-%s' % (n_new_flights, '\n\t-'.join(flight_ids.flight_id)))
-
+    sys.stdout.write('%s flight tracks imported:\n\t-%s' % (n_new_flights, '\n\t-'.join(flight_ids.flight_id)))
+    sys.stdout.flush()
 
 def main(path, connection_txt, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None,
          aircraft_type=None, email_credentials_txt=None, log_file=None):
@@ -405,11 +431,15 @@ def main(path, connection_txt, seg_time_diff=15, min_point_distance=500, registr
     sys.stdout.write('Command: python %s\n\n' % subprocess.list2cmdline(sys.argv))
     sys.stdout.flush()
 
-    sender, password = process_emails.get_email_credentials(email_credentials_txt)
-    server = smtplib.SMTP('smtp.gmail.com', 587)
-    server.starttls()
-    server.ehlo()
-    server.login(sender, password)
+    seg_time_diff = int(seg_time_diff)
+    min_point_distance = int(min_point_distance)
+
+    if email_credentials_txt:
+        sender, password = process_emails.get_email_credentials(email_credentials_txt)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.ehlo()
+        server.login(sender, password)
 
     try:
         import_tracks(path, connection_txt, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
