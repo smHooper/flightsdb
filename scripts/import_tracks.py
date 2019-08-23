@@ -4,6 +4,7 @@ import pytz
 import math
 import pyproj
 import subprocess
+import smtplib
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -11,6 +12,8 @@ from datetime import datetime
 from shapely.geometry import LineString as shapely_LineString, Point as shapely_Point
 
 import db_utils
+import process_emails
+
 
 CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)',	'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
                     'gsat': ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts'],
@@ -48,10 +51,15 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                               'Heading':            'heading'
                               }
                        }
+ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
 
 
 def calc_bearing(lat1, lon1, lat2, lon2):
+    '''
+    Calculate bearing from two lat/lon coordinates. Logic from https://gist.github.com/jeromer/2005586
 
+    :return: integer compass bearing (between 0-360°)
+    '''
     lat1_rad = math.radians(lat1)
     lat2_rad = math.radians(lat2)
 
@@ -69,7 +77,17 @@ def calc_bearing(lat1, lon1, lat2, lon2):
     return compass_bearing
 
 
-def read_gpx(path):
+def calc_distance_to_last_pt(gdf):
+
+    in_proj = pyproj.Proj(init='epsg:4326')
+    out_proj = pyproj.Proj(init='epsg:3338') # Alaska Albers Equal Area, which is pretty good at preserving distances
+    gdf['x_albers'], gdf['y_albers'] = pyproj.transform(in_proj, out_proj, gdf.longitude.values, gdf.latitude.values)
+    distance = (gdf.x_albers.diff()**2 + gdf.y_albers.diff()**2)**0.5 # distance between 2 points
+
+    return distance
+
+
+def read_gpx(path, seg_time_diff=15):
 
     gdf = gpd.read_file(path, layer='track_points')#, geometry='geometry')
 
@@ -86,24 +104,24 @@ def read_gpx(path):
 
     # Calculate speed and bearing because GPX files don't have it
     gdf.sort_values(by='utc_datetime', inplace=True)
-    in_proj = pyproj.Proj(init='epsg:4326')
-    out_proj = pyproj.Proj(init='epsg:3338')
-    gdf['x_albers'], gdf['y_albers'] = pyproj.transform(in_proj, out_proj, gdf.longitude.values, gdf.latitude.values)
+    gdf['diff_m'] = calc_distance_to_last_pt(gdf)
     gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
-    gdf.diff_seconds[gdf.diff_seconds.isna() | (gdf.diff_seconds == 0)] = -1
-    gdf['m_per_sec'] = (gdf.x_albers.diff()**2 + gdf.y_albers.diff()**2)**0.5 / gdf.diff_seconds()
-    gdf['knots'] = (gdf.m_per_sec * 1.94384).round().astype(int)# 1m/s == 1.94384 knots
+    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > seg_time_diff * 60), 'diff_seconds'] = -1
+    gdf['m_per_sec'] = gdf.diff_m / gdf.diff_seconds
+    gdf['knots'] = (gdf.m_per_sec * 1.94384).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
+    gdf.loc[(gdf.knots < 0) | gdf.knots.isnull(), 'knots'] = 0
 
     gdf['previous_lat'] = gdf.shift().latitude
     gdf['previous_lon'] = gdf.shift().longitude
     gdf['heading'] = gdf.apply(lambda row:
                                     calc_bearing(*row[['previous_lat', 'previous_lon', 'latitude', 'longitude']]),
-                               axis=1).round().astype(int)
+                               axis=1)\
+        .fillna(-1).round().astype(int)
 
     return gdf
 
 
-def read_gdb(path):
+def read_gdb(path, seg_time_diff=None):
     '''
     Convert GDB to GPX, then just use read_gpx() function
     '''
@@ -190,7 +208,11 @@ def format_spy(path):
     try:
         df[['latitude', 'longitude']] = df[['latitude', 'longitude']].astype(float)
     except KeyError as e:
-        raise KeyError('No latitude and/or longitude fields found. Expected one of %s for latitude fields and %s for longitude fields. Input fields were:\n\t-')
+        raise KeyError('No latitude and/or longitude fields found. Expected one of {lat_fields} for latitude fields and'
+                       ' {lon_fields for longitude fields. Input fields were:\n\t-{columns}'
+                       .format(lat_fields=expected_lat_fields, lon_fields=expected_lon_fields, columns='\n\t-'.join(df.columns))
+                       )
+
     df.altitude_ft = df.altitude_ft.astype(int)
     df.utc_datetime = pd.to_datetime(df.utc_datetime, errors='coerce')
 
@@ -210,13 +232,10 @@ def format_tms(path):
     try:
         df['latitude'] = df['latitude'].astype(str).str[:2].astype(float) + df['latitude'].astype(str).str[2:].astype(float)/60
     except Exception as e:
-        import pdb; pdb.set_trace()
         raise AttributeError('Could not parse latitude field for %s because of %s' % (path, e))
     try:
         df['longitude'] = df['longitude'].astype(str).str[:2].astype(float) + df['longitude'].astype(str).str[2:].astype(float)/60
     except Exception as e:
-        import pdb;
-        pdb.set_trace()
         raise AttributeError('Could not parse longitude field for %s because of %s' % (path, e))
 
     df['altitude_ft'] = (df['Altitude (m)'] * 3.2808399).astype(int)
@@ -225,7 +244,7 @@ def format_tms(path):
     return df
 
 
-def read_csv(path):
+def read_csv(path, seg_time_diff=None):
     """
     Read and format a CSV of track data. CSVs can from from 4 different sources, so figure out which source it comes
     from and format accordingly
@@ -258,11 +277,12 @@ def read_csv(path):
     # Make the dataframe into a geodataframe of points
     geometry = df.apply(lambda row: shapely_Point(row.longitude, row.latitude, row.altitude_ft), axis=1)
     gdf = gpd.GeoDataFrame(df, geometry=geometry)
+    gdf['diff_m'] = calc_distance_to_last_pt(gdf)
 
     return gdf
 
 
-def get_flight_id(gdf, registration, seg_time_diff):
+def get_flight_id(gdf, seg_time_diff):
     '''
     Assign a unique ID to each line segment. IDs use the registation (i.e. N-number) and timestamp like
     <registration>_yyyymmddhhMM. All columns are assigned in place.
@@ -279,12 +299,12 @@ def get_flight_id(gdf, registration, seg_time_diff):
     #timestamps = gdf.groupby('segment_id').ak_datetime.first().dt.floor('%smin' % seg_time_diff).dt.strftime('%Y%m%d%H%M').to_frame().rename(columns={'ak_datetime': 'departure_datetime'})
     gdf = gdf.merge(departure_times, on='segment_id')
     gdf['timestamp_str'] = gdf.departure_datetime.dt.floor('%smin' % seg_time_diff).dt.strftime('%Y%m%d%H%M')
-    gdf['flight_id'] = registration + '_' + gdf.timestamp_str#gdf.date_str + '_' + segment_id.astype(str)
+    gdf['flight_id'] = gdf.registration + '_' + gdf.timestamp_str#gdf.date_str + '_' + segment_id.astype(str)
 
     return gdf
 
 
-def main(path, connection_txt, seg_time_diff=15, registration='', submission_method='manual', operator_code=None, aircraft_type=None):
+def import_tracks(path, connection_txt, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None, aircraft_type=None):
 
     _, extension = os.path.splitext(path)
     READ_FUNCTIONS = {'.gpx': read_gpx,
@@ -294,7 +314,7 @@ def main(path, connection_txt, seg_time_diff=15, registration='', submission_met
     if not extension.lower() in READ_FUNCTIONS:
         sorted_extensions = [c.replace('.', '').upper() for c in sorted(READ_FUNCTIONS.keys())]
         raise IOError('Unexpected file type found: %s. Only %s, and %s currently accepted.' %
-                      (extension.replace('.', '').upper(), sorted_extensions[:-1], sorted_extensions[-1]))
+                      (extension.replace('.', '').upper(), ', '.join(sorted_extensions[:-1]), sorted_extensions[-1]))
     # apply function from dict based on file extension
     gdf = READ_FUNCTIONS[extension.lower()](path)
 
@@ -303,8 +323,10 @@ def main(path, connection_txt, seg_time_diff=15, registration='', submission_met
     gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
 
     # Get unique flight_ids per line segment in place
-    gdf = get_flight_id(gdf, registration, seg_time_diff)\
-        .drop_duplicates(subset=['ak_datetime', 'latitude', 'longitude'])\
+    if not 'registration' in gdf.columns:
+        gdf['registration'] = registration
+    gdf = get_flight_id(gdf, seg_time_diff)\
+        .drop(gdf.index[(gdf.diff_m < min_point_distance) & (gdf.utc_datetime.diff().dt.seconds == 0)])\
         .dropna(subset=['ak_datetime'])\
         .sort_values(by=['ak_datetime'])
 
@@ -325,7 +347,11 @@ def main(path, connection_txt, seg_time_diff=15, registration='', submission_met
 
     # separate flights, points, and lines
     flights = gdf[[c for c in flight_columns if c in gdf]].drop_duplicates()
+    if not len(flights):
+        raise ValueError('No flight segments found in this file.')
+
     points = gdf.rename(columns={'geometry': 'geom'}).set_geometry('geom')[[c for c in point_columns if c in gdf]]
+
     line_geom = gdf.groupby('flight_id').geometry.apply(lambda g: shapely_LineString(g.to_list()))
     lines = gpd.GeoDataFrame(flights.set_index('flight_id'), geometry=line_geom)\
         .rename(columns={'geometry': 'geom'}).set_geometry('geom')
@@ -342,6 +368,9 @@ def main(path, connection_txt, seg_time_diff=15, registration='', submission_met
         # Warn the user if any of the flights already exist
         n_flights = len(flights)
         n_new_flights = len(new_flights)
+        if n_new_flights == 0:
+            raise ValueError('No new flight segments were inserted from this file because they all already exist in'
+                             ' the database.')
         if n_flights != n_new_flights:
             raise UserWarning('For the file {path}, the following {existing} of {total} flight segments already exist:'
                               '\n\t- {ids}'
@@ -352,19 +381,48 @@ def main(path, connection_txt, seg_time_diff=15, registration='', submission_met
                                       )
                               )
 
-        # Get the numeric IDs of the flights that were just inserted
+        # Get the numeric IDs of the flights that were just inserted and insert the points and lines matching those
+        #   flight IDs that were just inserted
         flight_ids = pd.read_sql("SELECT id, flight_id FROM flights WHERE flight_id IN ('%s')"
                                  % "', '".join(flights.flight_id),
                                  conn)
-        # Insert the points and lines matching the flight IDs that were just inserted
-        #points = points.loc[points.flight_id.isin()]
-        points.loc[points.flight_id.isin(new_flights.flight_id)]\
-            .to_sql('flight_points', conn, if_exists='append', index=False)
-        lines.loc[lines.flight_id.isin(new_flights.flight_id)]\
-            .to_sql('flight_points', conn, if_exists='append', index=False)
+        points = points.merge(flight_ids, on='flight_id').rename(columns={'id': 'flight_id'})
+        points.loc[~points.flight_id.isin(existing_flight_ids)]\
+            .drop('flight_id', axis=1)\
+            .to_sql('concession_fees', conn, if_exists='append', index=False)
+        lines = lines.merge(flight_ids, on='flight_id').rename(columns={'id': 'flight_id'})
+        lines.loc[~lines.flight_id.isin(existing_flight_ids)]\
+            .drop('flight_id', axis=1)\
+            .to_sql('concession_fees', conn, if_exists='append', index=False)
+
+        sys.stdout.log('%s flight tracks imported:\n\t-%s' % (n_new_flights, '\n\t-'.join(flight_ids.flight_id)))
 
 
+def main(path, connection_txt, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None,
+         aircraft_type=None, email_credentials_txt=None, log_file=None):
 
+    sys.stdout.write("Log file for %s: %s\n" % (__file__, datetime.now().strftime('%H:%M:%S %m/%d/%Y')))
+    sys.stdout.write('Command: python %s\n\n' % subprocess.list2cmdline(sys.argv))
+    sys.stdout.flush()
+
+    sender, password = process_emails.get_email_credentials(email_credentials_txt)
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.ehlo()
+    server.login(sender, password)
+
+    try:
+        import_tracks(path, connection_txt, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
+                      aircraft_type)
+    except Exception as e:
+        if email_credentials_txt:
+            message_body = '''There was a problem with the attached file: %s'''
+            subject = 'Error occurred while processing %s' % os.path.basename(path)
+            process_emails.send_email(message_body, subject, sender, ERROR_EMAIL_ADDRESSES, server, attachments=[path, log_file])
+            server.close()
+
+        # Still raise the error so it's logged
+        raise e
 
 
 if __name__ == '__main__':
