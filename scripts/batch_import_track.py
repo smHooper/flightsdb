@@ -2,7 +2,7 @@
 Run import_track.py using all tracks found with a glob-style search string
 
 Usage:
-    batch_import_track.py <connection_txt> <search_str> [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>]
+    batch_import_track.py <connection_txt> <search_str> [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--walk_dir_tree]
     batch_import_track.py <connection_txt> --show_operators
 
 Examples:
@@ -12,7 +12,8 @@ Required parameters:
     connection_txt      Path of a text file containing information to connect to the DB. Each line
                         in the text file must be in the form 'variable_name; variable_value.'
                         Required variables: username, password, ip_address, port, db_name.
-    search_str          Glob-style pattern to find tracks to import
+    search_str          Either a glob-style pattern or directory path to traverse searching (if --walk_dir_tree option
+                        given) to find tracks to import
 
 Options:
     -h, --help                      Show this screen.
@@ -21,11 +22,14 @@ Options:
     -d, --min_point_distance=<int>  Minimum distance in meters between consecutive track points to determine unique
                                     vertices. Any points that are less than this distance from the preceeding point will
                                     be removed. [default: 500]
-    -r, --registration=<str>        Tail (N-) number of the aircraft
+    -r, --registration=<str>        Tail (N-) number of the aircraft. Note that supplying this assumes all track files
+                                    are from the same aircraft.
     -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
                                     should submitted with the code NPS
     -t, --aircraft_type=<str>       The model name of the aircraft
     -s, --show_operators            Print all available operator names and codes to the console
+    -w, --walk_dir_tree             Search for files in all sub-dirs of the directory specified by search_str. Only
+                                    files with a recognizable file extension (.gdb, .gpx, or .csv) will be processed
 
 """
 
@@ -38,19 +42,35 @@ import time
 import import_track
 
 
-def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=500, operator_code=None, aircraft_type=None, registration=None):
+def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=500, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False):
 
     subprocess.call('', shell=True) #For some reason, this enables ANSII escape characters to be properly read by cmd.exe
 
+    if walk_dir_tree:
+        if not os.path.isdir(search_str):
+            raise ValueError('If --walk_dir_tree or -w option specified, search_str must be an existing directory with '
+                             'track files in it. %s was given' % search_str)
+        track_paths = []
+        for root, dirs,  files in os.walk(search_str):
+            track_paths.extend([os.path.join(root, f) for f in files if os.path.splitext(f)[1] in import_track.READ_FUNCTIONS])
+        if not len(track_paths):
+            raise ValueError('No tracks found searching the search_str directory %s. Track files must end in one of the'
+                             ' following extensions: %s' % (search_str, ', '.join(import_track.READ_FUNCTIONS.keys()))
+                             )
+    else:
+        track_paths = glob.glob(search_str)
+        if not len(track_paths):
+            raise ValueError('No tracks found with the search_str %s. Is this a directory that you meant to use with '
+                             '--walk_dir_tree? For help, try python batch_import_track.py --help' % search_str)
+
     failed_tracks = {}
-    track_paths = glob.glob(search_str)
     n_tracks = len(track_paths)
     for i, path in enumerate(track_paths):
-
+        # Show progress (\r returns to the start of the current line and \033[K clears it)
         sys.stdout.write('\r\033[KProcessing {path} | {this_n:d} of {n_tracks:d} ({percent:.1f}%)'
                          .format(path=os.path.basename(path), this_n=i + 1, n_tracks=n_tracks, percent=float(i + 1)/n_tracks * 100))
-        #sys.stdout.flush()
 
+        # If the N-number wasn't given for all files, try to find it in the file
         if not registration:
             reg_matches = re.findall(r'(?i)N\d{2,5}[A-Z]{0,2}', os.path.basename(path))
             registration = reg_matches[0] if len(reg_matches) else ''
@@ -65,13 +85,15 @@ def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=500, o
                                       operator_code=operator_code,
                                       aircraft_type=aircraft_type)
 
-
         except Exception as e:
             failed_tracks[path] = e
 
     n_failed = len(failed_tracks)
     if n_failed:
-        print('\n\nAll tracks imported successfully except:\n')
+        failed_track_str = '\n\t-'.join(['%s: %s' % t for t in failed_tracks.items()])
+        print('\n\nAll tracks imported successfully except:\n\t-%s' % failed_track_str)
+    else:
+        print('\n\nAll tracks successfully imported')
 
 
 if __name__ == '__main__':

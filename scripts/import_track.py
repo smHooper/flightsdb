@@ -356,13 +356,15 @@ def get_flight_id(gdf, seg_time_diff):
     return gdf
 
 
+READ_FUNCTIONS = {'.gpx': read_gpx,
+                  '.gdb': read_gdb,
+                  '.csv': read_csv
+                  }
+
 def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False):
 
     _, extension = os.path.splitext(path)
-    READ_FUNCTIONS = {'.gpx': read_gpx,
-                      '.gdb': read_gdb,
-                      '.csv': read_csv
-                      }
+
     if not extension.lower() in READ_FUNCTIONS:
         sorted_extensions = [c.replace('.', '').upper() for c in sorted(READ_FUNCTIONS.keys())]
         raise IOError('Unexpected file type found: %s. Only %s, and %s currently accepted.' %
