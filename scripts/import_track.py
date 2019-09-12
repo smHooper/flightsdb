@@ -1,3 +1,40 @@
+"""
+Import a flight track into a spatial database. Accepted file types are GPX, Garmin GDB, and CSV (that come from either GSAT, Spyder tracks, AFF, or Temsco files).
+path, connection_txt, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None,
+         aircraft_type=None, email_credentials_txt=None, log_file=None
+Usage:
+    import_track.py <connection_txt> <track_path>  [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--email_credentials_txt=<str>] [--log_file=<str>]
+    import_track.py <connection_txt> --show_operators
+
+Examples:
+
+
+
+Required parameters:
+    connection_txt      Path of a text file containing information to connect to the DB. Each line
+                        in the text file must be in the form 'variable_name; variable_value.'
+                        Required variables: username, password, ip_address, port, db_name.
+    track_path          Path of the track file to import.
+
+Options:
+    -h, --help                      Show this screen.
+    --seg_time_diff=<int>           Minimum time in minutes between two points in a track file indicating the start of
+                                    a new track segment [default: 15]
+    -d, --min_point_distance=<int>  Minimum distance in meters between consecutive track points to determine unique
+                                    vertices. Any points that are less than this distance from the preceeding point will
+                                    be removed. [default: 500]
+    -r, --registration=<str>        Tail (N-) number of the aircraft
+    -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
+                                    should submitted with the code NPS
+    -m, --submission_method=<str>   Method used for submission. This parameter is set should not be given when manually
+                                    importing tracks. It's purpose is to distinguish manual vs. automated submissions.
+    -t, --aircraft_type=<str>       The model name of the aircraft
+    --email_credentials_txt=<str>   Path of a text file containing email username and password for sending
+    -s, --show_operators            Print all available operator names and codes to the console
+"""
+
+
+
 import sys, os
 import re
 import pytz
@@ -5,8 +42,10 @@ import math
 import pyproj
 import subprocess
 import smtplib
+import docopt
 import numpy as np
 import pandas as pd
+import gdal # this import is unused, but for some reason geopandas (shapely, actually) won't load unless gdal is imported first
 import geopandas as gpd
 from datetime import datetime
 from geoalchemy2 import Geometry, WKTElement
@@ -317,7 +356,7 @@ def get_flight_id(gdf, seg_time_diff):
     return gdf
 
 
-def import_tracks(path, connection_txt, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None, aircraft_type=None):
+def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False):
 
     _, extension = os.path.splitext(path)
     READ_FUNCTIONS = {'.gpx': read_gpx,
@@ -421,11 +460,45 @@ def import_tracks(path, connection_txt, seg_time_diff=15, min_point_distance=500
                     index=False,
                     dtype={'geom': Geometry('LineStringZ', srid=4326)})
 
-    sys.stdout.write('%s flight tracks imported:\n\t-%s' % (n_new_flights, '\n\t-'.join(flight_ids.flight_id)))
-    sys.stdout.flush()
+    if not silent:
+        sys.stdout.write('%s flight tracks imported:\n\t-%s' % (n_new_flights, '\n\t-'.join(flight_ids.flight_id)))
+        sys.stdout.flush()
 
-def main(path, connection_txt, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None,
-         aircraft_type=None, email_credentials_txt=None, log_file=None):
+
+def get_cl_args(doc):
+    """
+    Get command line arguments as a dictionary
+    :return: dictionary of arguments
+    """
+    # Any args that don't have a default value and weren't specified will be None
+    cl_args = {k: v for k, v in docopt.docopt(doc).items() if v is not None}
+
+    # get rid of extra characters from doc string and 'help' entry
+    args = {re.sub('[<>-]*', '', k): v for k, v in cl_args.items() if k != '--help' and k != '-h'}
+
+    # convert numeric values
+    for k, v in args.items():
+        if type(v) == bool or v == None:
+            continue
+        elif re.fullmatch('\d*', v):
+            args[k] = int(v)
+        elif re.fullmatch('\d*\.\d*', v):
+            args[k] = float(v)
+
+    return args
+
+
+def print_operator_codes(connection_txt):
+    """Helper function to display operator codes in the console for the user"""
+
+    engine = db_utils.connect_db(connection_txt)
+    operator_codes = db_utils.get_lookup_table(engine, 'operators', index_col='name', value_col='code')
+    operator_code_str = '\n\t-'.join(sorted(['%s: %s' % operator for operator in operator_codes.items()]))
+
+    print('Operator code options:\n\t-%s' % operator_code_str)
+
+
+def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None, aircraft_type=None, email_credentials_txt=None, log_file=None):
 
     sys.stdout.write("Log file for %s: %s\n" % (__file__, datetime.now().strftime('%H:%M:%S %m/%d/%Y')))
     sys.stdout.write('Command: python %s\n\n' % subprocess.list2cmdline(sys.argv))
@@ -442,13 +515,13 @@ def main(path, connection_txt, seg_time_diff=15, min_point_distance=500, registr
         server.login(sender, password)
 
     try:
-        import_tracks(path, connection_txt, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
+        import_track(connection_txt, track_path, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
                       aircraft_type)
     except Exception as e:
         if email_credentials_txt:
             message_body = '''There was a problem with the attached file: %s'''
-            subject = 'Error occurred while processing %s' % os.path.basename(path)
-            process_emails.send_email(message_body, subject, sender, ERROR_EMAIL_ADDRESSES, server, attachments=[path, log_file])
+            subject = 'Error occurred while processing %s' % os.path.basename(track_path)
+            process_emails.send_email(message_body, subject, sender, ERROR_EMAIL_ADDRESSES, server, attachments=[track_path, log_file])
             server.close()
 
         # Still raise the error so it's logged
@@ -456,5 +529,12 @@ def main(path, connection_txt, seg_time_diff=15, min_point_distance=500, registr
 
 
 if __name__ == '__main__':
-    sys.exit(main(*sys.argv[1:]))
+
+    args = get_cl_args(__doc__)
+    
+    if args['show_operators']:
+        sys.exit(print_operator_codes(args['connection_txt']))
+    else:
+        del args['show_operators']
+        sys.exit(main(**args))
 
