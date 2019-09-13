@@ -6,13 +6,13 @@ Usage:
     batch_import_track.py <connection_txt> --show_operators
 
 Examples:
-    python batch_import_track.py ..\..\connection_info.txt "P:\Aviation - DENA\FY19 Aviation\Fleet\Flight Tracks\01.February\" -r N21HY -o NPS -w
+    python batch_import_track.py ..\..\connection_info.txt "P:\Aviation - DENA\FY19 Aviation\Fleet\Flight Tracks\02.February\**\*" -r N21HY -o NPS
 
 Required parameters:
     connection_txt      Path of a text file containing information to connect to the DB. Each line
                         in the text file must be in the form 'variable_name; variable_value.'
                         Required variables: username, password, ip_address, port, db_name.
-    search_str          Either a glob-style pattern or directory path to traverse searching (if --walk_dir_tree option
+    search_str          Either a glob-style pattern or directory path to traverse (if --walk_dir_tree option
                         given) to find tracks to import
 
 Options:
@@ -21,7 +21,7 @@ Options:
                                     a new track segment [default: 15]
     -d, --min_point_distance=<int>  Minimum distance in meters between consecutive track points to determine unique
                                     vertices. Any points that are less than this distance from and have the same
-                                    timestamp as the preceeding point will be removed. [default: 200]
+                                    timestamp as the preceding point will be removed. [default: 200]
     -r, --registration=<str>        Tail (N-) number of the aircraft. Note that supplying this assumes all track files
                                     are from the same aircraft.
     -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
@@ -38,7 +38,6 @@ import re
 import glob
 import subprocess
 from datetime import datetime
-import time
 import import_track
 
 
@@ -58,7 +57,7 @@ def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, o
                              ' following extensions: %s' % (search_str, ', '.join(import_track.READ_FUNCTIONS.keys()))
                              )
     else:
-        track_paths = glob.glob(search_str)
+        track_paths = glob.glob(search_str, recursive=True)
         if not len(track_paths):
             raise ValueError('No tracks found with the search_str %s. Is this a directory that you meant to use with '
                              '--walk_dir_tree? For help, try python batch_import_track.py --help' % search_str)
@@ -69,11 +68,6 @@ def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, o
         # Show progress (\r returns to the start of the current line and \033[K clears it)
         sys.stdout.write('\r\033[KProcessing {path} | {this_n:d} of {n_tracks:d} ({percent:.1f}%)'
                          .format(path=os.path.basename(path), this_n=i + 1, n_tracks=n_tracks, percent=float(i + 1)/n_tracks * 100))
-
-        # If the N-number wasn't given for all files, try to find it in the file
-        if not registration:
-            reg_matches = re.findall(r'(?i)N\d{2,5}[A-Z]{0,2}', os.path.basename(path))
-            registration = reg_matches[0] if len(reg_matches) else ''
         
         try:
             import_track.import_track(connection_txt,
