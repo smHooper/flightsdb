@@ -6,7 +6,7 @@ Usage:
     batch_import_track.py <connection_txt> --show_operators
 
 Examples:
-
+    python batch_import_track.py ..\..\connection_info.txt "P:\Aviation - DENA\FY19 Aviation\Fleet\Flight Tracks\01.February\" -r N21HY -o NPS -w
 
 Required parameters:
     connection_txt      Path of a text file containing information to connect to the DB. Each line
@@ -20,8 +20,8 @@ Options:
     --seg_time_diff=<int>           Minimum time in minutes between two points in a track file indicating the start of
                                     a new track segment [default: 15]
     -d, --min_point_distance=<int>  Minimum distance in meters between consecutive track points to determine unique
-                                    vertices. Any points that are less than this distance from the preceeding point will
-                                    be removed. [default: 500]
+                                    vertices. Any points that are less than this distance from and have the same
+                                    timestamp as the preceeding point will be removed. [default: 200]
     -r, --registration=<str>        Tail (N-) number of the aircraft. Note that supplying this assumes all track files
                                     are from the same aircraft.
     -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
@@ -42,7 +42,7 @@ import time
 import import_track
 
 
-def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=500, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False):
+def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False):
 
     subprocess.call('', shell=True) #For some reason, this enables ANSII escape characters to be properly read by cmd.exe
 

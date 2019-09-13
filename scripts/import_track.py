@@ -1,13 +1,12 @@
 """
 Import a flight track into a spatial database. Accepted file types are GPX, Garmin GDB, and CSV (that come from either GSAT, Spyder tracks, AFF, or Temsco files).
-path, connection_txt, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None,
-         aircraft_type=None, email_credentials_txt=None, log_file=None
+
 Usage:
     import_track.py <connection_txt> <track_path>  [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--email_credentials_txt=<str>] [--log_file=<str>]
     import_track.py <connection_txt> --show_operators
 
 Examples:
-
+    python import_track.py connection_info.txt "T:\ResMgmt\Users\sam_h\proj\overflights\sample_data\2019.03.08_N709M_16N_4_edited.gpx" -r N709M -o NPS
 
 
 Required parameters:
@@ -21,12 +20,12 @@ Options:
     --seg_time_diff=<int>           Minimum time in minutes between two points in a track file indicating the start of
                                     a new track segment [default: 15]
     -d, --min_point_distance=<int>  Minimum distance in meters between consecutive track points to determine unique
-                                    vertices. Any points that are less than this distance from the preceeding point will
-                                    be removed. [default: 500]
+                                    vertices. Any points that are less than this distance from and have the same 
+                                    timestamp as the preceeding point will be removed. [default: 200]
     -r, --registration=<str>        Tail (N-) number of the aircraft
     -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
                                     should submitted with the code NPS
-    -m, --submission_method=<str>   Method used for submission. This parameter is set should not be given when manually
+    -m, --submission_method=<str>   Method used for submission. This parameter should not be given when manually
                                     importing tracks. It's purpose is to distinguish manual vs. automated submissions.
     -t, --aircraft_type=<str>       The model name of the aircraft
     --email_credentials_txt=<str>   Path of a text file containing email username and password for sending
@@ -361,7 +360,7 @@ READ_FUNCTIONS = {'.gpx': read_gpx,
                   '.csv': read_csv
                   }
 
-def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False):
+def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False):
 
     _, extension = os.path.splitext(path)
 
