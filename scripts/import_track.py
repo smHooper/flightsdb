@@ -414,6 +414,7 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
     # separate flights, points, and lines
     flights = gdf[[c for c in flight_columns if c in gdf]].drop_duplicates()
     flights['submitted_by'] = os.getlogin()
+    flights['source_file'] = os.path.join(ARCHIVE_DIR, os.path.basename(path))
     if not len(flights):
         raise ValueError('No flight segments found in this file.')
 
