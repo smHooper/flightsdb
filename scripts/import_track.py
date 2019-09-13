@@ -6,8 +6,8 @@ Usage:
     import_track.py <connection_txt> --show_operators
 
 Examples:
-    python import_track.py connection_info.txt "T:\ResMgmt\Users\sam_h\proj\overflights\sample_data\2019.03.08_N709M_16N_4_edited.gpx" -r N709M -o NPS
-
+    python import_track.py connection_info.txt "T:/ResMgmt/Users/sam_h/proj/overflights/sample_data/2019.03.08_N709M_16N_4_edited.gpx" -r N709M -o NPS
+    python import_track.py connection_info.txt "T:/ResMgmt/Users/sam_h/proj/overflights/sample_data/2019.03.08_N709M_16N_4_edited.gpx" --registration N709M --operator NPS
 
 Required parameters:
     connection_txt      Path of a text file containing information to connect to the DB. Each line
@@ -21,7 +21,7 @@ Options:
                                     a new track segment [default: 15]
     -d, --min_point_distance=<int>  Minimum distance in meters between consecutive track points to determine unique
                                     vertices. Any points that are less than this distance from and have the same 
-                                    timestamp as the preceeding point will be removed. [default: 200]
+                                    timestamp as the preceding point will be removed. [default: 200]
     -r, --registration=<str>        Tail (N-) number of the aircraft
     -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
                                     should submitted with the code NPS
@@ -32,13 +32,14 @@ Options:
     -s, --show_operators            Print all available operator names and codes to the console
 """
 
-
-
 import sys, os
 import re
 import pytz
 import math
+import random
+import string
 import pyproj
+import shutil
 import subprocess
 import smtplib
 import docopt
@@ -92,6 +93,7 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                        }
 ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
 
+ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files'
 
 def calc_bearing(lat1, lon1, lat2, lon2):
     '''
@@ -377,6 +379,17 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
 
     # Get unique flight_ids per line segment in place
     if not 'registration' in gdf.columns:
+        if not registration:
+            # If the N-number wasn't given, try to find it in the file
+            if not registration:
+                reg_matches = re.findall(r'(?i)N\d{2,5}[A-Z]{0,2}', os.path.basename(path))
+                if len(reg_matches):
+                    registration = reg_matches[0].upper()
+                else:
+                    # Generate a bogus registration (starts with Z instead of N)
+                    registration = 'Z' + \
+                                   ''.join(random.choices(string.digits, k=random.choice(range(1, 6)))) +\
+                                   ''.join(random.choices(string.ascii_uppercase, k=random.choice(range(1, 3))))
         gdf['registration'] = registration
     gdf = get_flight_id(gdf, seg_time_diff)\
         .drop(gdf.index[(gdf.diff_m < min_point_distance) & (gdf.utc_datetime.diff().dt.seconds == 0)])\
@@ -462,6 +475,18 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
                     index=False,
                     dtype={'geom': Geometry('LineStringZ', srid=4326)})
 
+    # Archive the data file
+    if not os.path.isdir(ARCHIVE_DIR):
+        try:
+            os.mkdir(ARCHIVE_DIR)
+        except:
+            pass
+    try:
+        shutil.copy(path, ARCHIVE_DIR)
+    except Exception as e:
+        raise UserWarning('Data successfully imported, but could not copy track files because %s. You will have to '
+                          'manually copy and paste this file to %s' % (e, ARCHIVE_DIR))
+
     if not silent:
         sys.stdout.write('%s flight tracks imported:\n\t-%s' % (n_new_flights, '\n\t-'.join(flight_ids.flight_id)))
         sys.stdout.flush()
@@ -500,7 +525,7 @@ def print_operator_codes(connection_txt):
     print('Operator code options:\n\t-%s' % operator_code_str)
 
 
-def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=500, registration='', submission_method='manual', operator_code=None, aircraft_type=None, email_credentials_txt=None, log_file=None):
+def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, email_credentials_txt=None, log_file=None):
 
     sys.stdout.write("Log file for %s: %s\n" % (__file__, datetime.now().strftime('%H:%M:%S %m/%d/%Y')))
     sys.stdout.write('Command: python %s\n\n' % subprocess.list2cmdline(sys.argv))
