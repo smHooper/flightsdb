@@ -2,7 +2,7 @@
 Import a flight track into a spatial database. Accepted file types are GPX, Garmin GDB, and CSV (that come from either GSAT, Spyder tracks, AFF, or Temsco files).
 
 Usage:
-    import_track.py <connection_txt> <track_path>  [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--email_credentials_txt=<str>] [--log_file=<str>]
+    import_track.py <connection_txt> <track_path>  [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--force_import] [--email_credentials_txt=<str>] [--log_file=<str>]
     import_track.py <connection_txt> --show_operators
 
 Examples:
@@ -28,6 +28,8 @@ Options:
     -m, --submission_method=<str>   Method used for submission. This parameter should not be given when manually
                                     importing tracks. It's purpose is to distinguish manual vs. automated submissions.
     -t, --aircraft_type=<str>       The model name of the aircraft
+    -f, --force_import              If specified, import all data even if there are matching flight segments
+                                    in the database already
     --email_credentials_txt=<str>   Path of a text file containing email username and password for sending
     -s, --show_operators            Print all available operator names and codes to the console
 """
@@ -40,6 +42,7 @@ import random
 import string
 import pyproj
 import shutil
+import warnings
 import subprocess
 import smtplib
 import docopt
@@ -362,7 +365,37 @@ READ_FUNCTIONS = {'.gpx': read_gpx,
                   '.csv': read_csv
                   }
 
-def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False):
+
+def check_duplicate_flights(registration, connection, start_time, end_time):
+    """
+    Check whether an aircraft with this registration has been recorded in the DB for any time within a given start and
+    end time
+
+    :param registration: Tail (N-) number for this flight
+    :param connection: SQLAlchemy DB connection (from engine.connect()) pointing to postgres backend overflights DB
+    :param start_time: starting time for this flight
+    :param end_time: ending time for this flight
+    :return: pd.DataFrame of matching flight points
+    """
+    sql = """
+    SELECT flights.* 
+    FROM flight_points 
+    INNER JOIN flights ON flight_points.flight_id = flights.id
+    WHERE
+        flight_points.ak_datetime BETWEEN '{start_time}' AND '{end_time}' AND
+        flights.registration = '{registration}'
+    """\
+        .format(start_time=start_time.strftime('%Y-%m-%d %H:%M'),
+                end_time=end_time.strftime('%Y-%m-%d %H:%M'),
+                registration=registration)
+
+    #with engine.connect() as conn, conn.begin():
+    matching_flights = pd.read_sql(sql, connection).drop_duplicates(subset=['registration', 'departure_datetime'])
+
+    return matching_flights
+
+
+def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False):
 
     _, extension = os.path.splitext(path)
 
@@ -378,26 +411,31 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
     gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
 
     # Get unique flight_ids per line segment in place
-    if not 'registration' in gdf.columns:
+    if 'registration' in gdf.columns:
+        if registration:
+            warnings.warn('registration %s was given but the registration column found in the data will be '
+                          'used instead' % registration)
+    else:
+        # If the N-number wasn't given, try to find it in the file
         if not registration:
-            # If the N-number wasn't given, try to find it in the file
-            if not registration:
-                reg_matches = re.findall(r'(?i)N\d{2,5}[A-Z]{0,2}', os.path.basename(path))
-                if len(reg_matches):
-                    registration = reg_matches[0].upper()
-                else:
-                    # Generate a bogus registration (starts with Z instead of N)
-                    registration = 'Z' + \
-                                   ''.join(random.choices(string.digits, k=random.choice(range(1, 6)))) +\
-                                   ''.join(random.choices(string.ascii_uppercase, k=random.choice(range(1, 3))))
+            reg_matches = re.findall(r'(?i)N\d{2,5}[A-Z]{0,2}', os.path.basename(path))
+            if len(reg_matches):
+                registration = reg_matches[0].upper()
+            else:
+                # Generate a bogus registration (starts with Z instead of N)
+                registration = 'Z' + \
+                               ''.join(random.choices(string.digits, k=random.choice(range(1, 6)))) +\
+                               ''.join(random.choices(string.ascii_uppercase, k=random.choice(range(1, 3))))
         gdf['registration'] = registration
+
+
     gdf = get_flight_id(gdf, seg_time_diff)\
         .drop(gdf.index[(gdf.diff_m < min_point_distance) & (gdf.utc_datetime.diff().dt.seconds == 0)])\
         .dropna(subset=['ak_datetime'])\
         .sort_values(by=['ak_datetime'])
 
     # Get metadata-y columns
-    gdf['time_submitted'] = datetime.now()
+    gdf['time_submitted'] = (datetime.now()).strftime('%Y-%m-%d %H:%M')
     gdf['submission_method'] = submission_method
     if operator_code:
         gdf['operator_code'] = operator_code
@@ -413,6 +451,7 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
 
     # separate flights, points, and lines
     flights = gdf[[c for c in flight_columns if c in gdf]].drop_duplicates()
+    flights['end_datetime'] = gdf.groupby('flight_id').ak_datetime.max().values
     flights['submitted_by'] = os.getlogin()
     flights['source_file'] = os.path.join(ARCHIVE_DIR, os.path.basename(path))
     if not len(flights):
@@ -430,11 +469,26 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
     lines.index.name = None
 
     with engine.connect() as conn, conn.begin():
-        # Insert only new flights because if there were already tracks for these flights that were already processed,
-        #   the flights are already in the DB
-        existing_flight_ids = pd.read_sql("SELECT flight_id FROM flights", conn).squeeze(axis=1)
+
+        # Insert only new flights. Check for new flights by looking for flight points from the same registration number
+        #   that are within the start and end times of each flight segment (since an aircraft can't be in 2 locations
+        #   at the same time).
+        existing_flight_info = []
+        existing_flight_ids = []
+        for _, f in flights.iterrows():
+            matching_flights = check_duplicate_flights(f.registration, conn, f.departure_datetime, f.end_datetime)
+            existing_flight_info.extend([(m.registration, m.departure_datetime) for _, m in matching_flights.iterrows()])
+            existing_flight_ids.extend(matching_flights.flight_id)
+        if len(existing_flight_info) and not force_import:
+            existing_str = '\n\t-'.join(['%s: %s' % f for f in existing_flight_info])
+            raise ValueError('The file {path} contains flight segments that already exist in the database as'
+                             ' indicated by the following registration and departure times:\n\t-{existing_flights}.'
+                             '\nEither delete these flight segments from the database or run this script again with'
+                             ' the --force_import flag (ONLY USE THIS FLAG IF YOU KNOW WHAT YOU\'RE DOING).'
+                             .format(path=path, existing_flights=existing_str))
+
         new_flights = flights.loc[~flights.flight_id.isin(existing_flight_ids)]
-        new_flights.to_sql('flights', conn, if_exists='append', index=False)
+        new_flights.drop(columns='end_datetime').to_sql('flights', conn, if_exists='append', index=False)
 
         # Warn the user if any of the flights already exist
         n_flights = len(flights)
@@ -443,7 +497,7 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
             raise ValueError('No new flight segments were inserted from this file because they all already exist in'
                              ' the database.')
         if n_flights != n_new_flights:
-            raise UserWarning('For the file {path}, the following {existing} of {total} flight segments already exist:'
+            warnings.warn('For the file {path}, the following {existing} of {total} flight segments already exist:'
                               '\n\t- {ids}'
                               .format(path=path,
                                       existing=n_flights-n_new_flights,
@@ -489,7 +543,7 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
                           'manually copy and paste this file to %s' % (e, ARCHIVE_DIR))
 
     if not silent:
-        sys.stdout.write('%s flight tracks imported:\n\t-%s' % (n_new_flights, '\n\t-'.join(flight_ids.flight_id)))
+        sys.stdout.write('%s flight tracks imported:\n\t-%s' % (len(flights), '\n\t-'.join(flight_ids.flight_id)))
         sys.stdout.flush()
 
 
@@ -526,7 +580,7 @@ def print_operator_codes(connection_txt):
     print('Operator code options:\n\t-%s' % operator_code_str)
 
 
-def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, email_credentials_txt=None, log_file=None):
+def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, email_credentials_txt=None, log_file=None, force_import=False):
 
     sys.stdout.write("Log file for %s: %s\n" % (__file__, datetime.now().strftime('%H:%M:%S %m/%d/%Y')))
     sys.stdout.write('Command: python %s\n\n' % subprocess.list2cmdline(sys.argv))
@@ -544,7 +598,7 @@ def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=200, r
 
     try:
         import_track(connection_txt, track_path, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
-                      aircraft_type)
+                      aircraft_type, force_import=force_import)
     except Exception as e:
         if email_credentials_txt:
             message_body = '''There was a problem with the attached file: %s'''

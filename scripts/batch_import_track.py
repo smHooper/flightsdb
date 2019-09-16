@@ -27,6 +27,8 @@ Options:
     -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
                                     should submitted with the code NPS
     -t, --aircraft_type=<str>       The model name of the aircraft
+    -f, --force_import              If specified, import all data even if there are matching flight segments
+                                    in the database already
     -s, --show_operators            Print all available operator names and codes to the console
     -w, --walk_dir_tree             Search for files in all sub-dirs of the directory specified by search_str. Only
                                     files with a recognizable file extension (.gdb, .gpx, or .csv) will be processed
@@ -41,7 +43,7 @@ from datetime import datetime
 import import_track
 
 
-def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False):
+def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False, force_import=False):
 
     subprocess.call('', shell=True) #For some reason, this enables ANSII escape characters to be properly read by cmd.exe
 
@@ -77,7 +79,8 @@ def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, o
                                       registration=registration,
                                       submission_method='manual',
                                       operator_code=operator_code,
-                                      aircraft_type=aircraft_type)
+                                      aircraft_type=aircraft_type,
+                                      force_import=force_import)
 
         except Exception as e:
             failed_tracks[path] = e
