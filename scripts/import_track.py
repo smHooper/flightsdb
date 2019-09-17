@@ -98,6 +98,8 @@ ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
 
 ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files'
 
+REGISTRATION_REGEX = r'(?i)N\d{2,5}[A-Z]{0,2}'
+
 def calc_bearing(lat1, lon1, lat2, lon2):
     '''
     Calculate bearing from two lat/lon coordinates. Logic from https://gist.github.com/jeromer/2005586
@@ -410,15 +412,25 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
     timezone = pytz.timezone('US/Alaska')
     gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
 
-    # Get unique flight_ids per line segment in place
-    if 'registration' in gdf.columns:
+    # Validate the registration
+    if 'registration' in gdf.columns: # Already in a column in the data
         if registration:
             warnings.warn('registration %s was given but the registration column found in the data will be '
                           'used instead' % registration)
+        # verify that the reg. in each column matches the right pattern
+        regex_mask = gdf.registration.str.contains(REGISTRATION_REGEX, case=False)
+        if not all(regex_mask):
+            invalid_registrations = gdf.loc[~regex_mask, 'registration'].unique()
+            raise ValueError('A column with aircraft registrations was detected in the input file, but the following '
+                             'registrations were invalid:\n\t-%s' % '\n\t-'.join(invalid_registrations))
     else:
+        # If given, make sure it matches the pattern (N1 to N99999, N1A to N9999Z, or N1AA to N999ZZ)
+        if registration:
+            if not re.fullmatch(REGISTRATION_REGEX, registration):
+                raise ValueError('The registration given, %s, is invalid' % registration)
         # If the N-number wasn't given, try to find it in the file
-        if not registration:
-            reg_matches = re.findall(r'(?i)N\d{2,5}[A-Z]{0,2}', os.path.basename(path))
+        else:
+            reg_matches = re.findall(REGISTRATION_REGEX, os.path.basename(path))
             if len(reg_matches):
                 registration = reg_matches[0].upper()
             else:
@@ -426,9 +438,12 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
                 registration = 'Z' + \
                                ''.join(random.choices(string.digits, k=random.choice(range(1, 6)))) +\
                                ''.join(random.choices(string.ascii_uppercase, k=random.choice(range(1, 3))))
+                warnings.warn('No registration column in the data, none could be found in the filename, and none given.'
+                              ' Using %s instead (random alphanumerics and starting with "Z")')
+        # Otherwise, use the one given
         gdf['registration'] = registration
 
-
+    # Get unique flight_ids per line segment in place
     gdf = get_flight_id(gdf, seg_time_diff)\
         .drop(gdf.index[(gdf.diff_m < min_point_distance) & (gdf.utc_datetime.diff().dt.seconds == 0)])\
         .dropna(subset=['ak_datetime'])\
