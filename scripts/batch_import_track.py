@@ -2,7 +2,7 @@
 Run import_track.py using all tracks found with a glob-style search string
 
 Usage:
-    batch_import_track.py <connection_txt> <search_str> [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--walk_dir_tree]
+    batch_import_track.py <connection_txt> <search_str> [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--ssl_cert_path=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--walk_dir_tree]
     batch_import_track.py <connection_txt> --show_operators
 
 Examples:
@@ -26,6 +26,8 @@ Options:
                                     are from the same aircraft.
     -o, --operator_code=<str>       Three digit code for the operator of the aircraft. All administrative flights
                                     should submitted with the code NPS
+    -c, --ssl_cert_path=<str>       Path to an SSL .crt or .pem file for sending an HTTP request to registry.faa.gov to
+                                    retrieve info about the aircraft
     -t, --aircraft_type=<str>       The model name of the aircraft
     -f, --force_import              If specified, import all data even if there are matching flight segments
                                     in the database already
@@ -43,7 +45,7 @@ from datetime import datetime
 import import_track
 
 
-def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False, force_import=False):
+def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False, force_import=False, ssl_cert_path=None):
 
     subprocess.call('', shell=True) #For some reason, this enables ANSII escape characters to be properly read by cmd.exe
 
@@ -80,7 +82,8 @@ def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, o
                                       submission_method='manual',
                                       operator_code=operator_code,
                                       aircraft_type=aircraft_type,
-                                      force_import=force_import)
+                                      force_import=force_import,
+                                      ssl_cert_path=ssl_cert_path)
 
         except Exception as e:
             failed_tracks[path] = e
