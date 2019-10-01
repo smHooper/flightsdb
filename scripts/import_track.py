@@ -454,6 +454,10 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
         .dropna(subset=['ak_datetime'])\
         .sort_values(by=['ak_datetime'])
 
+    land_times = gdf.groupby('segment_id').ak_datetime.max().to_frame().rename(columns={'ak_datetime': 'land_time'})
+    gdf['landing_datetime'] = gdf.merge(land_times, on='segment_id').land_time
+    gdf['duration_hrs'] = (gdf.landing_datetime - gdf.departure_datetime).dt.seconds/3600.0
+
     # Get metadata-y columns
     gdf['time_submitted'] = (datetime.now()).strftime('%Y-%m-%d %H:%M')
     gdf['submission_method'] = submission_method
