@@ -2,7 +2,7 @@
 Query a PostGIS database and either write the results to a file or return in memory as GeoDataFrame.
 
 Usage:
-    query_tracks.py <connection_txt> <start_date> <end_date> [--table=<str>] [--start_time=<str>] [--end_time=<str>] [--bbox=<str>] [--mask_file=<str>] [--mask_buffer_distance=<str>] [--clip_output] [--output_path=<str>] [--aircraft_info] [--sql_criteria=<str>]
+    query_tracks.py <connection_txt> <start_date> <end_date> [--table=<str>] [--start_time=<str>] [--end_time=<str>] [--bbox=<str>] [--mask_file=<str>] [--mask_buffer_distance=<int>] [--clip_output] [--output_path=<str>] [--aircraft_info] [--sql_criteria=<str>]
 
 Examples:
 
@@ -18,13 +18,23 @@ Options:
     -t, --table=<str>                   Table to query geometries from
     -s, --start_time=<str>              Earliest time of day on a 24-hour clock to return data from
     -e, --end_time=<str>                Latest time of day on a 24-hour clock to return data from
-    -b, --bbox=<str>                    Bounding box coordinates to query records within in the format (xmin, ymin, xmax, ymax)
-    -m, --mask_file=<str>               f
-    -d, --mask_buffer_distance=<str>    df,.
-    -c, --clip_output                   s
-    -o, --output_path=<str>             s
-    -a, --aircraft_info                 s
-    -q, --sql_criteria=<str>            s
+    -b, --bbox=<str>                    Bounding box coordinates to query records within in the format
+                                        (xmin, ymin, xmax, ymax)
+    -m, --mask_file=<str>               Path to a vector file (Point, Line, or Polygon) to spatially filter query
+                                        results. If you give a Point or Line vector file, you must also specify a
+                                        mask_buffer_distance.
+    -d, --mask_buffer_distance=<int>    Integer distance in meters (as measured in Alaska Albers Equal Area Conic
+                                        projection) to buffer around all features in mask_file.
+    -c, --clip_output                   Option to specify that the result should be the intersection of mask_file and
+                                        the result of the non-spatial query criteria. If this option is not given, all
+                                        features that touch mask_file will be returned, but they will not be clipped
+                                        to its shape
+    -o, --output_path=<str>             Path to write the result to.
+    -a, --aircraft_info                 Option to return information about the aircraft (manufacturer, model,
+                                        engine model, aircraft type, etc.) append to each row of the query result
+    -q, --sql_criteria=<str>            Additional SQL criteria to append to a WHERE statement (e.g.,
+                                        'flights.id IN (104, 105, 106)' to limit results to records with those
+                                        flight IDs)
 """
 
 import sys
@@ -52,10 +62,10 @@ def validate_bounding_box(bbox):
         raise ValueError(error_msg.format(reason="xmin was greater than or equal to xmax"))
     if ymin >= ymax:
         raise ValueError(error_msg.format(reason="ymin was greater than or equal to ymax"))
-    if xmin < -90 or ymin < -180 or xmax > 90 or ymax > 180:
+    if (xmin < -90) or (ymin < -180) or (xmax > 90) or (ymax > 180):
         raise ValueError(error_msg.format(reason="x coordinates must be between -90 and 90 and y coordinates must be "
                                                  "between -180 and 180"))
-    if xmin < 129 or ymin < 51 or xmax > 169 or ymax > 72:
+    if (xmin < -169) or (ymin < 51) or (xmax > -129) or (ymax > 72):
         warnings.warn('The bounding box given is outside of mainland Alaska')
 
 
@@ -87,6 +97,8 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
 
         if bbox:
             warnings.warn('You specified both a mask_file and a bbox, but only the mask_file will be used to filter results')
+    elif clip_output:
+        warnings.warn('clip_output was set to True, but you did not specify a mask_file to spatially filter query results.')
 
     engine = db_utils.connect_db(connection_txt)
     with engine.connect() as conn, conn.begin():
