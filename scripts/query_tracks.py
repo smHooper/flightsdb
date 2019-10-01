@@ -21,7 +21,8 @@ Options:
     -b, --bbox=<str>                    Bounding box coordinates to query records within in the format
                                         (xmin, ymin, xmax, ymax)
     -m, --mask_file=<str>               Path to a vector file (Point, Line, or Polygon) to spatially filter query
-                                        results. If you give a Point or Line vector file, you must also specify a
+                                        results. File extension must be either .geojson, .json, .shp, .csv,  or .gpx.
+                                        If you give a Point or Line vector file, you must also specify a
                                         mask_buffer_distance.
     -d, --mask_buffer_distance=<int>    Integer distance in meters (as measured in Alaska Albers Equal Area Conic
                                         projection) to buffer around all features in mask_file.
@@ -48,7 +49,12 @@ import geopandas as gpd
 import db_utils
 from import_track import get_cl_args
 
-SUPPORTED_FILE_EXTENSIONS = ['.geojson', '.json', '.shp', '.csv', '.gpx']
+#SUPPORTED_FILE_EXTENSIONS = ['.geojson', '.json', '.shp', '.csv', '.gpx']
+FIONA_DRIVERS = {'.geojson': 'GeoJSON',
+                 '.json': 'GeoJSON',
+                 '.shp': 'ESRI Shapefile',
+                 '.csv': 'CSV',
+                 '.gpx': 'GPX'}
 
 def validate_bounding_box(bbox):
     error_msg = "bbox coordinates must be in the format 'xmin,ymin,xmax,ymax' (in WGS84) but {reason}. bbox given: %s" % bbox
@@ -72,11 +78,12 @@ def validate_bounding_box(bbox):
 def query_tracks(connection_txt, start_date, end_date, table='flight_points', start_time='00:00', end_time='23:59', bbox=None, mask_file=None, mask_buffer_distance=None, clip_output=False, output_path=None, aircraft_info=False, sql_criteria=''):
 
     if output_path:
-        _, extension = os.path.splitext(output_path)
-        if extension not in SUPPORTED_FILE_EXTENSIONS:
-            raise ValueError('Unsupported file type: {extension}. File extension must be either {type_str}'
-                             .format(extension=extension,
-                                     type_str='%s, or %s' % (', '.join(SUPPORTED_FILE_EXTENSIONS[:-1]), SUPPORTED_FILE_EXTENSIONS[-1])
+        _, path_extension = os.path.splitext(output_path)
+        if path_extension not in FIONA_DRIVERS:
+            supported_ext = sorted(FIONA_DRIVERS.keys())
+            raise ValueError('Unsupported output file type: {extension}. File extension must be either {type_str}'
+                             .format(extension=path_extension,
+                                     type_str='%s, or %s' % (', '.join(supported_ext[:-1]), supported_ext[-1])
                                      )
                              )
     # If a mask file is given, get the Well-Known Text representation to feed to the query
@@ -84,7 +91,17 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
         # Check if the file exists
         if not os.path.isfile(mask_file):
             raise ValueError('mask_file does not exist or is not a file: %s' % mask_file)
-        # Make a multi-feature geometry from
+
+        # Check that the file can be read
+        _, path_extension = os.path.splitext(mask_file)
+        if path_extension not in FIONA_DRIVERS:
+            supported_ext = sorted(FIONA_DRIVERS.keys())
+            raise ValueError('Unsupported mask_file type: {extension}. File extension must be either {type_str}'
+                             .format(extension=path_extension,
+                                     type_str='%s, or %s' % (', '.join(supported_ext[:-1]), supported_ext[-1])
+                                     )
+                             )
+        # Make a multi-feature geometry from the mask_file
         mask = gpd.read_file(mask_file).to_crs(epsg=4326)
         mask['dissolve_field'] = 1
         if mask_buffer_distance:
@@ -159,9 +176,10 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
 
     if output_path:
         datetime_columns = data.columns[data.dtypes == 'datetime64[ns]']
+        # convert all datetime cols to str because fiona (underlying GeoPandas) freaks out about datetimes
         for c in datetime_columns:
             data[c] = data[c].astype(str)
-        data.to_file(output_path)
+        data.to_file(output_path, driver=FIONA_DRIVERS[extension])
 
 if __name__ == '__main__':
 
