@@ -35,7 +35,8 @@ import import_track
 
 RESULT_TIMEOUT = 120 # number of seconds
 CHECK_STATUS_INTERVAL = 2
-
+APP_CREDENTIALS = ['service_url', 'portal_url', 'client_id', 'client_secret']
+LOGIN_CREDENTIALS = ['service_url', 'portal_url', 'username', 'password']
 
 def check_http_error(attempted_action, response):
     try:
@@ -53,13 +54,47 @@ def check_http_error(attempted_action, response):
         raise requests.HTTPError('failed to {action} because {error}'.format(action=attempted_action, error=response_json['error']['details']))
 
 
-def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, last_poll_time=None):
+def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, last_poll_time=None):
 
     # Get token for REST API
-    token_params = {'client_id': client_id, 'client_secret': client_secret, 'grant_type': 'client_credentials'}
-    token_response = requests.get(portal_url + '/sharing/rest/oauth2/token/', params=token_params, verify=ssl_cert)
+    # If credentials_json given, read the file
+    credentials = {}
+    if credentials_json:
+        try:
+            with open(credentials_json) as j:
+                credentials = json.load(j)
+        except Exception as e:
+            raise IOError('Could not read credentials_json {0} because {1}'.format(credentials_json, e))
+        if 'service_url' in credentials:
+            service_url = credentials['service_url']
+        else:
+            raise ValueError('service_url not specified in credentials_json %s' % credentials_json)
+
+    # Allow for retrieving a token either using login credentials or an authorized AGOL app
+    if sorted(credentials.keys()) == sorted(LOGIN_CREDENTIALS) or all([portal_url, service_url, username, password]):
+        token_params = {'username': credentials['username'] if credentials_json else username,
+                        'password': credentials['password'] if credentials_json else password,
+                        'client': 'referer',
+                        'referer': credentials['portal_url'] if credentials_json else portal_url,
+                        'expiration': 60,
+                        'f': 'json'
+                        }
+        token_url = '/sharing/rest/generateToken?'
+    elif sorted(credentials.keys()) == sorted(APP_CREDENTIALS) or all([portal_url, service_url, client_id, client_secret]):
+        token_params = {'client_id': credentials['client_id'] if credentials_json else client_id,
+                        'client_secret': credentials['client_secret'] if credentials_json else client_secret,
+                        'grant_type': 'client_credentials'
+                        }
+        token_url = '/sharing/rest/oauth2/token/'
+    else:
+        raise ValueError('invalid credentials in {0}. credentials_json must include all of either {1} or {2}'
+                         .format(credentials_json, LOGIN_CREDENTIALS, APP_CREDENTIALS))
+
+    token_response = requests.get(portal_url + token_url, params=token_params, verify=ssl_cert)
     check_http_error('get token', token_response)
-    token = token_response.json()['access_token']
+    token_json = token_response.json()
+    # Annoyingly, the generateToken and oauth2/token API calls return the token via a slightly different key
+    token = token_json['access_token'] if 'access_token' in token_json else token_json['token']
 
     # Get feature service info
     info_response = requests.get(service_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
@@ -69,11 +104,10 @@ def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=Non
     layers = [layer_info['id'] for layer_info in service_info['layers'] + service_info['tables']]
 
     # Check if there is any data to download
-    query_params = {
-        'f': 'json',
-        'token': token,
-        'returnCountOnly': True
-    }
+    query_params = {'f': 'json',
+                    'token': token,
+                    'returnCountOnly': True
+                    }
     if last_poll_time:
         query_params['layerDefs'] = json.dumps(
             {str(layer_id): "CreationDate > TIMESTAMP '%s'" % last_poll_time for layer_id in layers})
