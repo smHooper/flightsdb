@@ -1,3 +1,27 @@
+"""
+Download data from an AGOL feature service with an optional query to just return records after a given timestamp.
+
+Usage:
+    download_feature_service.py --help
+    download_feature_service.py <out_dir> (--credentials_json=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>]
+    download_feature_service.py <out_dir> (--portal_url=<str> --service_url=<str> --client_id=<str> --client_secret=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>]
+
+Required parameters:
+    out_dir      Output directory to write downloaded files to
+
+Options:
+    -h, --help                      Show this screen.
+    -j, --credentials_json=<str>    Path to a JSON file where each property is an AGOL login credential
+    -p, --portal_url=<str>          URL for the user's AGOL portal [default: https://www.arcgis.com]
+    -u, --service_url=<str>         AGOL URL for the feature service
+    -i, --client_id=<str>           AGOL-issued client ID for this app to access user data (i.e., the feature service)
+    -s, --client_secret=<str>       AGOL-issued client secret for this app to access user data
+    -t, --last_poll_time=<str>      Timestamp in the form YYYY-MM-DD HH:MM:SS to query records created after this time.
+                                    If not specified, all records will be returned
+    -c, --ssl_cert=<str>            Path to an SSL certificate (.crt or .pem file) to allow access through a firewall
+                                    to make HTTP requests
+"""
+
 import os, sys
 import requests
 import time
@@ -6,9 +30,11 @@ import pandas as pd
 from sqlalchemy import create_engine
 from datetime import datetime
 
+import import_track
 
-RESULT_TIMEOUT = 900 # seconds in 15 minutes
-CHECK_STATUS_INTERVAL = 5
+
+RESULT_TIMEOUT = 120 # number of seconds
+CHECK_STATUS_INTERVAL = 2
 
 
 def check_http_error(attempted_action, response):
@@ -18,12 +44,16 @@ def check_http_error(attempted_action, response):
         raise requests.HTTPError('failed to {action} because {error}'.format(action=attempted_action, error=e))
 
     # status codes are often valid even if there was an error, so check the response json
-    response_json = response.json()
+    try:
+        # The result of a GET request for a data URL doesn't contain valid JSON
+        response_json = response.json()
+    except:
+        return
     if 'error' in response_json:
         raise requests.HTTPError('failed to {action} because {error}'.format(action=attempted_action, error=response_json['error']['details']))
 
 
-def download_data(portal_url, service_url, client_id, client_secret, ssl_cert, out_dir, last_poll_time=None):
+def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, last_poll_time=None):
 
     # Get token for REST API
     token_params = {'client_id': client_id, 'client_secret': client_secret, 'grant_type': 'client_credentials'}
@@ -36,21 +66,31 @@ def download_data(portal_url, service_url, client_id, client_secret, ssl_cert, o
     check_http_error('get service info', info_response)
     service_info = info_response.json()
 
-    # Submit POST request to get data
-    # Make sure that the layerQueries parameter is given with 'includeRelated' = true. Otherwise, related records will
-    #   not be included
-    layers = [layer_info['id'] for layer_info in service_info['layers']]
-    layer_queries = {}
-    for layer_id in layers:
-        str_id = str(layer_id)
-        layer_queries[str_id] = {
-            'includeRelated': True,
-            'queryOption': 'none'
-        }
-        if last_poll_time:
-            layer_queries[str_id]['queryOption'] = 'useFilter'
-            layer_queries[str_id]['where'] = "CreationDate > TIMESTAMP '%s'" % last_poll_time
+    layers = [layer_info['id'] for layer_info in service_info['layers'] + service_info['tables']]
 
+    # Check if there is any data to download
+    query_params = {
+        'f': 'json',
+        'token': token,
+        'returnCountOnly': True
+    }
+    if last_poll_time:
+        query_params['layerDefs'] = json.dumps(
+            {str(layer_id): "CreationDate > TIMESTAMP '%s'" % last_poll_time for layer_id in layers})
+    else:
+        # Return everything
+        query_params['layerDefs'] = json.dumps(
+            {str(layer_id): "CreationDate > TIMESTAMP '1970-1-1 00:00:00'" for layer_id in layers})
+    query_response = requests.post('%s/query' % service_url, params=query_params, verify=ssl_cert)
+    check_http_error('query number of records', query_response)
+    query_json = query_response.json()
+    if len(query_json) and 'layers' in query_json:
+        if not sum([layer['count'] for layer in query_json['layers']]):
+            return 'No data matching query'
+    else:
+        return 'No data matching query'
+
+    # Submit POST request to get data with createReplica
     create_replica_params = {
         'f': 'json',
         'token': token,
@@ -62,9 +102,19 @@ def download_data(portal_url, service_url, client_id, client_secret, ssl_cert, o
         'returnAttachments': True,
         'returnAttachmentsDatabyURL': False,
         'async': True,
-        'syncModel': 'none'#,
-        #'layerQueries': json.dumps(layer_queries)
+        'syncModel': 'none'
     }
+    # Define a query if last poll time was given. Otherwise, all records will be returned
+    if last_poll_time:
+        layer_queries = {}
+        for layer_id in layers:
+            str_id = str(layer_id)
+            layer_queries[str_id] = {
+                'includeRelated': True,
+                'queryOption': 'useFilter',
+                'where': "CreationDate > TIMESTAMP '%s'" % last_poll_time
+            }
+        create_replica_params['layerQuereis'] = json.dumps(layer_queries)
     replica_response = requests.post('%s/createReplica' % service_url, params=create_replica_params, verify=ssl_cert)
     check_http_error('create replica', replica_response)
     status_url = replica_response.json()['statusUrl']
@@ -82,9 +132,9 @@ def download_data(portal_url, service_url, client_id, client_secret, ssl_cert, o
         elif status_json['status'] in ('CompletedWithErrors', 'Failed'):
             raise requests.HTTPError('the query failed for an unspecified reason')
         else:
-            if i + CHECK_STATUS_INTERVAL >= RESULT_TIMEOUT: # timeout exceeded
+            if i + CHECK_STATUS_INTERVAL >= RESULT_TIMEOUT:  # timeout exceeded
                 raise requests.exceptions.ConnectTimeout(
-                    'Asynchronous query exceeded RESULT_TIMEOUT of %.1f minutes' % (RESULT_TIMEOUT/60.0)
+                    'Asynchronous query exceeded RESULT_TIMEOUT of %.1f minutes' % (RESULT_TIMEOUT / 60.0)
                 )
             time.sleep(CHECK_STATUS_INTERVAL)
 
@@ -129,4 +179,5 @@ def download_data(portal_url, service_url, client_id, client_secret, ssl_cert, o
 
 
 if __name__ == '__main__':
-    sys.exit(download_data(*sys.argv[1:]))
+    args = import_track.get_cl_args(__doc__)
+    sys.exit(download_data(**args))
