@@ -3,8 +3,8 @@ Download data from an AGOL feature service with an optional query to just return
 
 Usage:
     download_feature_service.py --help
-    download_feature_service.py <out_dir> (--credentials_json=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>]
-    download_feature_service.py <out_dir> (--portal_url=<str> --service_url=<str> --client_id=<str> --client_secret=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>]
+    download_feature_service.py <out_dir> (--credentials_json=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>] [--verbose]
+    download_feature_service.py <out_dir> (--portal_url=<str> --service_url=<str> --client_id=<str> --client_secret=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>] [--verbose]
 
 Required parameters:
     out_dir      Output directory to write downloaded files to
@@ -18,8 +18,9 @@ Options:
     -s, --client_secret=<str>       AGOL-issued client secret for this app to access user data
     -t, --last_poll_time=<str>      Timestamp in the form YYYY-MM-DD HH:MM:SS to query records created after this time.
                                     If not specified, all records will be returned
-    -c, --ssl_cert=<str>            Path to an SSL certificate (.crt or .pem file) to allow access through a firewall
+    -c, --ssl_cert=<str>            Path to CA_BUNDLE (.crt or .pem file) to allow access through a firewall
                                     to make HTTP requests
+    -v, --verbose                   Flag indicating whether to print progress
 """
 
 import os, sys
@@ -39,6 +40,11 @@ APP_CREDENTIALS = ['service_url', 'portal_url', 'client_id', 'client_secret']
 LOGIN_CREDENTIALS = ['service_url', 'portal_url', 'username', 'password']
 
 def check_http_error(attempted_action, response):
+    '''
+    Validate an HTTP response from an ArcGIS REST API call
+    :param attempted_action: string to indicating the attempted action that might have caused a failure
+    :param response: the requests.Response object returned from requests.post() or requests.get()
+    '''
     try:
         response.raise_for_status()
     except Exception as e:
@@ -54,22 +60,25 @@ def check_http_error(attempted_action, response):
         raise requests.HTTPError('failed to {action} because {error}'.format(action=attempted_action, error=response_json['error']['details']))
 
 
-def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, last_poll_time=None):
+def read_credentials(credentials_json):
+    '''
+    Return a dictionary of credentials from a JSON file
+    '''
+    try:
+        with open(credentials_json) as j:
+            credentials = json.load(j)
+    except Exception as e:
+        raise IOError('Could not read credentials_json {0} because {1}'.format(credentials_json, e))
 
-    # Get token for REST API
-    # If credentials_json given, read the file
-    credentials = {}
-    if credentials_json:
-        try:
-            with open(credentials_json) as j:
-                credentials = json.load(j)
-        except Exception as e:
-            raise IOError('Could not read credentials_json {0} because {1}'.format(credentials_json, e))
-        if 'service_url' in credentials:
-            service_url = credentials['service_url']
-        else:
-            raise ValueError('service_url not specified in credentials_json %s' % credentials_json)
+    return credentials
 
+
+def get_token(credentials_json=None, credentials={}, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, ssl_cert=True):
+    '''
+    Return a token from the ArcGIS REST API:
+        - https://developers.arcgis.com/rest/users-groups-and-items/generate-token.htm
+        - https://developers.arcgis.com/documentation/core-concepts/security-and-authentication/accessing-arcgis-online-services/
+    '''
     # Allow for retrieving a token either using login credentials or an authorized AGOL app
     if sorted(credentials.keys()) == sorted(LOGIN_CREDENTIALS) or all([portal_url, service_url, username, password]):
         token_params = {'username': credentials['username'] if credentials_json else username,
@@ -93,15 +102,14 @@ def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=Non
     token_response = requests.get(portal_url + token_url, params=token_params, verify=ssl_cert)
     check_http_error('get token', token_response)
     token_json = token_response.json()
+
     # Annoyingly, the generateToken and oauth2/token API calls return the token via a slightly different key
-    token = token_json['access_token'] if 'access_token' in token_json else token_json['token']
+    return token_json['access_token'] if 'access_token' in token_json else token_json['token']
 
-    # Get feature service info
-    info_response = requests.get(service_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
-    check_http_error('get service info', info_response)
-    service_info = info_response.json()
-
-    layers = [layer_info['id'] for layer_info in service_info['layers'] + service_info['tables']]
+def count_records(service_url, token, layers, last_poll_time, ssl_cert=True):
+    '''
+    Return an integer count of records matching the query in all layers/tables of the feature service
+    '''
 
     # Check if there is any data to download
     query_params = {'f': 'json',
@@ -119,10 +127,16 @@ def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=Non
     check_http_error('query number of records', query_response)
     query_json = query_response.json()
     if len(query_json) and 'layers' in query_json:
-        if not sum([layer['count'] for layer in query_json['layers']]):
-            return 'No data matching query'
+        return sum([layer['count'] for layer in query_json['layers']])
     else:
-        return 'No data matching query'
+        return 0
+
+
+def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=True, last_poll_time=None):
+    '''
+    Download data from an AGOL feature service. If last_poll_time is given, only return records created after this time
+    :return: path to the SQLite DB of downloaded data
+    '''
 
     # Submit POST request to get data with createReplica
     create_replica_params = {
@@ -211,7 +225,41 @@ def download_data(out_dir, ssl_cert=False, credentials_json=None, portal_url=Non
                 with open(json_path, 'w') as json_pointer:
                     json.dump(row_dict, json_pointer, indent=4)
 
+    return sqlite_path
+
+
+def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, last_poll_time=None):
+
+    # Get token for REST API
+    # If credentials_json given, read the file
+    credentials = {}
+    if credentials_json:
+        credentials = read_credentials(credentials_json)
+        if 'service_url' in credentials:
+            service_url = credentials['service_url']
+        else:
+            raise ValueError('service_url not specified in credentials_json %s' % credentials_json)
+    token = get_token(credentials_json, credentials, portal_url, service_url,
+                      client_id, client_secret, username, password, ssl_cert)
+
+    # Get feature service info
+    info_response = requests.get(service_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
+    check_http_error('get service info', info_response)
+    service_info = info_response.json()
+    layers = [layer_info['id'] for layer_info in service_info['layers'] + service_info['tables']]
+
+    # If there are any records that match the query, download them
+    matching_records = count_records(service_url, token, layers, last_poll_time, ssl_cert=ssl_cert)
+    if matching_records:
+        data_path = download_data(out_dir, token, layers, service_info, service_url,
+                                  ssl_cert=ssl_cert, last_poll_time=last_poll_time)
+        sys.stdout.write('Downloaded {0} records from {1} layers/tables to {2}'
+                         .format(matching_records, len(layers), data_path))
+    else:
+        sys.stdout.write('No data to download at this time')
+    sys.stdout.flush()
+
 
 if __name__ == '__main__':
     args = import_track.get_cl_args(__doc__)
-    sys.exit(download_data(**args))
+    sys.exit(main(**args))
