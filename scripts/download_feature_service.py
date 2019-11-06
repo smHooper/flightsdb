@@ -113,7 +113,7 @@ def get_token(credentials_json=None, credentials={}, portal_url=None, service_ur
     return token_json['access_token'] if 'access_token' in token_json else token_json['token']
 
 
-def count_records(service_url, token, layers, last_poll_time, ssl_cert=True):
+def query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=True, return_counts=False):
     '''
     Return an integer count of records matching the query in all layers/tables of the feature service
     '''
@@ -121,7 +121,7 @@ def count_records(service_url, token, layers, last_poll_time, ssl_cert=True):
     # Check if there is any data to download
     query_params = {'f': 'json',
                     'token': token,
-                    'returnCountOnly': True
+                    'returnCountOnly': return_counts
                     }
     if last_poll_time:
         query_params['layerDefs'] = json.dumps(
@@ -134,9 +134,12 @@ def count_records(service_url, token, layers, last_poll_time, ssl_cert=True):
     check_http_error('query number of records', query_response)
     query_json = query_response.json()
     if len(query_json) and 'layers' in query_json:
-        return sum([layer['count'] for layer in query_json['layers']])
+        if return_counts:
+            return sum([layer['count'] for layer in query_json['layers']])
+        else:
+            return query_json
     else:
-        return 0
+        return {}
 
 
 def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=True, last_poll_time=None):
@@ -264,7 +267,7 @@ def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service
     layers = [layer_info['id'] for layer_info in service_info['layers'] + service_info['tables']]
 
     # If there are any records that match the query, download them
-    matching_records = count_records(service_url, token, layers, last_poll_time, ssl_cert=ssl_cert)
+    matching_records = query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=ssl_cert, return_counts=True)
     if matching_records:
         data_path = download_data(out_dir, token, layers, service_info, service_url,
                                   ssl_cert=ssl_cert, last_poll_time=last_poll_time)
