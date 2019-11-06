@@ -5,6 +5,7 @@ Usage:
     download_feature_service.py --help
     download_feature_service.py <out_dir> (--credentials_json=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>] [--verbose]
     download_feature_service.py <out_dir> (--portal_url=<str> --service_url=<str> --client_id=<str> --client_secret=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>] [--verbose]
+    download_feature_service.py <out_dir> (--portal_url=<str> --service_url=<str> --username=<str>) [--last_poll_time=<str>] [--ssl_cert=<str>] [--verbose]
 
 Required parameters:
     out_dir      Output directory to write downloaded files to
@@ -16,6 +17,7 @@ Options:
     -u, --service_url=<str>         AGOL URL for the feature service
     -i, --client_id=<str>           AGOL-issued client ID for this app to access user data (i.e., the feature service)
     -s, --client_secret=<str>       AGOL-issued client secret for this app to access user data
+    -n, --username=<str>            AGOL username
     -t, --last_poll_time=<str>      Timestamp in the form YYYY-MM-DD HH:MM:SS to query records created after this time.
                                     If not specified, all records will be returned
     -c, --ssl_cert=<str>            Path to CA_BUNDLE (.crt or .pem file) to allow access through a firewall
@@ -27,6 +29,7 @@ import os, sys
 import requests
 import time
 import json
+import getpass
 import pandas as pd
 from sqlalchemy import create_engine
 from datetime import datetime
@@ -73,38 +76,42 @@ def read_credentials(credentials_json):
     return credentials
 
 
-def get_token(credentials_json=None, credentials={}, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, ssl_cert=True):
+def get_token(credentials_json=None, credentials={}, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, ssl_cert=True):
     '''
     Return a token from the ArcGIS REST API:
         - https://developers.arcgis.com/rest/users-groups-and-items/generate-token.htm
         - https://developers.arcgis.com/documentation/core-concepts/security-and-authentication/accessing-arcgis-online-services/
     '''
     # Allow for retrieving a token either using login credentials or an authorized AGOL app
-    if sorted(credentials.keys()) == sorted(LOGIN_CREDENTIALS) or all([portal_url, service_url, username, password]):
-        token_params = {'username': credentials['username'] if credentials_json else username,
-                        'password': credentials['password'] if credentials_json else password,
+    if sorted(credentials.keys()) == sorted(LOGIN_CREDENTIALS) or all([portal_url, service_url, username]):
+        username = credentials['username'] if credentials_json else username
+        token_params = {'username': username,
+                        'password': credentials['password'] if credentials_json
+                                    else getpass.getpass("AGOL password for '%s':" % username),
                         'client': 'referer',
                         'referer': credentials['portal_url'] if credentials_json else portal_url,
                         'expiration': 60,
                         'f': 'json'
                         }
-        token_url = '/sharing/rest/generateToken?'
+        # generateToken only responds to POST request
+        token_response = requests.post(portal_url + '/sharing/rest/generateToken?', params=token_params, verify=ssl_cert)
     elif sorted(credentials.keys()) == sorted(APP_CREDENTIALS) or all([portal_url, service_url, client_id, client_secret]):
         token_params = {'client_id': credentials['client_id'] if credentials_json else client_id,
                         'client_secret': credentials['client_secret'] if credentials_json else client_secret,
                         'grant_type': 'client_credentials'
                         }
-        token_url = '/sharing/rest/oauth2/token/'
+        # oauth2/token only responds to GET request
+        token_response = requests.get(portal_url + '/sharing/rest/oauth2/token/', params=token_params, verify=ssl_cert)
     else:
         raise ValueError('invalid credentials in {0}. credentials_json must include all of either {1} or {2}'
                          .format(credentials_json, LOGIN_CREDENTIALS, APP_CREDENTIALS))
 
-    token_response = requests.get(portal_url + token_url, params=token_params, verify=ssl_cert)
     check_http_error('get token', token_response)
     token_json = token_response.json()
 
     # Annoyingly, the generateToken and oauth2/token API calls return the token via a slightly different key
     return token_json['access_token'] if 'access_token' in token_json else token_json['token']
+
 
 def count_records(service_url, token, layers, last_poll_time, ssl_cert=True):
     '''
@@ -228,7 +235,7 @@ def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=Tr
     return sqlite_path
 
 
-def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, last_poll_time=None, verbose=False):
+def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, last_poll_time=None, verbose=False):
 
     # Get token for REST API
     # If credentials_json given, read the file
@@ -246,7 +253,7 @@ def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service
         sys.stdout.write('Retrieving token...\n')
         sys.stdout.flush()
     token = get_token(credentials_json, credentials, portal_url, service_url,
-                      client_id, client_secret, username, password, ssl_cert)
+                      client_id, client_secret, username, ssl_cert)
 
     # Get feature service info
     if verbose:
