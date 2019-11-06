@@ -228,21 +228,29 @@ def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=Tr
     return sqlite_path
 
 
-def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, last_poll_time=None):
+def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service_url=None, client_id=None, client_secret=None, username=None, password=None, last_poll_time=None, verbose=False):
 
     # Get token for REST API
     # If credentials_json given, read the file
     credentials = {}
     if credentials_json:
+        credentials_json = os.path.abspath(credentials_json)
+        sys.stdout.write('Reading credential info from %s...\n' % credentials_json)
+        sys.stdout.flush()
         credentials = read_credentials(credentials_json)
         if 'service_url' in credentials:
             service_url = credentials['service_url']
         else:
             raise ValueError('service_url not specified in credentials_json %s' % credentials_json)
+    if verbose:
+        sys.stdout.write('Retrieving token...\n')
+        sys.stdout.flush()
     token = get_token(credentials_json, credentials, portal_url, service_url,
                       client_id, client_secret, username, password, ssl_cert)
 
     # Get feature service info
+    if verbose:
+        sys.stdout.write('Retrieving feature service info...\n')
     info_response = requests.get(service_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
     check_http_error('get service info', info_response)
     service_info = info_response.json()
@@ -253,10 +261,12 @@ def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service
     if matching_records:
         data_path = download_data(out_dir, token, layers, service_info, service_url,
                                   ssl_cert=ssl_cert, last_poll_time=last_poll_time)
-        sys.stdout.write('Downloaded {0} records from {1} layers/tables to {2}'
-                         .format(matching_records, len(layers), data_path))
+        if verbose:
+            sys.stdout.write('Downloaded {0} records from {1} layers/tables to {2}'
+                             .format(matching_records, len(layers), data_path))
     else:
-        sys.stdout.write('No data to download at this time')
+        if verbose:
+            sys.stdout.write('No data to download at this time')
     sys.stdout.flush()
 
 
