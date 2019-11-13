@@ -3,6 +3,7 @@ import sys
 import json
 import re
 import zipfile
+import shutil
 import traceback
 import pandas as pd
 from glob import glob
@@ -11,6 +12,7 @@ from sqlalchemy import create_engine
 
 import download_feature_service as download
 import db_utils
+import process_emails
 
 pd.set_option('display.max_columns', None)# useful for debugging
 
@@ -18,6 +20,8 @@ SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular us
 LOG_CACHE_DAYS = 14 # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off
+# Collect messages to warn either the user, the landings data steward, or the track editors. Also log all of them
+MESSAGES = []
 
 LANDINGS_FLIGHT_COLUMNS = {'landing_operator': 'operator_code',
                            'landing_tail_number': 'registration',
@@ -96,10 +100,19 @@ def get_ticket(group, connections):
 
     return group
 
+def get_attachment_info(zip_path):
+    ''' Each zip file created by download_feature_service.download_data() has an accompanying JSON metadata file, so return the JSON as a dict'''
+    json_meta_path = zip_path.replace('.zip', '.json')
+    with open(json_meta_path) as j:
+        metadata = json.load(j)
+    engine = create_engine('sqlite:///' + metadata['sqlite_path'])
+    with engine.connect() as conn:
+        submission_data = pd.read_sql("SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']), conn).squeeze(axis=1)
+
+    return {**metadata, **submission_data}
+
 
 def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_credentials_json, db_credentials_json, ssl_cert, landings_conn, tracks_conn):
-
-    messages = []
 
     timestamp = datetime.now().strftime(TIMESTAMP_FORMAT)
 
@@ -163,6 +176,7 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
     if not os.path.isdir(working_dir):
         os.mkdir(working_dir)
     working_sqlite_path = os.path.join(working_dir, os.path.basename(sqlite_path))
+    shutil.copyfile(sqlite_path, working_sqlite_path)
     engine = create_engine('sqlite:///' + working_sqlite_path)
 
     # Create separate tickets for each user for both landing and track data
@@ -205,7 +219,12 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
     existing_flight_ids = pd.read_sql("SELECT flight_id FROM flights", landings_conn).squeeze(axis=1)
     new_flights = landing_flights.loc[~landing_flights.flight_id.isin(existing_flight_ids) &
                                       ~landing_flights.departure_datetime.isnull()]
-    if len(new_flights):
+
+    if len(new_flights) == 0:
+        #### send warnings/errors to specific users
+        #### I should probably alter this so there's a msg, recipients, and loglevel column
+        MESSAGES.append(['All landings already reported', 'user_warn'])
+    else:
         new_flights['submission_method'] = 'survey123'
         new_flights['source_file'] = sqlite_path
         new_flights.reindex(columns=LANDINGS_FLIGHT_COLUMNS.values())\
@@ -237,7 +256,23 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
         landings\
             .to_sql('landings', landings_conn, if_exists='append', index=False)
 
+    attachment_dir = os.path.join(download_dir, 'attachments')
+    for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
 
+        attachment_info = get_attachment_info(zip_path)
+
+        with zipfile.ZipFile(zip_path) as z:
+            for fname in z.namelist():
+                _, ext = os.path.splitext(fname)
+                if ext not in ['.csv', '.gpx', '.gdb']:
+                    MESSAGES.append(['%s is not in an accepted file format', 'warn_user'])
+                try:
+                    z.extract(fname)
+                except Exception as e:
+                    MESSAGES.append(['Could not extract {file} from {zip} because {error}. You should contact the'
+                                     ' submitter: {submitter}'
+                                    .format(file=fname, zip=zip_path, error=e, submitter=attachment_info['Creator']),
+                                     'warn_track'])
 
     # Send email to track editors
 

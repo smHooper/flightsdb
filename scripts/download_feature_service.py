@@ -241,6 +241,7 @@ def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=Tr
                 # write a JSON file with some metadata so the attachment can be related back to this DB file
                 row_dict = row.drop('DATA').to_dict() # drop 'DATA' field because it contains non-serializable bytes
                 row_dict['sqlite_path'] = sqlite_path
+                row_dict['parent_table_name'] = table.rstrip('__ATTACH')
                 json_path = attachment_path.rstrip(extension) + '.json'
                 with open(json_path, 'w') as json_pointer:
                     json.dump(row_dict, json_pointer, indent=4)
