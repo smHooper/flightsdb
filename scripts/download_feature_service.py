@@ -82,6 +82,7 @@ def get_token(credentials_json=None, credentials={}, portal_url=None, service_ur
         - https://developers.arcgis.com/rest/users-groups-and-items/generate-token.htm
         - https://developers.arcgis.com/documentation/core-concepts/security-and-authentication/accessing-arcgis-online-services/
     '''
+    portal_url = credentials['portal_url'] if 'portal_url' in credentials else portal_url
     # Allow for retrieving a token either using login credentials or an authorized AGOL app
     if sorted(credentials.keys()) == sorted(LOGIN_CREDENTIALS) or all([portal_url, service_url, username]):
         username = credentials['username'] if credentials_json else username
@@ -95,6 +96,7 @@ def get_token(credentials_json=None, credentials={}, portal_url=None, service_ur
                         }
         # generateToken only responds to POST request
         token_response = requests.post(portal_url + '/sharing/rest/generateToken?', params=token_params, verify=ssl_cert)
+
     elif sorted(credentials.keys()) == sorted(APP_CREDENTIALS) or all([portal_url, service_url, client_id, client_secret]):
         token_params = {'client_id': credentials['client_id'] if credentials_json else client_id,
                         'client_secret': credentials['client_secret'] if credentials_json else client_secret,
@@ -102,6 +104,7 @@ def get_token(credentials_json=None, credentials={}, portal_url=None, service_ur
                         }
         # oauth2/token only responds to GET request
         token_response = requests.get(portal_url + '/sharing/rest/oauth2/token/', params=token_params, verify=ssl_cert)
+
     else:
         raise ValueError('invalid credentials in {0}. credentials_json must include all of either {1} or {2}'
                          .format(credentials_json, LOGIN_CREDENTIALS, APP_CREDENTIALS))
@@ -111,6 +114,14 @@ def get_token(credentials_json=None, credentials={}, portal_url=None, service_ur
 
     # Annoyingly, the generateToken and oauth2/token API calls return the token via a slightly different key
     return token_json['access_token'] if 'access_token' in token_json else token_json['token']
+
+
+def get_service_info(service_url, token, ssl_cert=True):
+
+    info_response = requests.get(service_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
+    check_http_error('get service info', info_response)
+
+    return info_response.json()
 
 
 def query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=True, return_counts=False):
@@ -133,13 +144,12 @@ def query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=T
     query_response = requests.post('%s/query' % service_url, params=query_params, verify=ssl_cert)
     check_http_error('query number of records', query_response)
     query_json = query_response.json()
-    if len(query_json) and 'layers' in query_json:
-        if return_counts:
-            return sum([layer['count'] for layer in query_json['layers']])
-        else:
-            return query_json
+    if len(query_json) and 'layers' in query_json and return_counts:
+        return sum([layer['count'] for layer in query_json['layers']])
+    elif return_counts:
+        return 0
     else:
-        return {}
+        return query_json
 
 
 def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=True, last_poll_time=None):
@@ -245,8 +255,9 @@ def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service
     credentials = {}
     if credentials_json:
         credentials_json = os.path.abspath(credentials_json)
-        sys.stdout.write('Reading credential info from %s...\n' % credentials_json)
-        sys.stdout.flush()
+        if verbose:
+            sys.stdout.write('Reading credential info from %s...\n' % credentials_json)
+            sys.stdout.flush()
         credentials = read_credentials(credentials_json)
         if 'service_url' in credentials:
             service_url = credentials['service_url']
@@ -261,9 +272,7 @@ def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service
     # Get feature service info
     if verbose:
         sys.stdout.write('Retrieving feature service info...\n')
-    info_response = requests.get(service_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
-    check_http_error('get service info', info_response)
-    service_info = info_response.json()
+    service_info = get_service_info(service_url, token, ssl_cert)
     layers = [layer_info['id'] for layer_info in service_info['layers'] + service_info['tables']]
 
     # If there are any records that match the query, download them
