@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta name="viewport" content="width=device-width,height=device-height, user-scalable=no" />
+  <title>Overflight data</title>
+  <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.2.0/dist/leaflet.css" />
+  <script src="./node_modules/leaflet/dist/leaflet.js"></script>
+  <script src="./node_modules/leaflet-filelayer/src/leaflet.filelayer.js"></script>
+  <script src="./js/leaflet-providers.js"></script>
+  <!--<script src="./Leaflet.Editable/src/Leaflet.Editable.js"></script>-->
+  <style type='text/css'>
+      body { margin:0; padding:0; }
+      #map { position:absolute; top:0; bottom:0; right: 0; left: 20%; width:80%; }
+</style>
+</head>
+<body>
+  <!--<script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.2.0/leaflet-omnivore.min.js'></script> -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+  <div id='map'></div>
+
+  <script type="text/javascript">
+    var startPoint = [63.1249, -149.254];
+    var map = L.map('map', {editable: true}).setView(startPoint, 10)
+    var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, 2019'
+    }).addTo(map);
+    
+
+    /*var lineSegmentLayers = [];
+    var deferred = $.ajax({
+      url: "data/201961_616tail09.gpx",
+      type: "GET",
+      dataType: "html",
+      success: function(data) {
+        var lineSegmentCoords = [];
+        var xml = $.parseXML(data)
+        $(xml).find('trkseg').each(
+          function() {
+            var trkseg = this;
+            var lineCoords = []
+            $(trkseg).find('trkpt').each(
+              function() {
+                var lat = parseFloat($(this).attr('lat'));
+                var lon = parseFloat($(this).attr('lon'));
+                lineCoords.push([lat, lon]);
+              }
+            )
+            var color = Math.floor(Math.random() * 16777216).toString(16);
+            var lineLayer = L.polyline(lineCoords).addTo(map);
+            //line.enableEdit();     
+            lineLayer.setStyle({color: '#000000'.slice(0, -color.length) + color});
+            lineSegmentCoords.push(lineCoords); // for zooming to extent
+            lineSegmentLayers.push(lineLayer)
+
+          }
+        )//
+        
+        // Zoom to extent
+        map.fitBounds(L.polyline(lineSegmentCoords).getBounds());//
+
+      },
+      error: function(jqXHR, textStatus, errorThrown ){
+        alert('problem parsing GPX')
+      }
+    });
+    
+    // Once the 
+    var currentLineID = 0
+    deferred.done(function(){
+      lineSegmentLayers[currentLineID].enableEdit();
+    });*/
+    var lineSegID = 0;
+    var lineSegmentLayers = {};
+    var deferred = $.ajax({
+      url: "data/201961_616tail09.gpx",
+      type: "GET",
+      dataType: "html",
+      success: function(data) {
+        var lineSegmentCoords = [];
+        var xml = $.parseXML(data)
+        $(xml).find('trkseg').each(
+          function() {
+            var color = Math.floor(Math.random() * 16777216).toString(16);
+            var hexColor = '#000000'.slice(0, -color.length) + color;
+            var trkseg = this;
+            var lineCoords = []
+            var vertexMarkers = L.featureGroup()
+            $(trkseg).find('trkpt').each(
+              function() {
+                var lat = parseFloat($(this).attr('lat'));
+                var lon = parseFloat($(this).attr('lon'));
+                lineCoords.push([lat, lon]);
+                var markerProperties = {
+                  "color": hexColor,
+                  "radius": 5,
+                  "fillColor": hexColor,
+                  "fillOpacity": 0.8
+                }
+                var pointLayer = L.circleMarker([lat, lon], markerProperties)
+                pointLayer.addTo(vertexMarkers);
+              }
+            )
+            var lineLayer = L.polyline(lineCoords, options={color: hexColor, title: lineSegID}).addTo(map);
+            vertexMarkers.eachLayer(function(marker) {
+              maker.lineID = lineSegID;
+            })
+            //line.enableEdit();     
+            //lineLayer.setStyle();
+            //lineLayer.on({dblclick: makeLineEditable});
+
+            lineSegmentCoords.push(lineCoords); // for zooming to extent
+            lineSegmentLayers[lineSegID] = {
+              "line": lineLayer,
+              "markers": vertexMarkers
+            };
+          lineSegID++;
+          }
+        )//
+        
+        // Zoom to extent
+        map.fitBounds(L.polyline(lineSegmentCoords).getBounds());//
+
+      },
+      error: function(jqXHR, textStatus, errorThrown ){
+        alert('problem parsing GPX')
+      }
+    });
+    
+    // Once the async call is one, add the points for a single line to the map
+    var currentLineID = 0
+    deferred.done(function(){
+      lineSegmentLayers[currentLineID].markers.forEach(marker => marker.addTo(map))
+      console.log(lineSegmentLayers[currentLineID].line.title)
+      console.log(currentLineID)
+    });
+
+    /*map.on('editable:vertex:shiftclick', function (e) {
+        e.vertex.split();
+        console.log(e.vertex.latlngs)
+    });*/
+    
+  </script>
+</body>
+</html>

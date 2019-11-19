@@ -1,0 +1,17 @@
+{
+  "name": "overflights_web",
+  "version": "1.0.0",
+  "description": "web apps for viewing and managing overflight data",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "leaflet": "^1.5.1",
+    "leaflet-filelayer": "^1.2.0",
+    "togeojson": "^0.16.0",
+    "topojson": "^3.0.2"
+  }
+}

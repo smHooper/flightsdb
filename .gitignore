@@ -1,0 +1,7 @@
+#ignore all files in data dir
+web/data/*
+
+#ignore any geojsons
+*.geojson
+
+scripts/__pycache__/*
