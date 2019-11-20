@@ -309,7 +309,7 @@ def format_tms(path):
 
 def read_csv(path, seg_time_diff=None):
     """
-    Read and format a CSV of track data. CSVs can from from 4 different sources, so figure out which source it comes
+    Read and format a CSV of track data. CSVs can come from 4 different sources, so figure out which source it comes
     from and format accordingly
 
     :param path: path to track CSV
@@ -402,7 +402,7 @@ def check_duplicate_flights(registration, connection, start_time, end_time):
     return matching_flights
 
 
-def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None):
+def format_track(path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None):
 
     _, extension = os.path.splitext(path)
 
@@ -450,7 +450,7 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
 
     # Get unique flight_ids per line segment in place
     gdf = get_flight_id(gdf, seg_time_diff)\
-        .drop(gdf.index[(gdf.diff_m < min_point_distance) & (gdf.utc_datetime.diff().dt.seconds == 0)])\
+        .drop(gdf.index[((gdf.diff_m < min_point_distance) & (gdf.utc_datetime.diff().dt.seconds == 0))])\
         .dropna(subset=['ak_datetime'])\
         .sort_values(by=['ak_datetime'])
 
@@ -465,6 +465,13 @@ def import_track(connection_txt, path, seg_time_diff=15, min_point_distance=200,
         gdf['operator_code'] = operator_code
     if aircraft_type:
         gdf['aircraft_type'] = aircraft_type
+
+    return gdf
+
+
+def import_data(connection_txt, path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None):
+
+    gdf = format_track(path, seg_time_diff=seg_time_diff, min_point_distance=min_point_distance, registration=registration, submission_method=submission_method, operator_code=operator_code, aircraft_type=aircraft_type)
 
     engine = db_utils.connect_db(connection_txt)
 
