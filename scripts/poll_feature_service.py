@@ -7,14 +7,15 @@ import shutil
 import traceback
 import pandas as pd
 from glob import glob
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 
 import download_feature_service as download
-import db_utils
+import import_track
 import process_emails
 
 pd.set_option('display.max_columns', None)# useful for debugging
+pd.options.mode.chained_assignment = None
 
 SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
 LOG_CACHE_DAYS = 14 # amount of time to keep a log file
@@ -23,24 +24,44 @@ LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropp
 # Collect messages to warn either the user, the landings data steward, or the track editors. Also log all of them
 MESSAGES = []
 
-LANDINGS_FLIGHT_COLUMNS = {'landing_operator': 'operator_code',
-                           'landing_tail_number': 'registration',
-                           'landing_datetime': 'departure_datetime',
-                           'landing_route': 'scenic_route',
+LANDINGS_FLIGHT_COLUMNS = {'landing_operator':      'operator_code',
+                           'landing_tail_number':   'registration',
+                           'landing_datetime':      'departure_datetime',
+                           'landing_route':         'scenic_route',
                            'landing_aircraft_type': 'aircraft_type',
-                           'globalid': 'agol_global_id',
-                           'ticket': 'ticket',
-                           'submission_method': 'submission_method',
-                           'flight_id': 'flight_id',
+                           'globalid':              'agol_global_id',
+                           'ticket':                'ticket',
+                           'submission_method':     'submission_method',
+                           'submission_time':       'submission_time',
+                           'flight_id':             'flight_id',
+                           'source_file':           'source_file',
                            'landing_flight_notes': 'notes'
                           }
-LANDINGS_COLUMNS = {'flight_id': 'flight_id',
-                    'landing_location': 'location',
-                    'n_passengers': 'n_passengers',
-                    'landing_type': 'landing_type',
-                    'landing_justification': 'justification',
-                    'landing_notes': 'notes'
+LANDINGS_COLUMNS = {'flight_id':            'flight_id',
+                    'landing_location':     'location',
+                    'n_passengers':         'n_passengers',
+                    'landing_type':         'landing_type',
+                    'landing_justification':'justification',
+                    'landing_notes':        'notes'
                     }
+
+def read_json_params(params_json):
+    '''
+    Read and validate a parameters JSON file
+    :param params_json: path to JSON file
+    :return: dictionary of params
+    '''
+
+    with open(params_json) as j:
+        params = json.load(j)
+    required = pd.Series(['agol_credentials', 'db_credentials', 'email_credentials', 'agol_users'])
+    missing = required.loc[~required.isin(params.keys())]
+    if len(missing):
+        raise ValueError('Invalid config JSON: {file}. It must contain all of "{required}" but "{missing}" are missing'
+                         .format(file=params_json, required='", "'.join(required), missing='", "'.join(missing)))
+    
+    return params
+    
 
 def write_log(log_dir, download_dir, timestamp, submission_time, data_was_downloaded, error):
 
@@ -81,7 +102,8 @@ def julian_date_to_datetime(julian_date):
     if pd.isna(julian_date) or julian_date < JULIAN_UNIX_EPOCH:
         return pd.NaT
     try:
-        return datetime.fromtimestamp((julian_date - JULIAN_UNIX_EPOCH) * 60 * 60 * 24)
+        epoch_timestamp = round((julian_date - JULIAN_UNIX_EPOCH) * 60 * 60 * 24) # number of seconds since Unix epoch
+        return datetime(1970, 1, 1) + timedelta(seconds=epoch_timestamp)#datetime.fromtimestamp((julian_date - JULIAN_UNIX_EPOCH) * 60 * 60 * 24)
     except:
         return pd.NaT
 
@@ -100,6 +122,24 @@ def get_ticket(group, connections):
 
     return group
 
+def get_submitter_email(agol_user, agol_user_emails):
+    '''
+    Helper function to get an email address for the given AGOL account
+    :param agol_user:
+    :return:
+    '''
+    # All NPS accounts have an alternate email alias that is just their UPN and all NPS AGOl accounts are the UPN
+    #   with "_nps" appended
+    agol_user = agol_user.lower()
+    if agol_user.endswith('_nps'):
+        return agol_user.replace('_nps')
+    # Otherwise, try to look up the user in the
+    elif agol_user in agol_user_emails:
+        return agol_user_emails[agol_user]
+    else:
+        return None
+
+
 def get_attachment_info(zip_path):
     ''' Each zip file created by download_feature_service.download_data() has an accompanying JSON metadata file, so return the JSON as a dict'''
     json_meta_path = zip_path.replace('.zip', '.json')
@@ -107,15 +147,15 @@ def get_attachment_info(zip_path):
         metadata = json.load(j)
     engine = create_engine('sqlite:///' + metadata['sqlite_path'])
     with engine.connect() as conn:
-        submission_data = pd.read_sql("SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']), conn).squeeze(axis=1)
+        submission_data = pd.read_sql("SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']), conn).squeeze(axis=0)
 
-    return {**metadata, **submission_data}
+    return pd.concat([pd.Series(metadata), submission_data])
 
 
-def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_credentials_json, db_credentials_json, ssl_cert, landings_conn, tracks_conn):
+def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_conn, tracks_conn):
 
     timestamp = datetime.now().strftime(TIMESTAMP_FORMAT)
-
+    
     # Get the last time any data were downloaded
     script_name = os.path.basename(__file__).replace('.py', '')
     log_info = []
@@ -139,9 +179,9 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
         last_download_time = '1970-1-1 00:00:00'
 
     # Get last submission time
-    agol_credentials = download.read_credentials(agol_credentials_json)
+    agol_credentials = param_dict['agol_credentials']#download.read_credentials(agol_credentials_json)
     service_url = agol_credentials['service_url']
-    token = download.get_token(agol_credentials_json, agol_credentials, ssl_cert=ssl_cert)
+    token = download.get_token(**agol_credentials, ssl_cert=ssl_cert)
     service_info = download.get_service_info(service_url, token, ssl_cert)
     layer_info = pd.DataFrame(service_info['layers'] + service_info['tables']).set_index('id')
     layers = layer_info.index.tolist()
@@ -164,9 +204,9 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
     #   be submitting within the SUBMISSION_TICKET_INTERVAL of one another, but it's not worth the overhead and 
     #   management to download data submitted by one user and not another. Their submissions will be assigned different
     #   ticket numbers, but just wait until there's a gap of all submissions of SUBMISSION_TICKET_INTERVAL. 
-    '''if (datetime.now() - last_submission_time).seconds < SUBMISSION_TICKET_INTERVAL:
+    if (datetime.now() - last_submission_time).seconds < SUBMISSION_TICKET_INTERVAL:
         log_and_exit(log_info, [log_dir, download_dir, timestamp, '', False,
-                                'Last submission was within %d minutes' % (SUBMISSION_TICKET_INTERVAL/60)])'''
+                                'Last submission was within %d minutes' % (SUBMISSION_TICKET_INTERVAL/60)])#'''
 
     # download the data
     sqlite_path = download.download_data(download_dir, token, layers, service_info, service_url, ssl_cert, last_poll_time=last_download_time)
@@ -180,7 +220,7 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
     engine = create_engine('sqlite:///' + working_sqlite_path)
 
     # Create separate tickets for each user for both landing and track data
-    submissions['submission_time'] = [datetime.fromtimestamp(ts/1000) for _, ts in submissions['CreationDate'].iteritems()]
+    submissions['submission_time'] = [datetime.fromtimestamp(round(ts/1000)) for _, ts in submissions['CreationDate'].iteritems()]
     submissions.rename(columns={'Creator': 'submitter'}, inplace=True)
 
     connection_dict = {'tracks': tracks_conn, 'landings':landings_conn}
@@ -206,7 +246,9 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
         all_flights = pd.read_sql_table(main_table_name, conn)
         # global IDs in query are lowercase but they're uppercase in createReplica
         submissions.globalid = submissions.globalid.str.upper()
-        all_flights['ticket'] = all_flights.merge(submissions, on='globalid').ticket
+        merged = all_flights.merge(submissions, on='globalid')
+        all_flights['ticket'] = merged.ticket
+        all_flights['submission_time'] = merged.submission_time
         all_flights.to_sql(main_table_name, conn, if_exists='replace')
         landings = pd.read_sql_table('landing_repeat', conn)
 
@@ -256,6 +298,7 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
         landings\
             .to_sql('landings', landings_conn, if_exists='append', index=False)
 
+    # Pre-process track data
     attachment_dir = os.path.join(download_dir, 'attachments')
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
 
@@ -267,11 +310,14 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
                 if ext not in ['.csv', '.gpx', '.gdb']:
                     MESSAGES.append(['%s is not in an accepted file format', 'warn_user'])
                 try:
-                    z.extract(fname)
+                    z.extract(fname, attachment_dir)
                 except Exception as e:
                     MESSAGES.append(['Could not extract {file} from {zip} because {error}. You should contact the'
                                      ' submitter: {submitter}'
-                                    .format(file=fname, zip=zip_path, error=e, submitter=attachment_info['Creator']),
+                                    .format(file=fname,
+                                            zip=zip_path,
+                                            error=e,
+                                            submitter=get_submitter_email(attachment_info['Creator'], "param_dict['agol_users']")),
                                      'warn_track'])
 
     # Send email to track editors
@@ -283,21 +329,20 @@ def poll_feature_service(log_dir, download_dir, agol_credentials_json, email_cre
 
 
 
-def main(log_dir, download_dir, agol_credentials_json, email_credentials_json, db_credentials_json, ssl_cert):
+def main(log_dir, download_dir, config_json, ssl_cert):
     '''
     Ensure that a log file is always written (unless the error occurs in write_log(), which is unlikely)
     '''
     #try:
-
+    params = read_json_params(config_json)
     # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
-    with open(db_credentials_json) as j:
-        connection_info = json.load(j)
+    connection_info = params['db_credentials']
     connection_template = 'postgresql://{username}:{password}@{ip_address}:{port}/{db_name}'
     landings_engine = create_engine(connection_template.format(**connection_info['landings']))
     tracks_engine = create_engine(connection_template.format(**connection_info['tracks']))
 
     with landings_engine.connect() as l_conn, tracks_engine.connect() as t_conn, l_conn.begin(), t_conn.begin():
-        poll_feature_service(log_dir, download_dir, agol_credentials_json, email_credentials_json, db_credentials_json, ssl_cert, l_conn, t_conn)
+        poll_feature_service(log_dir, download_dir, params, ssl_cert, l_conn, t_conn)
 
     '''except Exception as error:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
