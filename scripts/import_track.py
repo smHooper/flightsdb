@@ -54,7 +54,7 @@ import numpy as np
 import pandas as pd
 import gdal # this import is unused, but for some reason geopandas (shapely, actually) won't load unless gdal is imported first
 import geopandas as gpd
-from datetime import datetime
+from datetime import datetime, timedelta
 from geoalchemy2 import Geometry, WKTElement
 from shapely.geometry import LineString as shapely_LineString, Point as shapely_Point
 
@@ -67,7 +67,8 @@ import kml_parser
 CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)',	'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
                     'gsat': ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts'],
                     'spy': ['Registration', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Speed(knots)', 'Bearing', 'PointType', 'Description'],
-                    'tms': ['Serial No.', ' UTC', ' Latitude', ' HemNS', ' Longititude', ' HemEW', ' Knots', ' Heading', ' Altitude (m)', ' HDOP', ' New Conn', ' Entered', ' Event']
+                    'tms': ['Serial No.', ' UTC', ' Latitude', ' HemNS', ' Longititude', ' HemEW', ' Knots', ' Heading', ' Altitude (m)', ' HDOP', ' New Conn', ' Entered', ' Event'],
+                     'foreflight': ['Pilot', 'Tail Number', 'Derived Origin', 'Start Latitude', 'Start Longitude', 'Derived Destination', 'End Latitude', 'End Longitude', 'Start Time', 'End Time', 'Total Duration', 'Total Distance', 'Initial Attitude Source', 'Device Model', 'Device Model Detailed', 'iOS Version', 'Battery Level', 'Battery State', 'GPS Source', 'Maximum Vertical Error', 'Minimum Vertical Error', 'Average Vertical Error', 'Maximum Horizontal Error', 'Minimum Horizontal Error', 'Average Horizontal Error', 'Imported From', 'Route Waypoints']
                }
 
 CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
@@ -322,6 +323,33 @@ def format_tms(path):
     return df
 
 
+def format_foreflight_csv(path):
+
+    try:
+        registration = pd.read_csv(path, encoding='ISO-8859-1', nrows=5).loc['Tail Number']
+    except:
+        registration = ''
+    df = pd.read_csv(path, encoding='ISO-8859-1', skiprows=2)
+    df['registration'] = registration
+
+    # Timestamp are in local time. The rest of the read functions all return UTC time, so calcualte that, even though
+    #   the local time will just be calculated later
+    epoch_datetime = datetime(1970, 1, 1)
+    df['utc_datetime'] = pd.to_datetime([epoch_datetime + timedelta(seconds=round(ts/1000)) for ts in df['Timestamp']])
+
+    # Convert altitude meters to feet
+    df['altitude_ft'] = (df['Altitude'] * 3.2808399).astype(int)
+
+    # Rename other columns that don't need to be recalculated
+    df.rename(columns={'Longitude': 'longitude',
+                       'Latitude': 'latitude',
+                       'Course': 'heading',
+                       'Speed': 'knots'},
+              inplace=True)
+
+    return df
+
+
 def read_csv(path, seg_time_diff=None):
     """
     Read and format a CSV of track data. CSVs can come from 4 different sources, so figure out which source it comes
@@ -331,7 +359,7 @@ def read_csv(path, seg_time_diff=None):
     :return: GeoDataframe of points
     """
 
-    df = pd.read_csv(path, encoding='ISO-8859-1')#ISO encoding handles symbols like '°'
+    df = pd.read_csv(path, encoding='ISO-8859-1', nrows=2)#ISO encoding handles symbols like '°'
 
     # Figure out which file type it is (aff, gsat, spy, or tms) by selecting the file type that most closely matches
     #   the expected columns per type
@@ -343,7 +371,8 @@ def read_csv(path, seg_time_diff=None):
     CSV_FUNCTIONS = {'aff': format_aff,
                      'gsat': format_gsat,
                      'spy': format_spy,
-                     'tms': format_tms
+                     'tms': format_tms,
+                     'foreflight': format_foreflight_csv
                      }
     if not best_match in CSV_FUNCTIONS:
         sorted_types = sorted(CSV_FUNCTIONS.keys())
