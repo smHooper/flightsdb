@@ -61,6 +61,7 @@ from shapely.geometry import LineString as shapely_LineString, Point as shapely_
 import db_utils
 import get_missing_aircraft_info as ainfo
 import process_emails
+import kml_parser
 
 
 CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)',	'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
@@ -196,6 +197,20 @@ def read_gdb(path, seg_time_diff=None):
         raise IOError(error_message)
 
     return read_gpx(out_path)
+
+
+def read_kml(path):
+    '''
+    Convert KML to GPX, then just use read_gpx() function
+    '''
+
+    try:
+        parser = kml_parser.KMLParser()
+        gpx_path = parser.to_gpx(path, path.replace('.kml', '_from_kml.gpx'))
+    except Exception as e:
+        raise RuntimeError('Problem reading KML file %s: %s' % (path, e))
+
+    return read_gpx(gpx_path)
 
 
 def format_aff(path):
@@ -369,7 +384,8 @@ def get_flight_id(gdf, seg_time_diff):
 
 READ_FUNCTIONS = {'.gpx': read_gpx,
                   '.gdb': read_gdb,
-                  '.csv': read_csv
+                  '.csv': read_csv,
+                  '.kml': read_kml
                   }
 
 
@@ -632,7 +648,7 @@ def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=200, r
         server.login(sender, password)
 
     try:
-        import_track(connection_txt, track_path, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
+        import_data(connection_txt, track_path, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
                       aircraft_type, force_import=force_import, ssl_cert_path=ssl_cert_path)
     except Exception as e:
         if email_credentials_txt:

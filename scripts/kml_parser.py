@@ -8,6 +8,9 @@ class KMLParser(xml.sax.ContentHandler):
 
     Retrieve an OGR readable GPX string like
     gpx_string = KMLParser().parse(kml_file_path)
+
+    Convert the KML directly to a gpx file like
+    KMLParser().to_gpx(kml_path, gpx_path)
     
     '''
 
@@ -72,7 +75,7 @@ class KMLParser(xml.sax.ContentHandler):
         return self._gpx_string
 
 
-    def kml_to_gpx(self, kml_path, gpx_path=None):
+    def to_gpx(self, kml_path, gpx_path=None):
         self.parse(kml_path)
         if not gpx_path:
             _, extension = os.path.splitext(kml_path)
