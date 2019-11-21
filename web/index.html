@@ -20,57 +20,115 @@
   <div id='map'></div>
 
   <script type="text/javascript">
-    var startPoint = [63.1249, -149.254];
-    var map = L.map('map', {editable: true}).setView(startPoint, 10)
+    //var startPoint = [63.1249, -149.254];
+    var map = L.map('map', {editable: true})//.setView(startPoint, 10)
     var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, 2019'
+    	attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, 2019'
     }).addTo(map);
+
+    var pointFeatureGroups = [];
+    var lineLayers = {};
+    var lineCoords = {};
+    var colors = {};
     
 
-    /*var lineSegmentLayers = [];
-    var deferred = $.ajax({
-      url: "data/201961_616tail09.gpx",
-      type: "GET",
-      dataType: "html",
-      success: function(data) {
-        var lineSegmentCoords = [];
-        var xml = $.parseXML(data)
-        $(xml).find('trkseg').each(
-          function() {
-            var trkseg = this;
-            var lineCoords = []
-            $(trkseg).find('trkpt').each(
-              function() {
-                var lat = parseFloat($(this).attr('lat'));
-                var lon = parseFloat($(this).attr('lon'));
-                lineCoords.push([lat, lon]);
-              }
-            )
-            var color = Math.floor(Math.random() * 16777216).toString(16);
-            var lineLayer = L.polyline(lineCoords).addTo(map);
-            //line.enableEdit();     
-            lineLayer.setStyle({color: '#000000'.slice(0, -color.length) + color});
-            lineSegmentCoords.push(lineCoords); // for zooming to extent
-            lineSegmentLayers.push(lineLayer)
+    var onEachFeature = function(feature, layer) {
+      /*
+      For each point, add it to a featuregroup. Then, these can be 
+      selectively shown or hidden as a whole. Also add the coordinates
+      to a dictionary of segmentID: [coords] so lines can be created later  
+      */
+      var seg_id = feature.properties.segment_id;
+      var geojsonLayer = pointFeatureGroups[seg_id];
 
-          }
-        )//
-        
-        // Zoom to extent
-        map.fitBounds(L.polyline(lineSegmentCoords).getBounds());//
-
-      },
-      error: function(jqXHR, textStatus, errorThrown ){
-        alert('problem parsing GPX')
+      // If the feature group is undefined, create it
+      if (geojsonLayer === undefined) {
+        geojsonLayer = new L.geoJSON();
+        pointFeatureGroups[seg_id] = geojsonLayer;
       }
-    });
+      geojsonLayer.addLayer(layer);
+
+      // Add coordinates to dict of coordinate arrays for creating lines later
+      var pointCoords = feature.geometry.coordinates
+      if (lineCoords[seg_id] === undefined) {
+        // coords in geojson are [x, y] but polyline needs [lat, lon]
+        lineCoords[seg_id] = [[pointCoords[1], pointCoords[0]]]
+      } else {
+        lineCoords[seg_id].push([pointCoords[1], pointCoords[0]])
+      }
+    }
+
+    function showLayer(id) {
+      var featureGroup = pointFeatureGroups[id];
+      map.addLayer(featureGroup);
+      map.fitBounds(featureGroup.getBounds());
+      lineLayers[id].bringToFront();
+      featureGroup.bringToFront();
+    }
+
+    function hideLayer(id) {
+        map.removeLayer(pointFeatureGroups[id]);   
+    }
+
+    function getLineID(layer) {
+      for (var segmentID in lineCoords) {
+        if (lineLayers[segmentID] == layer) {
+          return segmentID;
+        }
+      }
+    }
+
+    function onLineClick(e) {
+      /*
+      When a line is clicked, hide the vertices of the active 
+      line and show this line's vertices
+      */
+      var thisLineID = getLineID(e.target);
+      hideLayer(currentLineID);
+      showLayer(thisLineID);
+      currentLineID = thisLineID;
+    }
+    var currentLineID = 0;
     
-    // Once the 
-    var currentLineID = 0
-    deferred.done(function(){
-      lineSegmentLayers[currentLineID].enableEdit();
-    });*/
-    var lineSegID = 0;
+    var markerOptions = {
+      radius: 8,
+      weight: 1,
+      opacity: 1,
+      fillOpacity: 0.8
+    }
+
+    var deferred = $.getJSON("data/201961_616tail09_geojsons.json",
+      function(data) {
+        // Each item in the JSON file is a separate geojson 
+        for (var segmentID in data) {
+          var geojson = $.parseJSON(data[segmentID]);
+          var color = Math.floor(Math.random() * 16777216).toString(16);
+          var hexColor = '#000000'.slice(0, -color.length) + color;
+          colors[segmentID] = hexColor
+          L.geoJSON(geojson, {
+            onEachFeature: onEachFeature, 
+            pointToLayer: function(feature, latlng) {
+              markerOptions["fillColor"] = hexColor;
+              markerOptions["color"] = hexColor;
+              return L.circleMarker(latlng, markerOptions);
+            }
+          });
+        }
+      }
+    ).done(function() {    
+      for (var seg_id in lineCoords) {
+        var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
+        line.on({click: onLineClick});
+        lineLayers[seg_id] = line;
+      }
+      currentLineID = 0;
+      showLayer(currentLineID);
+    });
+
+    // Once the async call is one, add the points for a single line to the map
+    
+
+    /*var lineSegID = 0;
     var lineSegmentLayers = {};
     var deferred = $.ajax({
       url: "data/201961_616tail09.gpx",
@@ -85,7 +143,7 @@
             var hexColor = '#000000'.slice(0, -color.length) + color;
             var trkseg = this;
             var lineCoords = []
-            var vertexMarkers = L.featureGroup()
+            var vertexMarkers = []//L.featureGroup()
             $(trkseg).find('trkpt').each(
               function() {
                 var lat = parseFloat($(this).attr('lat'));
@@ -98,12 +156,12 @@
                   "fillOpacity": 0.8
                 }
                 var pointLayer = L.circleMarker([lat, lon], markerProperties)
-                pointLayer.addTo(vertexMarkers);
+                vertexMarkers.push(pointLayer);//pointLayer.addTo(vertexMarkers);
               }
             )
             var lineLayer = L.polyline(lineCoords, options={color: hexColor, title: lineSegID}).addTo(map);
-            vertexMarkers.eachLayer(function(marker) {
-              maker.lineID = lineSegID;
+            /*vertexMarkers.eachLayer(function(marker) {
+              marker.lineID = lineSegID;
             })
             //line.enableEdit();     
             //lineLayer.setStyle();
@@ -131,14 +189,10 @@
     var currentLineID = 0
     deferred.done(function(){
       lineSegmentLayers[currentLineID].markers.forEach(marker => marker.addTo(map))
-      console.log(lineSegmentLayers[currentLineID].line.title)
+      /*console.log(lineSegmentLayers[currentLineID].line.title)
       console.log(currentLineID)
-    });
-
-    /*map.on('editable:vertex:shiftclick', function (e) {
-        e.vertex.split();
-        console.log(e.vertex.latlngs)
     });*/
+
     
   </script>
 </body>
