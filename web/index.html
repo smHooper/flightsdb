@@ -28,7 +28,7 @@
     
     map.doubleClickZoom.disable();
     
-    var pointGeojsonLayers = [];
+    var pointGeojsonLayers = {};
     var lineLayers = {};
     var lineCoords = {};
     var colors = {};
@@ -63,10 +63,10 @@
       var originalLatlngs = allLatlngs.slice(0, (vertexIndex + 1));
       var newLatLngs = allLatlngs.slice(vertexIndex);
       
-      console.log("segmentID: " + segmentID);
+      /*console.log("segmentID: " + segmentID);
       console.log("vertexID: " + vertexID);
       console.log("minVertexIndex: " + minVertexIndex);
-      console.log("vertexIndex: " + vertexIndex);
+      console.log("vertexIndex: " + vertexIndex);*/
       // Set coords for the old line (everything up to the vertex) and 
       //  create the new line (the new vertex and everything after)
       originalLine.setLatLngs(originalLatlngs);
@@ -76,11 +76,9 @@
       var newLine = L.polyline(
         newLatLngs, 
         options={color: newColor})
-      .clearAllEventListeners()
       .addEventListener({click: showVertices})
       .addTo(map);
       lineLayers[newSegmentID] = newLine;
-      console.log("lineLayer keys: " + Object.keys(lineLayers));
 
       // Create the new point geojson by looping through all points 
       //  of the original and adding each .feature to the json
@@ -165,10 +163,8 @@
 
 
     function getLineID(layer) {
-      console.log(pointGeojsonLayers)
       for (var segmentID in lineLayers) {
         if (lineLayers[segmentID] == layer) {
-
           return segmentID;
         }
       }
@@ -180,12 +176,40 @@
       When a line is clicked, hide the vertices of the active 
       line and show this line's vertices
       */
-      console.log("line double clck")
       var thisLineID = getLineID(e.target);
-      hideLayer(currentLineID);
+      if (currentLineID >= 0) {
+        hideLayer(currentLineID);
+      }
       showLayer(thisLineID);
       currentLineID = thisLineID;
     }
+
+
+    function deleteCurrentTrack() {
+      /*
+      Remove the currently selected line and points from the 
+      map and delete references to them
+      */
+      // remove from the map
+      if (currentLineID >= 0 && confirm("Are you sure you want to delete the select track?")) {
+        map.removeLayer(pointGeojsonLayers[currentLineID]);
+        map.removeLayer(lineLayers[currentLineID]);
+        delete pointGeojsonLayers[currentLineID];
+        delete lineLayers[currentLineID];
+        currentLineID = -1;
+      } else {
+        alert("No track currently selected. Click a track first then press 'Delete'")
+      }
+      
+    }
+
+    function onKeyDown(e) {
+
+      if (e.key === 'Delete') {
+        deleteCurrentTrack();
+      }
+    }
+
 
     function geojsonPointAsCircle(feature, latlng, color) {
       var markerOptions = {
@@ -218,17 +242,22 @@
     ).done(function() {    
       // Once the async call is done, add all the lines and 
       //  the points for a single line to the map
+      var polylineCoords = [];
       for (var seg_id in lineCoords) {
         var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
         line.on({click: showVertices});
         lineLayers[seg_id] = line;
         originalLineIDs[seg_id] = seg_id
-        polylineCoords.push(lineCoords.seg_id);
+        polylineCoords.push(lineCoords[seg_id]);
       }
       currentLineID = 0;
       showLayer(currentLineID);
+      var allLines = L.polyline(polylineCoords);
+      map.fitBounds(allLines.getBounds());
       
     });
+
+    var deleteEvent = document.addEventListener('keydown', onKeyDown);
 
     
   </script>
