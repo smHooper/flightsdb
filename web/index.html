@@ -76,7 +76,7 @@
       var newLine = L.polyline(
         newLatLngs, 
         options={color: newColor})
-      .addEventListener({click: showVertices})
+      .addEventListener({click: onLineClick})
       .addTo(map);
       lineLayers[newSegmentID] = newLine;
 
@@ -148,16 +148,23 @@
     }
 
 
-    function showLayer(id) {
+    function showVertices(id) {
+
+      if (currentLineID >= 0) {
+        hideVertices(currentLineID);
+      }
+      
       var geojsonPoints = pointGeojsonLayers[id];
       map.addLayer(geojsonPoints);
       map.fitBounds(geojsonPoints.getBounds());
       lineLayers[id].bringToFront();
       geojsonPoints.bringToFront();
+
+      currentLineID = id;
     }
 
 
-    function hideLayer(id) {
+    function hideVertices(id) {
         map.removeLayer(pointGeojsonLayers[id]);   
     }
 
@@ -171,17 +178,16 @@
     }
 
 
-    function showVertices(e) {
+    function onLineClick(e) {
       /*
       When a line is clicked, hide the vertices of the active 
       line and show this line's vertices
       */
       var thisLineID = getLineID(e.target);
-      if (currentLineID >= 0) {
-        hideLayer(currentLineID);
-      }
-      showLayer(thisLineID);
-      currentLineID = thisLineID;
+
+      showVertices(thisLineID);
+      L.DomEvent.stop(e) // don't propagate to the map
+      
     }
 
 
@@ -226,6 +232,18 @@
     var currentLineID = 0;
     
 
+    function onMapClick(e) {
+      /*
+      If the map is clicked (not a polyline layer), deselect the current layer
+      */
+      console.log("line was not clicked")
+      if (currentLineID >= 0) {
+        hideVertices(currentLineID);
+        currentLineID = -1;
+      }
+    }
+
+
     var deferred = $.getJSON("data/201961_616tail09_geojsons.json",
       function(data) {
         // Each item in the JSON file is a separate geojson 
@@ -245,19 +263,20 @@
       var polylineCoords = [];
       for (var seg_id in lineCoords) {
         var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
-        line.on({click: showVertices});
+        line.on({click: onLineClick});
         lineLayers[seg_id] = line;
         originalLineIDs[seg_id] = seg_id
         polylineCoords.push(lineCoords[seg_id]);
       }
       currentLineID = 0;
-      showLayer(currentLineID);
+      showVertices(currentLineID);
       var allLines = L.polyline(polylineCoords);
       map.fitBounds(allLines.getBounds());
       
     });
 
     var deleteEvent = document.addEventListener('keydown', onKeyDown);
+    map.addEventListener('click', onMapClick)// {
 
     
   </script>
