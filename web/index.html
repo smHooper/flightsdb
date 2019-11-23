@@ -186,6 +186,7 @@
       var thisLineID = getLineID(e.target);
 
       showVertices(thisLineID);
+      
       L.DomEvent.stop(e) // don't propagate to the map
       
     }
@@ -242,37 +243,48 @@
         currentLineID = -1;
       }
     }
+    //165.83.50.37  editor.overflights.dena
 
 
-    var deferred = $.getJSON("data/201961_616tail09_geojsons.json",
-      function(data) {
-        // Each item in the JSON file is a separate geojson 
-        for (var segmentID in data) {
-          var geojson = data[segmentID];//$.parseJSON(data[segmentID]);
-          var color = getColor();
-          colors[segmentID] = color;
-          pointGeojsonLayers[segmentID] = L.geoJSON(geojson, {
-            onEachFeature: onEachPoint, 
-            pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
-          });
-        }
+    $.ajax({
+      url: 'geojson_io.php',
+      method: 'POST',
+      data: {action: "getFiles"},
+      success: function(json_string) {
+        var files = $.parseJSON(json_string);
+        files.forEach(function(filePath) {
+          $.getJSON(
+            filePath,
+            function(data) {
+              // Each item in the JSON file is a separate geojson 
+              for (var segmentID in data) {
+                var geojson = data[segmentID];//$.parseJSON(data[segmentID]);
+                var color = getColor();
+                colors[segmentID] = color;
+                pointGeojsonLayers[segmentID] = L.geoJSON(geojson, {
+                  onEachFeature: onEachPoint, 
+                  pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
+                });
+              }
+            }
+          ).done(function() {    
+            // Once the async call is done, add all the lines and 
+            //  the points for a single line to the map
+            var polylineCoords = [];
+            for (var seg_id in lineCoords) {
+              var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
+              line.on({click: onLineClick});
+              lineLayers[seg_id] = line;
+              originalLineIDs[seg_id] = seg_id
+              polylineCoords.push(lineCoords[seg_id]);
+            }
+            currentLineID = 0;
+            showVertices(currentLineID);
+            var allLines = L.polyline(polylineCoords);
+            map.fitBounds(allLines.getBounds());
+          })
+        })
       }
-    ).done(function() {    
-      // Once the async call is done, add all the lines and 
-      //  the points for a single line to the map
-      var polylineCoords = [];
-      for (var seg_id in lineCoords) {
-        var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
-        line.on({click: onLineClick});
-        lineLayers[seg_id] = line;
-        originalLineIDs[seg_id] = seg_id
-        polylineCoords.push(lineCoords[seg_id]);
-      }
-      currentLineID = 0;
-      showVertices(currentLineID);
-      var allLines = L.polyline(polylineCoords);
-      map.fitBounds(allLines.getBounds());
-      
     });
 
     var deleteEvent = document.addEventListener('keydown', onKeyDown);
