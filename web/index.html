@@ -19,7 +19,6 @@
       }
       
 
-      
       #menu-container {
         position: relative;
         background-color: black;
@@ -41,8 +40,7 @@
       }
 
       #dashboard-container {
-        padding: 0;
-        margin: 0;
+        padding: 20;
       }
 
       td {
@@ -64,11 +62,10 @@
     <div class="row">
       
       <div id='menu-container' class="col-sm-3">
-        <table id='files' style="width: 100%">
-          <tr class="file-list-row"><td>file1</td></tr>
-          <tr class="file-list-row"><td>file2</td></tr>
+        <h2 style="color: rgb(100, 100, 100);">Files to import</h2>
+        <table id='files-table' style="width: 100%">
+          <!-- rows get added dynamically in js -->
         </table>
-        <!---<p>Lorem ipsum dolor sit amet, qui ea delenit qualisque, ne duo tollit dolore hendrerit. Exerci postulant eos at, has causae electram id. Legimus contentiones eum te, eos eligendi vituperata ad, no ferri offendit referrentur vis. Homero virtute habemus ad sed, nec ferri viris in. Te labore adolescens ius, his consulatu eloquentiam ea, mea nulla appareat dignissim an. Ei his magna expetenda, nihil copiosae quo ut, percipit insolens mea an.</p>-->
       </div>
       
       <div id='map-container' class="col-sm-9">
@@ -80,24 +77,6 @@
   </div>
 
   <script type="text/javascript">
-    //var startPoint = [63.1249, -149.254];
-    var map = L.map('map', {editable: true})//.setView(startPoint, 10)
-    var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-    	attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, 2019'
-    }).addTo(map);
-    
-    map.doubleClickZoom.disable();
-    
-    var pointGeojsonLayers = {};
-    var lineLayers = {};
-    var lineCoords = {};
-    var colors = {};
-    var minVertexIndices = {};
-
-    // keep track of line IDs so that when a new line is created (on split), 
-    //  it can be given a new ID not found in the original geojson and but 
-    //  the import process still knows what line it corresponds to
-    var originalLineIDs = {}
 
 
     function getColor() {
@@ -315,6 +294,78 @@
     }
 
 
+    function addFileToMenu(fileName) {
+       
+       $('<tr class="file-list-row"><td>' + fileName.replace('data/', '') + '</td></tr>')
+       .appendTo('#files-table')
+       .on('click', function() {
+        loadTracks(fileName);
+       });
+
+    }
+
+
+    function loadTracks(filePath) {
+      // Read the track JSON file and 
+
+      // remove all layers from the map
+      map.eachLayer( function(layer) {
+        if (!(layer instanceof L.TileLayer)) {
+          map.removeLayer(layer)
+        }
+      })
+      pointGeojsonLayers = {};
+      lineLayers = {};
+      lineCoords = {};
+      colors = {};
+      minVertexIndices = {};
+
+      $.getJSON(
+        filePath,
+        function(data) {
+          // Each item in the JSON file is a separate geojson 
+          for (var segmentID in data) {
+            var geojson = data[segmentID];//$.parseJSON(data[segmentID]);
+            var color = getColor();
+            colors[segmentID] = color;
+            pointGeojsonLayers[segmentID] = L.geoJSON(geojson, {
+              onEachFeature: onEachPoint, 
+              pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
+            });
+          }
+        }
+      ).done(function() {    
+        // Once the async call is done, add all the lines and 
+        //  the points for a single line to the map
+        var polylineCoords = [];
+        for (var seg_id in lineCoords) {
+          var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
+          line.on({click: onLineClick});
+          lineLayers[seg_id] = line;
+          polylineCoords.push(lineCoords[seg_id]);
+        }
+        currentLineID = 0;
+        showVertices(currentLineID);
+        var allLines = L.polyline(polylineCoords);
+        map.fitBounds(allLines.getBounds());
+      })
+    }
+
+
+    //var startPoint = [63.1249, -149.254];
+    var map = L.map('map', {editable: true})//.setView(startPoint, 10)
+    var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, 2019'
+    }).addTo(map);
+    
+    map.doubleClickZoom.disable();
+    
+    var pointGeojsonLayers = {};
+    var lineLayers = {};
+    var lineCoords = {};
+    var colors = {};
+    var minVertexIndices = {};
+
     $.ajax({
       url: 'geojson_io.php',
       method: 'POST',
@@ -322,37 +373,9 @@
       success: function(json_string) {
         var files = $.parseJSON(json_string);
         files.forEach(function(filePath) {
-          $.getJSON(
-            filePath,
-            function(data) {
-              // Each item in the JSON file is a separate geojson 
-              for (var segmentID in data) {
-                var geojson = data[segmentID];//$.parseJSON(data[segmentID]);
-                var color = getColor();
-                colors[segmentID] = color;
-                pointGeojsonLayers[segmentID] = L.geoJSON(geojson, {
-                  onEachFeature: onEachPoint, 
-                  pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
-                });
-              }
-            }
-          ).done(function() {    
-            // Once the async call is done, add all the lines and 
-            //  the points for a single line to the map
-            var polylineCoords = [];
-            for (var seg_id in lineCoords) {
-              var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
-              line.on({click: onLineClick});
-              lineLayers[seg_id] = line;
-              originalLineIDs[seg_id] = seg_id
-              polylineCoords.push(lineCoords[seg_id]);
-            }
-            currentLineID = 0;
-            showVertices(currentLineID);
-            var allLines = L.polyline(polylineCoords);
-            map.fitBounds(allLines.getBounds());
-          })
+          addFileToMenu(filePath);
         })
+        loadTracks(files[0])
       }
     });
 
