@@ -10,15 +10,40 @@
   <script src="./js/leaflet-providers.js"></script>
   <!--<script src="./Leaflet.Editable/src/Leaflet.Editable.js"></script>-->
   <style type='text/css'>
-      body { margin:0; padding:0; }
-      #map { position:absolute; top:0; bottom:0; right: 0; left: 20%; width:80%; }
+      body { 
+        margin:0; 
+        padding:0; 
+      }
+      #map { 
+        position: absolute; 
+        top: 0; 
+        bottom:0; 
+        right: 0; 
+        left: 20%; 
+        width:80%;
+      }
+      #menu {
+        top: 0;
+        bottom: 50%;
+        height: 50%;
+        left: 0;
+        width: 20%;
+        color: black;
+        border: 5px;
+        border-color: rgb(70, 70, 70);
+      }
+
 </style>
 </head>
 <body>
   <!--<script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.2.0/leaflet-omnivore.min.js'></script> -->
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
   <div id='map'></div>
-
+  <div id='menu'>
+    <table id='files'>
+      
+    </table>
+  </div>
   <script type="text/javascript">
     //var startPoint = [63.1249, -149.254];
     var map = L.map('map', {editable: true})//.setView(startPoint, 10)
@@ -114,9 +139,15 @@
         onEachFeature: onEachPoint, 
         pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, newColor))
       });//.addTo(map);
-      console.log("point layer keys: " + Object.keys(pointGeojsonLayers));
+
     }
 
+
+    function onPointClick(event, segmentID, vertexID, minVertexIndex) {
+      if (event.originalEvent.ctrlKey) {
+        splitAtVertex(segmentID, vertexID, minVertexIndex)
+      }
+    }
 
     function onEachPoint(feature, layer) {
       /*
@@ -135,7 +166,9 @@
         feature.properties["mapID"] = seg_id;
       }
       
-      layer.on({dblclick: (e => splitAtVertex(properties.mapID, properties.point_index, properties.min_index))});
+      layer.addEventListener({
+        click: (e => onPointClick(e, properties.mapID, properties.point_index, properties.min_index))
+      });
 
       // Add coordinates to dict of coordinate arrays for creating lines later
       var pointCoords = feature.geometry.coordinates;
@@ -183,12 +216,14 @@
       When a line is clicked, hide the vertices of the active 
       line and show this line's vertices
       */
-      var thisLineID = getLineID(e.target);
+      //e.orignalEvent.ctrlKey
+      if (!e.originalEvent.ctrlKey) {
+        var thisLineID = getLineID(e.target);
 
-      showVertices(thisLineID);
-      
-      L.DomEvent.stop(e) // don't propagate to the map
-      
+        showVertices(thisLineID);
+        
+        L.DomEvent.stop(e) // don't propagate to the map
+      }
     }
 
 
@@ -237,13 +272,12 @@
       /*
       If the map is clicked (not a polyline layer), deselect the current layer
       */
-      console.log("line was not clicked")
-      if (currentLineID >= 0) {
+
+      if (currentLineID >= 0 && !e.originalEvent.ctrlKey) {
         hideVertices(currentLineID);
         currentLineID = -1;
       }
     }
-    //165.83.50.37  editor.overflights.dena
 
 
     $.ajax({
@@ -288,7 +322,7 @@
     });
 
     var deleteEvent = document.addEventListener('keydown', onKeyDown);
-    map.addEventListener('click', onMapClick)// {
+    //map.addEventListener('click', onMapClick)// {
 
     
   </script>
