@@ -50,13 +50,18 @@
         padding: 20;
       }
 
+      #save-button {
+        height: 25px;
+        width: 100px;
+        background-color: rgb(100, 100, 100)
+        color: rgb(200, 200, 200);
+      }
+
       td {
         color: rgb(100, 100, 100);
         text-align: center;
       }
-      /*td {
-        padding: 10px;
-      }*/
+
 
   </style>
 </head>
@@ -77,6 +82,7 @@
       
       <div id='map-container' class="col-sm-9">
         <div id='map'></div>
+        <input type="button" id="save-button">Save tracks</button>
       </div>
     
     </div>
@@ -369,6 +375,46 @@
     }
 
 
+    function writeJSON(){
+
+      var filePath = 'data/edited/' + $('.file-list-row-selected').text().replace('_geojsons.json', '.geojson');
+      
+      // The point layes are in the format {segID: {geojson}} so just combine all of 
+      //  the features into a single FeatureCollection GeoJSON object since the 
+      //  segment IDs are also recorded in the properties of each feature
+      var features = []
+      for (segmentID in pointGeojsonLayers) {
+        var geojson = pointGeojsonLayers[segmentID].toGeoJSON();
+        for(thisID in geojson) {
+          features.push(...geojson[thisID]);
+        }
+      }
+      var thisGeojson = {
+        type: "FeatureCollection",
+        crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+        features: features
+      }
+
+      // send a post request to the PHP script
+      var data = {
+        action: "writeFile",
+        filePath: filePath,
+        jsonString: JSON.stringify(thisGeojson)
+      };
+
+      $.ajax({
+        url: 'geojson_io.php',
+        method: 'POST',
+        data: data,
+        success: function(response) {
+          if (response == false) {
+            alert('JSON data failed to save')
+          }
+        }
+      }).fail(alert('JSON data failed to save'));
+
+    }
+
     //var startPoint = [63.1249, -149.254];
     var map = L.map('map', {editable: true})//.setView(startPoint, 10)
     var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
@@ -397,7 +443,8 @@
     });
 
     var deleteEvent = document.addEventListener('keydown', onKeyDown);
-    //map.addEventListener('click', onMapClick)// {
+    map.addEventListener('click', onMapClick);// {
+    $('#save-button').click(writeJSON);
 
     
   </script>
