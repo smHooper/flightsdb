@@ -51,7 +51,7 @@
         font-weight: bold;
         color: rgb(125, 125, 125);
         background-color: rgb(75, 75, 75);
-        box-shadow: 8px 16px 16px 0 rgba(0,0,0,0.3)
+        box-shadow: 0px 16px 16px 0 rgba(0,0,0,0.3)
       }
 
       .file-list-row-selected:hover {
@@ -153,7 +153,8 @@
       point from the geojson used to create it
       */
 
-      var originalLine = lineLayers[segmentID];
+      var fileName = $('.file-list-row-selected').text();
+      var originalLine = lineLayers[fileName][segmentID];
       var allLatlngs = originalLine.getLatLngs();
 
       // vertexID is a global ID so calculate the index within the latlngs array
@@ -165,15 +166,15 @@
       // Set coords for the old line (everything up to the vertex) and 
       //  create the new line (the new vertex and everything after)
       originalLine.setLatLngs(originalLatlngs);
-      var newSegmentID = Math.max.apply(null, Object.keys(lineLayers)) + 1;
+      var newSegmentID = Math.max.apply(null, Object.keys(lineLayers[fileName])) + 1;
       var newColor = getColor();
-      colors[newSegmentID] = newColor;
+      colors[fileName][newSegmentID] = newColor;
       var newLine = L.polyline(
         newLatLngs, 
         options={color: newColor})
       .addEventListener({click: onLineClick})
       .addTo(map);
-      lineLayers[newSegmentID] = newLine;
+      lineLayers[fileName][newSegmentID] = newLine;
 
       // Create the new point geojson by looping through all points 
       //  of the original and adding each .feature to the json
@@ -181,7 +182,7 @@
         type: "FeatureCollection",
         features: []
       }
-      pointGeojsonLayers[segmentID].eachLayer(
+      pointGeojsonLayers[fileName][segmentID].eachLayer(
         function(layer) {
           var featureID = layer.feature.id;
           var theseCordinates = layer.feature.geometry.coordinates
@@ -199,16 +200,15 @@
             // if this feature isn't the splitting vertex, 
             //  drop it from the original point layer
             if (featureID > vertexID) {
-              pointGeojsonLayers[segmentID].removeLayer(layer)
+              pointGeojsonLayers[fileName][segmentID].removeLayer(layer)
             };
           }
         }
       )
-      pointGeojsonLayers[newSegmentID] = L.geoJSON(newGeoJSON, {
-        //**** this doesn't work for some reason (i.e., onEachPoint is never called) *** 
-        onEachFeature: onEachPoint, 
+      pointGeojsonLayers[fileName][newSegmentID] = L.geoJSON(newGeoJSON, { 
+        onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
         pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, newColor))
-      });//.addTo(map);
+      });
 
     }
 
@@ -219,9 +219,8 @@
       }
     }
 
-    var trackInfo = {}
 
-    function onEachPoint(feature, layer) {
+    function onEachPoint(feature, layer, fileName) {
       /*
       For each point, add the coordinates to a dictionary of 
       segmentID: [coords] so lines can be created later  
@@ -244,11 +243,11 @@
 
       // Add coordinates to dict of coordinate arrays for creating lines later
       var pointCoords = feature.geometry.coordinates;
-      if (lineCoords[segmentID] === undefined) {
+      if (lineCoords[fileName][segmentID] === undefined) {
         // coords in geojson are [x, y] but polyline needs [lat, lon]
-        lineCoords[segmentID] = [[pointCoords[1], pointCoords[0]]]
+        lineCoords[fileName][segmentID] = [[pointCoords[1], pointCoords[0]]]
       } else {
-        lineCoords[segmentID].push([pointCoords[1], pointCoords[0]])
+        lineCoords[fileName][segmentID].push([pointCoords[1], pointCoords[0]])
       }
 
     }
@@ -256,28 +255,35 @@
 
     function showVertices(id) {
 
+      var fileName = $('.file-list-row-selected').text()
+      var currentLineID = selectedLines[fileName]
+      console.log(currentLineID)
       if (currentLineID >= 0) {
         hideVertices(currentLineID);
       }
       
-      var geojsonPoints = pointGeojsonLayers[id];
+      var geojsonPoints = pointGeojsonLayers[fileName][id];
       map.addLayer(geojsonPoints);
       map.fitBounds(geojsonPoints.getBounds());
-      lineLayers[id].bringToFront();
+      lineLayers[fileName][id].bringToFront();
       geojsonPoints.bringToFront();
 
-      currentLineID = id;
+      selectedLines[fileName] = id;
+      //console.log(selectedLines[$('.file-list-row-selected').text()])
+
     }
 
 
     function hideVertices(id) {
-        map.removeLayer(pointGeojsonLayers[id]);   
+      var fileName = $('.file-list-row-selected').text()
+      map.removeLayer(pointGeojsonLayers[fileName][id]);   
     }
 
 
     function getLineID(layer) {
-      for (var segmentID in lineLayers) {
-        if (lineLayers[segmentID] == layer) {
+      var fileName = $('.file-list-row-selected').text()
+      for (var segmentID in lineLayers[fileName]) {
+        if (lineLayers[fileName][segmentID] == layer) {
           return segmentID;
         }
       }
@@ -305,12 +311,15 @@
       Remove the currently selected line and points from the 
       map and delete references to them
       */
+
       // remove from the map
+      var fileName = $('.file-list-row-selected').text()
+      var currentLineID = selectedLines[fileName]
       if (currentLineID >= 0 && confirm("Are you sure you want to delete the select track?")) {
-        map.removeLayer(pointGeojsonLayers[currentLineID]);
-        map.removeLayer(lineLayers[currentLineID]);
-        delete pointGeojsonLayers[currentLineID];
-        delete lineLayers[currentLineID];
+        map.removeLayer(pointGeojsonLayers[fileName][currentLineID]);
+        map.removeLayer(lineLayers[fileName][currentLineID]);
+        delete pointGeojsonLayers[fileName][currentLineID];
+        delete lineLayers[fileName][currentLineID];
         currentLineID = -1;
       } else {
         alert("No track currently selected. Click a track first then press 'Delete'")
@@ -339,7 +348,7 @@
       return L.circleMarker(latlng, markerOptions);
     }
 
-    var currentLineID = 0;
+    //var currentLineID = 0;
     
 
     function onMapClick(e) {
@@ -347,6 +356,7 @@
       If the map is clicked (not a polyline layer), deselect the current layer
       */
 
+      var currentLineID = selectedLines[$('.file-list-row-selected').text()]
       if (currentLineID >= 0 && !e.originalEvent.ctrlKey) {
         hideVertices(currentLineID);
         currentLineID = -1;
@@ -354,33 +364,79 @@
     }
 
 
-    function addFileToMenu(fileName) {
+    function addFileToMenu(filePath) {
        
-       $('<tr><td class="file-list-row">' + fileName.replace('data/', '') + '</td></tr>')
+       var fileName = filePath.replace('data/', '')
+       $('<tr><td class="file-list-row">' + fileName + '</td></tr>')
        .appendTo('#files-table')
        .on('click', function() {
         if (!$(this).children().hasClass('file-list-row-selected')){
-          loadTracks(fileName);
+          if (pointGeojsonLayers[fileName] == undefined) {
+            loadTracksFromJSON(filePath);
+          } else {
+            loadTracksFromMemory(fileName);
+          }
         }
        });
 
     }
 
 
-    function loadTracks(filePath) {
-      // Read the track JSON file and 
-
-      // remove all layers from the map
+    function removeAllLayers() {
+      
       map.eachLayer( function(layer) {
         if (!(layer instanceof L.TileLayer)) {
-          map.removeLayer(layer)
+          map.removeLayer(layer);
         }
       })
-      pointGeojsonLayers = {};
+    }
+
+
+    function fileWasSelected(filePath) {
+        // remove selection if this is not the currently selected file.
+        //  otherwise, add -selected style
+        $('.file-list-row-selected')
+          .removeClass('file-list-row-selected')
+          .addClass('file-list-row');
+        $('.file-list-row').each(function(){
+          if ($(this).text() == filePath.replace('data/', '')) {
+            $(this).addClass('file-list-row-selected');
+          }
+        });
+    }
+
+
+    function loadTracksFromJSON(filePath) {
+      // Read the track JSON file and 
+
+      removeAllLayers();
+
+
+      var fileName = filePath.replace('data/', '')
+      
+      /*pointGeojsonLayers = {};
       lineLayers = {};
       lineCoords = {};
       colors = {};
-      minVertexIndices = {};
+      minVertexIndices = {};*/
+      if (pointGeojsonLayers[fileName] == undefined) {
+        pointGeojsonLayers[fileName] = {};
+      }
+      if (lineLayers[fileName] == undefined) {
+        lineLayers[fileName] = {};
+      }
+      if (lineCoords[fileName] == undefined) {
+        lineCoords[fileName] = {};
+      }
+      if (colors[fileName] == undefined) {
+        colors[fileName] = {};
+      }
+      if (minVertexIndices[fileName] == undefined){
+        minVertexIndices[fileName] = {}
+      }
+      
+      fileExtents[fileName] = {}
+
 
       $.getJSON(
         filePath,
@@ -389,26 +445,29 @@
           for (var segmentID in data) {
             var geojson = data[segmentID];//$.parseJSON(data[segmentID]);
             var color = getColor();
-            colors[segmentID] = color;
-            pointGeojsonLayers[segmentID] = L.geoJSON(geojson, {
-              onEachFeature: onEachPoint, 
+            colors[fileName][segmentID] = color;
+            pointGeojsonLayers[fileName][segmentID] = L.geoJSON(geojson, {
+              onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
               pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
             });
-          }
+      }
         }
       ).done(function() {    
         // Once the async call is done, add all the lines and 
         //  the points for a single line to the map
         var polylineCoords = [];
-        var fileName = filePath.replace('data/', '')
-        for (var segmentID in lineCoords) {
-          var line = L.polyline(lineCoords[segmentID], options={color: colors[segmentID]}).addTo(map);
+        for (var segmentID in lineCoords[fileName]) {
+          var line = L.polyline(
+            lineCoords[fileName][segmentID], 
+            options={color: colors[fileName][segmentID]}
+            )
+          .addTo(map);
           line.on({click: onLineClick});
-          lineLayers[segmentID] = line;
-          polylineCoords.push(lineCoords[segmentID]);
+          lineLayers[fileName][segmentID] = line;
+          polylineCoords.push(lineCoords[fileName][segmentID]);
            
           // Add info for the legend if it hasn't already been added
-          var thisInfo = pointGeojsonLayers[segmentID].toGeoJSON().features[0].properties;
+          var thisInfo = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features[0].properties;
           thisInfo['visible'] = true;
 
           if (trackInfo[fileName] == undefined) {
@@ -418,40 +477,55 @@
           }
         }
 
-        console.log(trackInfo)
+        fileWasSelected(fileName);
 
-        currentLineID = 0;
-        showVertices(currentLineID);
-        var allLines = L.polyline(polylineCoords);
-        map.fitBounds(allLines.getBounds());
-      })
-
-      // remove selection if this is not the currently selected file.
-      //  otherwise, add .selected style
-      $('.file-list-row-selected')
-        .removeClass('file-list-row-selected')
-        .addClass('file-list-row');
-      $('.file-list-row').each(function(){
-        if ($(this).text() == filePath.replace('data/', '')) {
-          $(this).addClass('file-list-row-selected');
+        // Show first line
+        if (selectedLines[fileName] == undefined) {
+          selectedLines[fileName] = 0;
         }
-      });
+        showVertices(selectedLines[fileName]);
+        var allLines = L.polyline(polylineCoords);
+        fileExtents[fileName] = allLines.getBounds();
+        map.fitBounds(fileExtents[fileName]);
+
+      })
 
 
     }
 
 
+    function loadTracksFromMemory(fileName) {
+      // remove current layers
+      removeAllLayers();
+
+      // Add the lines for this file
+      for (segmentID in lineLayers[fileName]) {
+        lineLayers[fileName][segmentID].addTo(map);
+      }
+
+      //show points for the most recently selected segment
+      pointGeojsonLayers[fileName][selectedLines[fileName]].addTo(map);
+
+      // show the right file as selected
+      fileWasSelected(fileName);
+
+      // zoom to extent
+      map.fitBounds(fileExtents[fileName])
+    }
+
+
     function writeJSON(){
 
-      var filePath = 'data/edited/' + $('.file-list-row-selected').text().replace('_geojsons.json', '.geojson');
+      var fileName = $('.file-list-row-selected').text()
+      var filePath = 'data/edited/' + fileName.replace('_geojsons.json', '.geojson');
       
       // The point layes are in the format {segID: {geojson}} so just combine all of 
       //  the features into a single FeatureCollection GeoJSON object since the 
       //  segment IDs are also recorded in the properties of each feature
       var features = []
-      for (segmentID in pointGeojsonLayers) {
-        var geojson = pointGeojsonLayers[segmentID].toGeoJSON();
-        for(thisID in geojson) {
+      for (segmentID in pointGeojsonLayers[fileName]) {
+        var geojson = pointGeojsonLayers[fileName][segmentID].toGeoJSON();
+        for (thisID in geojson) {
           features.push(...geojson[thisID]);
         }
       }
@@ -481,6 +555,7 @@
 
     }
 
+
     //var startPoint = [63.1249, -149.254];
     var map = L.map('map', {editable: true})//.setView(startPoint, 10)
     var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
@@ -494,6 +569,9 @@
     var lineCoords = {};
     var colors = {};
     var minVertexIndices = {};
+    var trackInfo = {};
+    var selectedLines = {};
+    var fileExtents = {};
 
     $.ajax({
       url: 'geojson_io.php',
@@ -504,7 +582,7 @@
         files.forEach(function(filePath) {
           addFileToMenu(filePath);
         })
-        loadTracks(files[0]) // load any file, doesn't matter which
+        loadTracksFromJSON(files[0]) // load any file, doesn't matter which
       }
     });
 
