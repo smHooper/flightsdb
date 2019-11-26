@@ -15,15 +15,14 @@
       body { 
         height: 100%; 
         width: 100%; 
-        background-color: black;
+        background-color: rgb(50, 50, 50);
       }
       
 
       #menu-container {
         position: relative;
-        background-color: black;
         border: 5px;
-        border-color: rgb(50, 50, 50);
+        border-color: rgb(100, 100, 100);
       }
       
       #map { 
@@ -36,30 +35,60 @@
 
       .file-list-row {
         height: 50px;
-        border: 2px solid rgb(50, 50, 50);
+        border: 2px solid rgb(100, 100, 100);
+        color: rgb(110, 110, 110);
+      }
+
+      .file-list-row:hover {
+        font-weight: bold;
+        border: 3px solid rgb(100, 100, 100);
+        cursor: pointer;
       }
 
       .file-list-row-selected {
         height: 50px;
-        border: 3px solid rgb(50, 50, 50);
+        border: 4px solid rgb(100, 100, 100);
         font-weight: bold;
-        background-color: rgb(25, 25, 25);
+        color: rgb(125, 125, 125);
+        background-color: rgb(75, 75, 75);
+        box-shadow: 8px 16px 16px 0 rgba(0,0,0,0.3)
+      }
+
+      .file-list-row-selected:hover {
+        cursor: auto;
+        border: 4px solid rgb(100, 100, 100);
       }
 
       #dashboard-container {
         padding: 20;
       }
 
-      #save-button {
-        height: 25px;
-        width: 100px;
-        background-color: rgb(100, 100, 100)
+      .data-button {
+        height: 50px;
+        width: 150px;
+        top: 10px;
+        position: relative;
+        /*padding: 14px 28px;*/
+        font-size: 16px;
+        background-color: rgb(125, 125, 125);
         color: rgb(200, 200, 200);
+        border: none;
+        display: inline-block;
       }
 
       td {
         color: rgb(100, 100, 100);
         text-align: center;
+      }
+
+      .dark-scrollbar {
+        overflow-y: auto;
+      }
+      .dark-scrollbar::-webkit-scrollbar-track {
+          background-color: rgb(60, 60, 60);
+      }
+      .dark-scrollbar::-webkit-scrollbar-thumb {
+          background-color: rgb(110, 110, 110);
       }
 
 
@@ -69,20 +98,38 @@
 <body>
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
-  <div id="dashboard-container" class="container-fluid" style="background-color: black;">
+  <div id="dashboard-container" class="container-fluid">
     
     <div class="row">
       
       <div id='menu-container' class="col-sm-3">
-        <h2 style="color: rgb(100, 100, 100);">Files to import</h2>
-        <table id='files-table' style="width: 100%">
-          <!-- rows get added dynamically in js -->
-        </table>
+        <div>
+          <h3 style="color: rgb(110, 110, 110);">Files to import</h3>
+          <div class="dark-scrollbar">
+            <table id='files-table' style="width: 100%; max-height: 30%; background-color: rgb(60, 60, 60)">
+              <!-- rows added dynamically in js -->
+            </table>
+          </div>
+        </div>
+        <div style="overflow-y: auto;">
+          <table id='legend' style="width: 100%; background-color: rgb(60, 60, 60)">
+            <!-- rows added dynamically in js -->
+          </table>
+        </div>
       </div>
       
       <div id='map-container' class="col-sm-9">
         <div id='map'></div>
-        <input type="button" id="save-button">Save tracks</button>
+
+        <div class="row" style="top: 10px;">
+          <div class="col-sm-2">
+            <button class="button data-button" id="save-button">Save tracks</button>
+          </div>
+          <div class="col-sm-2">
+            <button class="button data-button" id="save-button">Import data</button>
+          </div>          
+
+        </div>
       </div>
     
     </div>
@@ -172,13 +219,15 @@
       }
     }
 
+    var trackInfo = {}
+
     function onEachPoint(feature, layer) {
       /*
       For each point, add the coordinates to a dictionary of 
       segmentID: [coords] so lines can be created later  
       */
       var properties = feature.properties
-      var seg_id = properties.segment_id;
+      var segmentID = properties.segment_id;
       
       // mapID is used to keep track of lines and points on the map. 
       //  They could be split, which would make the mapID different 
@@ -186,7 +235,7 @@
       //  that means that this feature was created by splitAtVertex(), 
       //  so don't reassign it
       if (feature.properties["mapID"] == undefined) {
-        feature.properties["mapID"] = seg_id;
+        feature.properties["mapID"] = segmentID;
       }
       
       layer.addEventListener({
@@ -195,12 +244,13 @@
 
       // Add coordinates to dict of coordinate arrays for creating lines later
       var pointCoords = feature.geometry.coordinates;
-      if (lineCoords[seg_id] === undefined) {
+      if (lineCoords[segmentID] === undefined) {
         // coords in geojson are [x, y] but polyline needs [lat, lon]
-        lineCoords[seg_id] = [[pointCoords[1], pointCoords[0]]]
+        lineCoords[segmentID] = [[pointCoords[1], pointCoords[0]]]
       } else {
-        lineCoords[seg_id].push([pointCoords[1], pointCoords[0]])
+        lineCoords[segmentID].push([pointCoords[1], pointCoords[0]])
       }
+
     }
 
 
@@ -306,10 +356,12 @@
 
     function addFileToMenu(fileName) {
        
-       $('<tr class="file-list-row"><td>' + fileName.replace('data/', '') + '</td></tr>')
+       $('<tr><td class="file-list-row">' + fileName.replace('data/', '') + '</td></tr>')
        .appendTo('#files-table')
        .on('click', function() {
-        loadTracks(fileName);
+        if (!$(this).children().hasClass('file-list-row-selected')){
+          loadTracks(fileName);
+        }
        });
 
     }
@@ -348,12 +400,26 @@
         // Once the async call is done, add all the lines and 
         //  the points for a single line to the map
         var polylineCoords = [];
-        for (var seg_id in lineCoords) {
-          var line = L.polyline(lineCoords[seg_id], options={color: colors[seg_id]}).addTo(map);
+        var fileName = filePath.replace('data/', '')
+        for (var segmentID in lineCoords) {
+          var line = L.polyline(lineCoords[segmentID], options={color: colors[segmentID]}).addTo(map);
           line.on({click: onLineClick});
-          lineLayers[seg_id] = line;
-          polylineCoords.push(lineCoords[seg_id]);
+          lineLayers[segmentID] = line;
+          polylineCoords.push(lineCoords[segmentID]);
+           
+          // Add info for the legend if it hasn't already been added
+          var thisInfo = pointGeojsonLayers[segmentID].toGeoJSON().features[0].properties;
+          thisInfo['visible'] = true;
+
+          if (trackInfo[fileName] == undefined) {
+              trackInfo[fileName] = {segmentID: thisInfo}
+          } else if (trackInfo[fileName][segmentID] == undefined) {
+            trackInfo[fileName][segmentID] = thisInfo;
+          }
         }
+
+        console.log(trackInfo)
+
         currentLineID = 0;
         showVertices(currentLineID);
         var allLines = L.polyline(polylineCoords);
