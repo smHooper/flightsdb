@@ -39,6 +39,13 @@
         border: 2px solid rgb(50, 50, 50);
       }
 
+      .file-list-row-selected {
+        height: 50px;
+        border: 3px solid rgb(50, 50, 50);
+        font-weight: bold;
+        background-color: rgb(25, 25, 25);
+      }
+
       #dashboard-container {
         padding: 20;
       }
@@ -102,10 +109,6 @@
       var originalLatlngs = allLatlngs.slice(0, (vertexIndex + 1));
       var newLatLngs = allLatlngs.slice(vertexIndex);
       
-      /*console.log("segmentID: " + segmentID);
-      console.log("vertexID: " + vertexID);
-      console.log("minVertexIndex: " + minVertexIndex);
-      console.log("vertexIndex: " + vertexIndex);*/
       // Set coords for the old line (everything up to the vertex) and 
       //  create the new line (the new vertex and everything after)
       originalLine.setLatLngs(originalLatlngs);
@@ -259,6 +262,7 @@
       
     }
 
+
     function onKeyDown(e) {
 
       if (e.key === 'Delete') {
@@ -349,6 +353,19 @@
         var allLines = L.polyline(polylineCoords);
         map.fitBounds(allLines.getBounds());
       })
+
+      // remove selection if this is not the currently selected file.
+      //  otherwise, add .selected style
+      $('.file-list-row-selected')
+        .removeClass('file-list-row-selected')
+        .addClass('file-list-row');
+      $('.file-list-row').each(function(){
+        if ($(this).text() == filePath.replace('data/', '')) {
+          $(this).addClass('file-list-row-selected');
+        }
+      });
+
+
     }
 
 
@@ -375,7 +392,7 @@
         files.forEach(function(filePath) {
           addFileToMenu(filePath);
         })
-        loadTracks(files[0])
+        loadTracks(files[0]) // load any file, doesn't matter which
       }
     });
 
