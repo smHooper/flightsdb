@@ -320,7 +320,7 @@
         map.removeLayer(lineLayers[fileName][currentLineID]);
         delete pointGeojsonLayers[fileName][currentLineID];
         delete lineLayers[fileName][currentLineID];
-        currentLineID = -1;
+        selectedLines[fileName] = -1;
       } else {
         alert("No track currently selected. Click a track first then press 'Delete'")
       }
@@ -359,7 +359,7 @@
       var currentLineID = selectedLines[$('.file-list-row-selected').text()]
       if (currentLineID >= 0 && !e.originalEvent.ctrlKey) {
         hideVertices(currentLineID);
-        currentLineID = -1;
+        selectedLines[$('.file-list-row-selected').text()] = -1;
       }
     }
 
@@ -495,6 +495,7 @@
 
 
     function loadTracksFromMemory(fileName) {
+      
       // remove current layers
       removeAllLayers();
 
@@ -503,11 +504,13 @@
         lineLayers[fileName][segmentID].addTo(map);
       }
 
-      //show points for the most recently selected segment
-      pointGeojsonLayers[fileName][selectedLines[fileName]].addTo(map);
-
       // show the right file as selected
       fileWasSelected(fileName);
+      
+      //show points for the most recently selected segment
+      if (selectedLines[fileName] >= 0) {
+        showVertices(selectedLines[fileName]);
+      }
 
       // zoom to extent
       map.fitBounds(fileExtents[fileName])
