@@ -326,7 +326,7 @@ def format_tms(path):
 def format_foreflight_csv(path):
 
     try:
-        registration = pd.read_csv(path, encoding='ISO-8859-1', nrows=5).loc['Tail Number']
+        registration = pd.read_csv(path, encoding='ISO-8859-1', nrows=5).loc[0, 'Tail Number']
     except:
         registration = ''
     df = pd.read_csv(path, encoding='ISO-8859-1', skiprows=2)
@@ -514,9 +514,16 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     return gdf
 
 
-def import_data(connection_txt, path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None):
+def import_data(connection_txt, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None):
 
-    gdf = format_track(path, seg_time_diff=seg_time_diff, min_point_distance=min_point_distance, registration=registration, submission_method=submission_method, operator_code=operator_code, aircraft_type=aircraft_type)
+    if path:
+        gdf = format_track(path, seg_time_diff=seg_time_diff, min_point_distance=min_point_distance,
+                           registration=registration, submission_method=submission_method,
+                           operator_code=operator_code, aircraft_type=aircraft_type)
+    elif type(data) == gpd.geodataframe.GeoDataFrame:
+        gdf = data.copy()
+    else:
+        raise ValueError('Either data (a geodataframe) or path (to a valid track file) must be given')
 
     engine = db_utils.connect_db(connection_txt)
 
