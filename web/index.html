@@ -63,10 +63,16 @@
       .legend-row {
         height: 50px;
       }
+      
+      .legend-row:hover {
+        background-color: rgb(65, 65, 73);
+        cursor: pointer;
+      }
 
       .legend-row-selected {
         height: 50px;
-        background-color: rgb(90, 90, 90);
+        background-color: rgb(80, 80, 90);
+        cursor: auto;
       }
 
       .legend-cell {
@@ -126,7 +132,7 @@
         <div>
           <h3 style="color: rgb(110, 110, 110);">Files to import</h3>
           <div class="dark-scrollbar">
-            <table id='files-table' style="width: 100%; max-height: 30%; background-color: rgb(60, 60, 60)">
+            <table id='files-table' style="width: 99%; max-height: 30%; background-color: rgb(60, 60, 60)">
               <!-- rows added dynamically in js -->
             </table>
           </div>
@@ -136,7 +142,7 @@
             <tr style="text-align: center;">
               <!--<th> </th><th>Departure time</th>-->
             </tr>
-            <tbody class="dark-scrollbar" id="legend" style="display: block; width:100%; max-height:40%;">
+            <tbody class="dark-scrollbar" id="legend" style=" width:100%; max-height:40%;">
               <!-- rows added dynamically in js -->
             </tbody>
           </table>
@@ -224,8 +230,6 @@
             // add this feature
             newGeoJSON.features.push(layer.feature);
 
-            console.log(layer.feature)
-
             // if this feature isn't the splitting vertex, 
             //  drop it from the original point layer
             if (featureID > vertexID) {
@@ -292,7 +296,6 @@
 
       var fileName = $('.file-list-row-selected').text()
       var currentLineID = selectedLines[fileName]
-      console.log(currentLineID)
       if (currentLineID >= 0) {
         hideVertices(currentLineID);
       }
@@ -304,7 +307,7 @@
       geojsonPoints.bringToFront();
 
       selectedLines[fileName] = id;
-      //console.log(selectedLines[$('.file-list-row-selected').text()])
+      
 
     }
 
@@ -349,9 +352,6 @@
         .children()
         .removeClass('legend-cell')
         .addClass('legend-cell-selected');
-
-        console.log($('#legend_' + id))
-        console.log($('#legend_' + id).children())
     }
 
 
@@ -456,27 +456,34 @@
       // Add a new row for each track
       for (segmentID in trackInfo[fileName]) {
         var thisInfo = trackInfo[fileName][segmentID];
-        
-        console.log(thisInfo)
 
         var thisColor = colors[fileName][segmentID];
         var htmlString = (
-          '<tr class="legend-row" id="legend_' + thisInfo.mapID + '">' +
-            '<td class="legend-cell">' + 
+          '<tr class="legend-row" id="legend_' + segmentID + '">' +
+            '<td class="legend-cell" style="width:90px; text-align:right; padding-right: 10px">' + 
               '<svg height="10" width="80">' + 
                 '<line x1="15" y1="5" x2="65" y2="5" style="stroke:' + thisColor + '; stroke-width:3;"/>' +
               '</svg>' + 
             '</td>' + 
-            '<td class="legend-cell">' + 
+            '<td class="legend-cell" style="text-align:left;">' + 
               thisInfo.departure_datetime + 
             '</td>' +
           '</tr>'
         )
-        $(htmlString).appendTo('#legend');
+        $(htmlString)
+          .click(function() {
+            var thisID = $(this)[0].id.replace('legend_', '');
+            showVertices(thisID);
+            selectLegendItem(thisID);
+          })
+          .appendTo('#legend');
+          
 
       // select the row corresponding to the selected line
-      selectLegendItem(selectedLines[fileName])
+      selectLegendItem(selectedLines[fileName]);
       }
+
+      //console.log($('#legend_0'))
     }
 
 
@@ -491,16 +498,16 @@
 
 
     function fileWasSelected(filePath) {
-        // remove selection if this is not the currently selected file.
-        //  otherwise, add -selected style
-        $('.file-list-row-selected')
-          .removeClass('file-list-row-selected')
-          .addClass('file-list-row');
-        $('.file-list-row').each(function(){
-          if ($(this).text() == filePath.replace('data/', '')) {
-            $(this).addClass('file-list-row-selected');
-          }
-        });
+      // remove selection if this is not the currently selected file.
+      //  otherwise, add -selected style
+      $('.file-list-row-selected')
+        .removeClass('file-list-row-selected')
+        .addClass('file-list-row');
+      $('.file-list-row').each(function(){
+        if ($(this).text() == filePath.replace('data/', '')) {
+          $(this).addClass('file-list-row-selected');
+        }
+      });
     }
 
 
