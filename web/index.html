@@ -51,7 +51,8 @@
         font-weight: bold;
         color: rgb(125, 125, 125);
         background-color: rgb(75, 75, 75);
-        box-shadow: 0px 16px 16px 0 rgba(0,0,0,0.3)
+        box-shadow: 0px 16px 16px 0 rgba(0,0,0,0.2);
+        text-align: center;
       }
 
       .file-list-row-selected:hover {
@@ -59,6 +60,10 @@
         border: 4px solid rgb(100, 100, 100);
       }
 
+      .legend-row {
+        height: 50px;
+      }
+      
       #dashboard-container {
         padding: 20;
       }
@@ -98,9 +103,9 @@
 <body>
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
-  <div id="dashboard-container" class="container-fluid">
+  <div id="dashboard-container" class="container-fluid ">
     
-    <div class="row">
+    <div class="row h-100" >
       
       <div id='menu-container' class="col-sm-3">
         <div>
@@ -111,9 +116,11 @@
             </table>
           </div>
         </div>
-        <div style="overflow-y: auto;">
-          <table id='legend' style="width: 100%; background-color: rgb(60, 60, 60)">
-            <!-- rows added dynamically in js -->
+        <div style="max-height: 40%;">
+          <table style="width: 100%; background-color: rgb(60, 60, 60)">
+            <tbody class="dark-scrollbar" id="legend" style="display: block; max-height:40%;">
+              <!-- rows added dynamically in js -->
+            </tbody>
           </table>
         </div>
       </div>
@@ -378,7 +385,35 @@
           }
         }
        });
+    }
 
+
+    function makeLegend(fileName){
+
+      // remove all items from the current legend
+      $('#legend').empty();
+
+      // Add a new row for each track
+      for (segmentID in trackInfo[fileName]) {
+        var thisInfo = trackInfo[fileName][segmentID];
+        
+        console.log(thisInfo)
+
+        var thisColor = colors[fileName][segmentID];
+        var htmlString = (
+          '<tr>' +
+            '<td class="legend-row">' + 
+              '<svg height="10" width="100">' + 
+                '<line x1="15" y1="5" x2="85" y2="5" style="stroke:' + thisColor + '; stroke-width:3;"/>' +
+              '</svg>' + 
+            '</td>' + 
+            '<td>' + 
+              thisInfo.departure_datetime + 
+            '</td>' +
+          '</tr>'
+        )
+        $(htmlString).appendTo('#legend');
+      }
     }
 
 
@@ -414,29 +449,14 @@
 
       var fileName = filePath.replace('data/', '')
       
-      /*pointGeojsonLayers = {};
-      lineLayers = {};
-      lineCoords = {};
-      colors = {};
-      minVertexIndices = {};*/
-      if (pointGeojsonLayers[fileName] == undefined) {
-        pointGeojsonLayers[fileName] = {};
-      }
-      if (lineLayers[fileName] == undefined) {
-        lineLayers[fileName] = {};
-      }
-      if (lineCoords[fileName] == undefined) {
-        lineCoords[fileName] = {};
-      }
-      if (colors[fileName] == undefined) {
-        colors[fileName] = {};
-      }
-      if (minVertexIndices[fileName] == undefined){
-        minVertexIndices[fileName] = {}
-      }
-      
-      fileExtents[fileName] = {}
-
+      // Initialize objects for this file
+      pointGeojsonLayers[fileName] = {};
+      lineLayers[fileName] = {};
+      lineCoords[fileName] = {};
+      colors[fileName] = {};
+      minVertexIndices[fileName] = {};
+      fileExtents[fileName] = {};
+      trackInfo[fileName] = {};  
 
       $.getJSON(
         filePath,
@@ -450,7 +470,7 @@
               onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
               pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
             });
-      }
+          }
         }
       ).done(function() {    
         // Once the async call is done, add all the lines and 
@@ -469,12 +489,7 @@
           // Add info for the legend if it hasn't already been added
           var thisInfo = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features[0].properties;
           thisInfo['visible'] = true;
-
-          if (trackInfo[fileName] == undefined) {
-              trackInfo[fileName] = {segmentID: thisInfo}
-          } else if (trackInfo[fileName][segmentID] == undefined) {
-            trackInfo[fileName][segmentID] = thisInfo;
-          }
+          trackInfo[fileName][segmentID] = thisInfo;
         }
 
         fileWasSelected(fileName);
@@ -487,6 +502,9 @@
         var allLines = L.polyline(polylineCoords);
         fileExtents[fileName] = allLines.getBounds();
         map.fitBounds(fileExtents[fileName]);
+
+        // Add lines to legend
+        makeLegend(fileName);
 
       })
 
@@ -506,7 +524,10 @@
 
       // show the right file as selected
       fileWasSelected(fileName);
-      
+
+      // Update the legend
+      makeLegend(fileName);
+
       //show points for the most recently selected segment
       if (selectedLines[fileName] >= 0) {
         showVertices(selectedLines[fileName]);
