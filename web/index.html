@@ -3,7 +3,7 @@
 <head>
   <meta charset='utf-8'>
   <meta name="viewport" content="width=device-width,height=device-height, user-scalable=no" />
-  <title>Overflight data</title>
+  <title>Overflight editor</title>
   <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.2.0/dist/leaflet.css" />
   <script src="./node_modules/leaflet/dist/leaflet.js"></script>
   <script src="./node_modules/leaflet-filelayer/src/leaflet.filelayer.js"></script>
@@ -63,6 +63,21 @@
       .legend-row {
         height: 50px;
       }
+
+      .legend-row-selected {
+        height: 50px;
+        background-color: rgb(90, 90, 90);
+      }
+
+      .legend-cell {
+        color: rgb(100, 100, 100);
+        text-align: center;
+      }
+
+      .legend-cell-selected {
+        color: rgb(130, 130, 130);
+        text-align: center;
+      }
       
       #dashboard-container {
         padding: 20;
@@ -118,7 +133,10 @@
         </div>
         <div style="max-height: 40%;">
           <table style="width: 100%; background-color: rgb(60, 60, 60)">
-            <tbody class="dark-scrollbar" id="legend" style="display: block; max-height:40%;">
+            <tr style="text-align: center;">
+              <!--<th> </th><th>Departure time</th>-->
+            </tr>
+            <tbody class="dark-scrollbar" id="legend" style="display: block; width:100%; max-height:40%;">
               <!-- rows added dynamically in js -->
             </tbody>
           </table>
@@ -133,7 +151,7 @@
             <button class="button data-button" id="save-button">Save tracks</button>
           </div>
           <div class="col-sm-2">
-            <button class="button data-button" id="save-button">Import data</button>
+            <!--<button class="button data-button" id="save-button">Import data</button>-->
           </div>          
 
         </div>
@@ -185,6 +203,7 @@
 
       // Create the new point geojson by looping through all points 
       //  of the original and adding each .feature to the json
+      var newDepartureTime = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features[vertexID].properties.ak_datetime
       var newGeoJSON = {
         type: "FeatureCollection",
         features: []
@@ -201,8 +220,11 @@
             //  are still related to the line
             theseProperties.mapID = newSegmentID;
             theseProperties.min_index = vertexID;
+            layer.feature.properties.departure_datetime = newDepartureTime;
             // add this feature
             newGeoJSON.features.push(layer.feature);
+
+            console.log(layer.feature)
 
             // if this feature isn't the splitting vertex, 
             //  drop it from the original point layer
@@ -216,6 +238,12 @@
         onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
         pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, newColor))
       });
+
+      // Update the legend
+      var thisInfo = newGeoJSON.features[0].properties;
+      thisInfo['visible'] = true;
+      trackInfo[fileName][newSegmentID] = thisInfo;
+      updateLegend(fileName);
 
     }
 
@@ -297,6 +325,36 @@
     }
 
 
+    function selectLegendItem(id) {
+      /* 
+      Make item look selected in the legend
+      */
+
+      // Deselect all currently selected cell (<td>) items,
+      //  which actually contain the formatting
+      $('.legend-cell-selected')
+        .removeClass('legend-cell-selected')
+        .addClass('legend-cell');
+      
+      // Remove the selection class from the row (<tr>)
+      $('.legend-row-selected')
+        .removeClass('legend-row-selected')
+        .addClass('legend-row')
+
+      // The row was a assigned the id, so get it's children (the <td>s)
+      //  and add the class that contains the 
+      $('#legend_' + id)
+        .removeClass('legend-row')
+        .addClass('legend-row-selected')
+        .children()
+        .removeClass('legend-cell')
+        .addClass('legend-cell-selected');
+
+        console.log($('#legend_' + id))
+        console.log($('#legend_' + id).children())
+    }
+
+
     function onLineClick(e) {
       /*
       When a line is clicked, hide the vertices of the active 
@@ -307,7 +365,9 @@
         var thisLineID = getLineID(e.target);
 
         showVertices(thisLineID);
-        
+
+        selectLegendItem(thisLineID);
+
         L.DomEvent.stop(e) // don't propagate to the map
       }
     }
@@ -388,7 +448,7 @@
     }
 
 
-    function makeLegend(fileName){
+    function updateLegend(fileName){
 
       // remove all items from the current legend
       $('#legend').empty();
@@ -401,18 +461,21 @@
 
         var thisColor = colors[fileName][segmentID];
         var htmlString = (
-          '<tr>' +
-            '<td class="legend-row">' + 
-              '<svg height="10" width="100">' + 
-                '<line x1="15" y1="5" x2="85" y2="5" style="stroke:' + thisColor + '; stroke-width:3;"/>' +
+          '<tr class="legend-row" id="legend_' + thisInfo.mapID + '">' +
+            '<td class="legend-cell">' + 
+              '<svg height="10" width="80">' + 
+                '<line x1="15" y1="5" x2="65" y2="5" style="stroke:' + thisColor + '; stroke-width:3;"/>' +
               '</svg>' + 
             '</td>' + 
-            '<td>' + 
+            '<td class="legend-cell">' + 
               thisInfo.departure_datetime + 
             '</td>' +
           '</tr>'
         )
         $(htmlString).appendTo('#legend');
+
+      // select the row corresponding to the selected line
+      selectLegendItem(selectedLines[fileName])
       }
     }
 
@@ -504,7 +567,7 @@
         map.fitBounds(fileExtents[fileName]);
 
         // Add lines to legend
-        makeLegend(fileName);
+        updateLegend(fileName);
 
       })
 
@@ -526,7 +589,7 @@
       fileWasSelected(fileName);
 
       // Update the legend
-      makeLegend(fileName);
+      updateLegend(fileName);
 
       //show points for the most recently selected segment
       if (selectedLines[fileName] >= 0) {
