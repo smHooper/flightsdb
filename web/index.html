@@ -65,7 +65,7 @@
       }
       
       .legend-row:hover {
-        background-color: rgb(65, 65, 73);
+        background-color: rgb(65, 65, 70);
         cursor: pointer;
       }
 
@@ -118,6 +118,72 @@
       }
 
 
+      /* Custom checkbox*/
+      /* The container */
+      .checkmark-container {
+        display: block;
+        position: relative;
+        cursor: pointer;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+
+      /* Hide the browser's default checkbox */
+      .checkmark-container input {
+        position: absolute;
+        opacity: 0;
+        cursor: pointer;
+        height: 0;
+        width: 0;
+      }
+
+      /* Create a custom checkbox */
+      .checkmark {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 25px;
+        width: 25px;
+        background-color: rgb(80, 80, 80);
+        vertical-align: center;
+        /*horizontal-align: center;*/
+      }
+
+      /* When the checkbox is checked, make the background lighter */
+      .checkmark-container input:checked ~ .checkmark {
+        background-color: rgb(100, 100, 100);
+      }
+
+      /* Create the checkmark/indicator (hidden when not checked) */
+      .checkmark:after {
+        content: "";
+        position: absolute;
+        /*display: none;*/
+        opacity: 0;
+      }
+
+      /* Show the checkmark when checked */
+      .checkmark-container input:checked ~ .checkmark:after {
+        /*display: block;*/
+        opacity: 1;
+      }
+
+      /* Style the checkmark/indicator */
+      .checkmark-container .checkmark:after {
+        left: 9px;
+        top: 5px;
+        width: 7px;
+        height: 12px;
+        border: solid rgb(180, 180, 180);
+        border-width: 0 2px 2px 0;
+        -webkit-transform: rotate(45deg);
+        -ms-transform: rotate(45deg);
+        transform: rotate(45deg);
+        vertical-align: center;
+      }
+
   </style>
 </head>
 
@@ -132,7 +198,7 @@
         <div>
           <h3 style="color: rgb(110, 110, 110);">Files to import</h3>
           <div class="dark-scrollbar">
-            <table id='files-table' style="width: 99%; max-height: 30%; background-color: rgb(60, 60, 60)">
+            <table id='files-table' style="width: 99%; min-height:15%; max-height: 30%; background-color: rgb(60, 60, 60)">
               <!-- rows added dynamically in js -->
             </table>
           </div>
@@ -142,7 +208,7 @@
             <tr style="text-align: center;">
               <!--<th> </th><th>Departure time</th>-->
             </tr>
-            <tbody class="dark-scrollbar" id="legend" style=" width:100%; max-height:40%;">
+            <tbody class="dark-scrollbar" id="legend" style="width:100%; min-height:20%; max-height:40%;">
               <!-- rows added dynamically in js -->
             </tbody>
           </table>
@@ -314,7 +380,15 @@
 
     function hideVertices(id) {
       var fileName = $('.file-list-row-selected').text()
-      map.removeLayer(pointGeojsonLayers[fileName][id]);   
+      map.removeLayer(pointGeojsonLayers[fileName][id]); 
+
+      //unselect this legend item (if it's selected)
+      $('#legend_' + id)
+        .removeClass('legend-row-selected')
+        .addClass('legend-row')
+        .children()
+          .removeClass('legend-cell-selected')
+          .addClass('legend-cell');
     }
 
 
@@ -468,6 +542,12 @@
             '<td class="legend-cell" style="text-align:left;">' + 
               thisInfo.departure_datetime + 
             '</td>' +
+            '<td class="legend-cell" style="text-align:center;">' + 
+              '<label class="checkmark-container">' +
+                '<input type="checkbox" checked="checked" id="legend-checkmark_' + segmentID + ' style="">' +
+                '<span class="checkmark"></span>' +
+              '</label>' + 
+            '</td>' +
           '</tr>'
         )
         $(htmlString)
@@ -477,7 +557,22 @@
             selectLegendItem(thisID);
           })
           .appendTo('#legend');
-          
+
+        // Handle clicks on this item's checkbox
+        $('#legend-checkmark_' + segmentID).change(function() {
+          var thisID = $(this)[0].id.replace('legend-checkmark_', '');
+
+          if (!this.checked) {// state is after click
+            if (thisID == selectedLines[fileName]) {
+              hideVertices(thisID);
+            }
+            map.removeLayer(lineLayers[fileName][thisID]);
+            trackInfo[fileName][thisID].visible = false;
+          } else {
+            map.addLayer(lineLayers[fileName][thisID]);
+            trackInfo[fileName][thisID].visible = true;
+          }
+        })
 
       // select the row corresponding to the selected line
       selectLegendItem(selectedLines[fileName]);
