@@ -28,10 +28,10 @@
       
       #map { 
         position: relative; 
-        height: 800px; */
+        min-height: 800px;
         margin-bottom: 0;
         margin-top: 0;
-        width:100%;
+        width: 100%;
       }
 
       /*.card-header {
@@ -58,7 +58,11 @@
       }
 
       .card-header-anchor-selected {
-        /*empty class for IDing the the selected card*/
+        color: rgb(150, 150, 150);
+      }
+
+      .card-header a.card-header-anchor-selected{
+        color: rgb(150, 150, 150);
       }
 
       .show {
@@ -86,6 +90,7 @@
       }
       
       .legend-row:hover {
+        color: rgb(120, 120, 120);
         background-color: rgb(65, 65, 70);
         cursor: pointer;
       }
@@ -102,6 +107,11 @@
         display: inline-block;
         vertical-align: center;
         padding-top: 12px;
+        transition: 0.2s;
+      }
+
+      .legend-cell:hover {
+        color: rgb(120, 120, 120);
       }
 
       .legend-cell-selected {
@@ -213,17 +223,44 @@
         vertical-align: center;
       }
 
+      /* Track info form*/
+      input {
+        box-sizing: border-box;
+
+      }
+      .track-info-label {
+        color: rgb(125, 125, 125);
+        display: block;
+        margin-bottom: 10px;
+      }
+      .track-info-textbox {
+        color: rgb(135, 135, 135);
+        background-color: rgb(75, 75, 75);
+        border: none;
+        display: block;
+        width: 100%;
+        min-width: 80px;
+        height: 40px;
+        padding-left: 7px;
+      }
+      .input-container {
+        display: inline-block; 
+        width: 50%; 
+        padding: 15px;
+      }
+
   </style>
 </head>
 
 <body>
 
-  <div id="dashboard-container" class="container-fluid ">
+  <div id="dashboard-container" class="container-fluid" style="display:flex;">
     
-    <div class="row h-100" >
+    <div class="row h-100" style="display: flex; width:100%">
       
-      <div id='menu-container' class="col-sm-3" style="align-items: stretch;">
+      <div id='menu-container' class="col-sm-3" style="display: flex; flex-direction: column;">
         <div>
+          <!-- File menu and legend-->
           <h3 style="color: rgb(110, 110, 110);">Files to import</h3>
           <div style="min-height:65%; height:65%; overflow:auto; align-items:stretch;" >
             <div class='accordion' id='file-list'>
@@ -231,22 +268,49 @@
             </div>
           </div>
         </div>
-        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; max-height:40%; background-color: rgb(60, 60, 60);">
+
+        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; max-height:40%; background-color: rgb(60, 60, 60); padding: 20px;">
           <!-- Info about each track-->
+          <form style="width: 100%; position: relative;">
+
+            <div class="row" style="display: flex;">
+              <div class="input-container">
+                <label class="track-info-label">Submitter</label>
+                <input type="text" class="track-info-textbox" id="textbox-submitted_by" name="submitted_by">
+              </div>
+              <div class="input-container">
+                <label class="track-info-label">Time submitted</label>
+                <input type="text" class="track-info-textbox" id="textbox-time_submitted" name="time_submitted">
+              </div>
+            </div>
+
+            <div class="row" style="display: flex;">
+              <div class="input-container">
+                <label class="track-info-label">Tail number</label>
+                <input type="text" class="track-info-textbox" id="textbox-registration" name="registration">
+              </div>
+              <div class="input-container">
+                <label class="track-info-label">Editor</label>
+                <input type="text" class="track-info-textbox" id="textbox-editor" name="editor">
+              </div>
+            </div>
+
+          </form>
         </div>
       </div>
       
-      <div id='map-container' class="col-sm-9">
-        <div id='map'></div>
+      <div id='map-container' class="col-sm-9 col-md-9 col-lg-9" style="display: inline-block;">
+        <div id='map'>
+        </div>
 
         <div class="row" style="top: 10px;">
           <div class="col-sm-2">
             <button class="button data-button" id="save-button">Save tracks</button>
           </div>
+
           <div class="col-sm-2">
             <!--<button class="button data-button" id="save-button">Import data</button>-->
           </div>          
-
         </div>
       </div>
     
@@ -478,7 +542,7 @@
         showVertices(thisLineID);
 
         selectLegendItem(thisLineID);
-        console.log($(`#legend-${getSelectedFileName()}-${thisLineID}`))
+
         $(`#legend-${getSelectedFileName()}`)
           .animate(
             {scrollTop: $(`#legend-${getSelectedFileName()}`).position().top}, 
@@ -692,8 +756,11 @@
       $('#card-' + oldFileName)
         .css('background-color', 'rgb(75, 75, 75')
           .find('a')
-            .css('color', 'rgb(125, 125, 125)')
-            .removeClass('card-header-anchor-selected'); // maintaining the class isn't necessary right now, but keep this in here anyway
+            //.css('color', 'rgb(125, 125, 125)')
+            .removeClass('card-header-anchor-selected')
+            /*.hover(function() {
+              $(this).css('color', 'rgb(125, 125, 125)')
+            });*/
 
       $('.collapse').each(function(){
         var thisFileName = $(this)[0].id.replace('cardContent-', '');
@@ -704,7 +771,7 @@
           $('#card-' + thisFileName)
             .css('background-color', 'rgb(85, 85, 85)')
             .find('a')
-              .css('color', 'rgb(150, 150, 150)')
+              //.css('color', 'rgb(150, 150, 150)')
               .addClass('card-header-anchor-selected');
           
         }
@@ -731,7 +798,7 @@
       fileExtents[fileName] = {};
       trackInfo[fileName] = {};  
 
-      $.getJSON(
+      var deferred = $.getJSON(
         filePath,
         function(data) {
           // Each item in the JSON file is a separate geojson 
@@ -781,6 +848,7 @@
 
       })
 
+      return deferred;
 
     }
 
@@ -852,6 +920,15 @@
 
     }
 
+    function fillTrackInfo(){
+
+      var fileName = getSelectedFileName();
+      var thisInfo = trackInfo[fileName][selectedLines[fileName]];
+      for (key in thisInfo) {
+        console.log(key + ': ' + thisInfo[key])
+        $('#textbox-' + key).val(thisInfo[key]);
+      }
+    }
 
     //var startPoint = [63.1249, -149.254];
     var map = L.map('map', {editable: true})//.setView(startPoint, 10)
@@ -880,10 +957,28 @@
         files.forEach(function(filePath) {
           addFileToMenu(filePath);
         })
-        //currentFile = files[1].replace('data/', '').replace('.json', '')
+
         fileWasSelected(files[1].replace('data/', '').replace('.json', ''))
-        loadTracksFromJSON(files[1]) // load any file, doesn't matter which
+        var deferred = loadTracksFromJSON(files[1]) // load any file, doesn't matter which
+        
+        // When the tracks have finished loading, get track info
+        deferred.done(function() {
+          $.ajax({
+            url: 'geojson_io.php',
+            method: 'POST',
+            data: {action: 'getUser'},
+            success: function(username){
+              // If authentication failed, do nothing
+              if (username) {
+                $('#textbox-editor').val(username);
+              }
+            }
+          })
+          // Fill in the rest of the track info (from reading the geojsons)
+          fillTrackInfo(); 
+        })
       }
+
     });
 
     var deleteEvent = document.addEventListener('keydown', onKeyDown);

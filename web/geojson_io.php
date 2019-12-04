@@ -20,7 +20,14 @@ if (isset($_POST['action'])) {
 		} else {
 			echo false;
 		}
-	}//*/
+	}
+
+	if ($_POST['action'] == 'getUser') {
+		//echo `//inpdenards/overflights/overflights/python -c "import os; print(os.environ.get('USERNAME'))"`;
+		if($_SERVER['AUTH_USER']) echo preg_replace("/^.+\\\\/", "", $_SERVER["AUTH_USER"]);
+    	else echo false;
+
+	}
 }
 
 ?>
