@@ -41,15 +41,24 @@
       .card {
         /*height: 60px;*/
         /*border: 2px solid rgb(100, 100, 100);*/
-        color: rgb(110, 110, 110);
+        color: rgb(125, 125, 125);
         background-color: rgb(75, 75, 75);
 
       }
 
-      .card-header:hover {
-        font-weight: bold;
-        border: 3px solid rgb(100, 100, 100);
+      .card-header a{
+        transition: 0.3s;
+        color: rgb(125, 125, 125);
+      }
+
+      .card-header a:hover {
+        /*font-weight: bold;*/
+        color: rgb(150, 150, 150);
         cursor: pointer;
+      }
+
+      .card-header-anchor-selected {
+        /*empty class for IDing the the selected card*/
       }
 
       .show {
@@ -62,6 +71,10 @@
         text-align: center;
       }
 
+      .card-footer {
+        height: 30px;
+        background-color: rgb(60, 60, 60);
+      }
       /*.show:hover {
         cursor: auto;
         border: 4px solid rgb(100, 100, 100);
@@ -96,6 +109,7 @@
         text-align: center;
         display: inline-block;
         vertical-align: center;
+        padding-top: 12px;
       }
       
       #dashboard-container {
@@ -159,14 +173,16 @@
         left: 0;
         height: 20px;
         width: 20px;
-        background-color: rgb(80, 80, 80);
+        background-color: none;
+        border: 2px solid rgb(90, 90, 90);
         vertical-align: center;
         horizontal-align: center;
       }
 
-      /* When the checkbox is checked, make the background lighter */
+      /*When the checkbox is checked, make the background lighter*/ 
       .checkmark-container input:checked ~ .checkmark {
         background-color: rgb(100, 100, 100);
+        border: none;
       }
 
       /* Create the checkmark/indicator (hidden when not checked) */
@@ -206,15 +222,17 @@
     
     <div class="row h-100" >
       
-      <div id='menu-container' class="col-sm-3">
+      <div id='menu-container' class="col-sm-3" style="align-items: stretch;">
         <div>
           <h3 style="color: rgb(110, 110, 110);">Files to import</h3>
-          <div class='accordion' id='file-list'>
-            <!--items added dynamically on load -->
+          <div style="min-height:65%; height:65%; overflow:auto; align-items:stretch;" >
+            <div class='accordion' id='file-list'>
+              <!--items added dynamically on load -->
+            </div>
           </div>
         </div>
-        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; max-height:40%; background-color: rgb(60, 60, 60)">
-          
+        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; max-height:40%; background-color: rgb(60, 60, 60);">
+          <!-- Info about each track-->
         </div>
       </div>
       
@@ -247,13 +265,18 @@
     }
 
 
+    function getSelectedFileName() {
+      return $('.card-header-anchor-selected.card-link.text-center > .card-title').text();
+    }
+
+
     function splitAtVertex(segmentID, vertexID, minVertexIndex){
       /*
       Split a line at the associated vertex. vertexID is the ID of the 
       point from the geojson used to create it
       */
 
-      var fileName = $('.collapse.show').text();
+      var fileName = getSelectedFileName();//$('.collapse.show').text();
       var originalLine = lineLayers[fileName][segmentID];
       var allLatlngs = originalLine.getLatLngs();
 
@@ -363,8 +386,9 @@
 
     function showVertices(id) {
 
-      var fileName = currentFile//$('.collapse.show').text()
-      var currentLineID = selectedLines[fileName]
+      var fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
+
+      var currentLineID = selectedLines[fileName];
       if (currentLineID >= 0) {
         hideVertices(currentLineID);
       }
@@ -382,11 +406,11 @@
 
 
     function hideVertices(id) {
-      var fileName = currentFile//$('.collapse.show').text()
+      var fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
       map.removeLayer(pointGeojsonLayers[fileName][id]); 
 
       //unselect this legend item (if it's selected)
-      $('#legend_' + id)
+      $('#legend-' + fileName + '-' + id)
         .removeClass('legend-row-selected')
         .addClass('legend-row')
         .children()
@@ -396,7 +420,7 @@
 
 
     function getLineID(layer) {
-      var fileName = $('.collapse.show').text()
+      var fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
       for (var segmentID in lineLayers[fileName]) {
         if (lineLayers[fileName][segmentID] == layer) {
           return segmentID;
@@ -410,6 +434,7 @@
       Make item look selected in the legend
       */
 
+      var fileName = getSelectedFileName()
       // Deselect all currently selected cell (<td>) items,
       //  which actually contain the formatting
       $('.legend-cell-selected')
@@ -423,12 +448,21 @@
 
       // The row was a assigned the id, so get it's children (the <td>s)
       //  and add the class that contains the 
-      $('#legend_' + id)
+      $('#legend-' + fileName + '-' + id)
         .removeClass('legend-row')
         .addClass('legend-row-selected')
         .children()
         .removeClass('legend-cell')
         .addClass('legend-cell-selected');
+
+      // If the checkbox was unselected, select it
+      // This only works if legend-row events are filtered and only allowed 
+      //  to propogate if the event didn't originate on a checkbox
+      var thisCheckbox = $(`#legend-checkmark-${fileName}-${id}`);
+      if (!thisCheckbox.prop('checked')) {
+        thisCheckbox.prop('checked', true);
+        lineLayers[fileName][id].addTo(map);
+      }
     }
 
 
@@ -500,10 +534,11 @@
       If the map is clicked (not a polyline layer), deselect the current layer
       */
 
-      var currentLineID = selectedLines[$('.collapse.show').text()]
+      var fileName = getSelectedFileName()
+      var currentLineID = selectedLines[fileName]
       if (currentLineID >= 0 && !e.originalEvent.ctrlKey) {
         hideVertices(currentLineID);
-        selectedLines[$('.collapse.show').text()] = -1;
+        selectedLines[fileName] = -1;
       }
     }
 
@@ -524,7 +559,7 @@
 
        // add an anchor to the card header
        $(`<a class="collapsed card-link text-center" data-toggle="collapse" href="#${contentID}">
-            <p class="card-title" style="color: rgb(110, 110, 110);">${fileName}</p>
+            <p class="card-title">${fileName}</p>
           </a>`)
        .appendTo('#' + cardHeaderID)
        .on('click', function() {
@@ -541,6 +576,7 @@
           '<div class="card-body p-0" id="' + contentID + '-body">' +
             '<div class="dark-scrollbar" id="legend-' + fileName + '" style="display:block; width:100%; overflow:auto; max-height:400px;"></div>' +
           '</div>' +
+          '<div class="card-footer"></div>' +
         '</div>'
         ).appendTo('#' + cardID);
 
@@ -577,17 +613,23 @@
         </div>
         `;
         $(htmlString)
-          .click(function() {
+          .click(function(event) {
+            // If the event originated on a checkbox, exit
+            if ($(event.target).hasClass('checkmark') || $(event.target).attr('checked')) {
+              return;
+            }
+            console.log(event.target)
             var thisID = $(this)[0].id.replace('legend-' + fileName + '-', '');
+            
             showVertices(thisID);
             selectLegendItem(thisID);
           })
           .appendTo('#' + legendID);
 
         // Handle clicks on this item's checkbox
-        $('#legend-checkmark-' + fileName + '-' + segmentID).change(function() {
-          var thisID = $(this)[0].id.replace('legend-checkmark-' + fileName, '');
-
+        $('#legend-checkmark-' + fileName + '-' + segmentID).change(function(event) {
+          
+          var thisID = $(this)[0].id.replace(`legend-checkmark-${fileName}-` , '');
           if (!this.checked) {// state is after click
             if (thisID == selectedLines[fileName]) {
               hideVertices(thisID);
@@ -598,13 +640,15 @@
             map.addLayer(lineLayers[fileName][thisID]);
             trackInfo[fileName][thisID].visible = true;
           }
-
+          
+          // Make sure the click doesn't continue to the .legend-row and highlight it
+          event.stopPropagation();
         })
-
+        
+      }
+      
       // select the row corresponding to the selected line
       selectLegendItem(selectedLines[fileName]);
-      }
-
       //console.log($('#legend_0'))
     }
 
@@ -623,15 +667,33 @@
       // remove selection if this is not the currently selected file.
       //  otherwise, add -selected style
       $('.collapse.show').collapse('hide')
-      //  .removeClass('show')
-        //.addClass('file-list-row');
+
+      var fileName = filePath.replace('data/', '').replace('.json', '');
+      
+      // remove selected class styling from the .card-header anchor
+      var oldFileName = getSelectedFileName();//currentFile
+      $('#card-' + oldFileName)
+        .css('background-color', 'rgb(75, 75, 75')
+          .find('a')
+            .css('color', 'rgb(125, 125, 125)')
+            .removeClass('card-header-anchor-selected'); // maintaining the class isn't necessary right now, but keep this in here anyway
+
       $('.collapse').each(function(){
-        if ($(this).text() == filePath.replace('data/', '').replace('.json', '')) {
+        var thisFileName = $(this)[0].id.replace('cardContent-', '');
+        if (thisFileName == fileName) {
           $(this).collapse('show');
-          currentFile = filePath.replace('data/', '').replace('.json', '');
+
+          // Style the card to look selected
+          $('#card-' + thisFileName)
+            .css('background-color', 'rgb(85, 85, 85)')
+            .find('a')
+              .css('color', 'rgb(150, 150, 150)')
+              .addClass('card-header-anchor-selected');
+          
         }
       });
-      
+
+     
     }
 
 
@@ -790,7 +852,7 @@
     var trackInfo = {};
     var selectedLines = {};
     var fileExtents = {};
-    var currentFile = ""; // keep track with a global var because Boostrap's .collapse() is asynchonous so the new file might be trying to load before the .show class is added to the .collapse element
+    //var currentFile = ""; // keep track with a global var because Boostrap's .collapse() is asynchonous so the new file might be trying to load before the .show class is added to the .collapse element
 
     $.ajax({
       url: 'geojson_io.php',
@@ -801,7 +863,7 @@
         files.forEach(function(filePath) {
           addFileToMenu(filePath);
         })
-        currentFile = files[1].replace('data/', '').replace('.json', '')
+        //currentFile = files[1].replace('data/', '').replace('.json', '')
         loadTracksFromJSON(files[1]) // load any file, doesn't matter which
       }
     });
