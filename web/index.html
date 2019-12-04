@@ -301,7 +301,7 @@
 
       // Create the new point geojson by looping through all points 
       //  of the original and adding each .feature to the json
-      var newDepartureTime = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features[vertexID].properties.ak_datetime
+      var newDepartureTime = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features[vertexIndex].properties.ak_datetime
       var newGeoJSON = {
         type: "FeatureCollection",
         features: []
@@ -339,8 +339,8 @@
       var thisInfo = newGeoJSON.features[0].properties;
       thisInfo['visible'] = true;
       trackInfo[fileName][newSegmentID] = thisInfo;
+      showVertices(newSegmentID);
       updateLegend(fileName);
-
     }
 
 
@@ -459,7 +459,7 @@
       // This only works if legend-row events are filtered and only allowed 
       //  to propogate if the event didn't originate on a checkbox
       var thisCheckbox = $(`#legend-checkmark-${fileName}-${id}`);
-      if (!thisCheckbox.prop('checked')) {
+      if (!thisCheckbox.prop('checked') && lineLayers[fileName][id] != undefined) {
         thisCheckbox.prop('checked', true);
         lineLayers[fileName][id].addTo(map);
       }
@@ -478,6 +478,12 @@
         showVertices(thisLineID);
 
         selectLegendItem(thisLineID);
+        console.log($(`#legend-${getSelectedFileName()}-${thisLineID}`))
+        $(`#legend-${getSelectedFileName()}`)
+          .animate(
+            {scrollTop: $(`#legend-${getSelectedFileName()}`).position().top}, 
+            300
+          );
 
         L.DomEvent.stop(e) // don't propagate to the map
       }
@@ -490,19 +496,22 @@
       map and delete references to them
       */
 
-      // remove from the map
-      var fileName = $('.file-list-row-selected').text()
-      var currentLineID = selectedLines[fileName]
+      var fileName = getSelectedFileName();
+      var currentLineID = selectedLines[fileName];
       if (currentLineID >= 0 && confirm("Are you sure you want to delete the select track?")) {
         map.removeLayer(pointGeojsonLayers[fileName][currentLineID]);
         map.removeLayer(lineLayers[fileName][currentLineID]);
         delete pointGeojsonLayers[fileName][currentLineID];
         delete lineLayers[fileName][currentLineID];
+        delete trackInfo[fileName][currentLineID];
+        $(`#legend-${fileName}-${currentLineID}`)
+          .fadeOut(500, function() {$(this).remove()});// remove the item from the legend
         selectedLines[fileName] = -1;
       } else {
         alert("No track currently selected. Click a track first then press 'Delete'")
       }
-      
+      //updateLegend();
+
     }
 
 
@@ -563,7 +572,12 @@
           </a>`)
        .appendTo('#' + cardHeaderID)
        .on('click', function() {
-        if (!$(this).children().hasClass('show')){
+        if (!$(this).hasClass('card-header-anchor-selected')){
+          
+          // Make sure the new card is given the selected class before trying to load data
+          fileWasSelected(fileName);
+          
+          // If the points don't yet exist, this file hasn't been loaded, so load them
           if (pointGeojsonLayers[fileName] == undefined) {
             loadTracksFromJSON(filePath);
           } else {
@@ -571,6 +585,7 @@
           }
         }
        });
+
        // Add the card content to the card
        $('<div id="' + contentID + '" class="collapse" aria-labeledby="' + cardHeaderID + '" data-parent="#file-list">' + 
           '<div class="card-body p-0" id="' + contentID + '-body">' +
@@ -590,8 +605,11 @@
       
       // Add a new row for each track
       for (segmentID in trackInfo[fileName]) {
+        /*// If the element already exists, skip it
+        if ($(`#legend-${fileName}-${segmentID}`).length) {
+          continue;
+        }*/
         var thisInfo = trackInfo[fileName][segmentID];
-
         var thisColor = colors[fileName][segmentID];
         var htmlString = 
         `
@@ -618,9 +636,8 @@
             if ($(event.target).hasClass('checkmark') || $(event.target).attr('checked')) {
               return;
             }
-            console.log(event.target)
+
             var thisID = $(this)[0].id.replace('legend-' + fileName + '-', '');
-            
             showVertices(thisID);
             selectLegendItem(thisID);
           })
@@ -748,7 +765,7 @@
           trackInfo[fileName][segmentID] = thisInfo;
         }
 
-        fileWasSelected(fileName);
+        //fileWasSelected(fileName);
 
         // Show first line
         if (selectedLines[fileName] == undefined) {
@@ -779,7 +796,7 @@
       }
 
       // show the right file as selected
-      fileWasSelected(fileName);
+      //fileWasSelected(fileName);
 
       // Update the legend
       updateLegend(fileName);
@@ -864,6 +881,7 @@
           addFileToMenu(filePath);
         })
         //currentFile = files[1].replace('data/', '').replace('.json', '')
+        fileWasSelected(files[1].replace('data/', '').replace('.json', ''))
         loadTracksFromJSON(files[1]) // load any file, doesn't matter which
       }
     });
