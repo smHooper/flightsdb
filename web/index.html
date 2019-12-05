@@ -67,7 +67,7 @@
       }
 
       .show {
-        max-height: 400px;
+        max-height: 20%;
         /*border: 4px solid rgb(100, 100, 100);*/
         /*font-weight: bold;*/
         color: rgb(125, 125, 125);
@@ -138,6 +138,12 @@
         color: rgb(200, 200, 200);
         border: none;
         display: inline-block;
+        transition: 0.4s;
+      }
+
+      .data-button:hover {
+        /*background-color: hsl(38, 60%, 40%);*/
+        color: hsl(38, 95%, 45%);
       }
 
       td {
@@ -244,9 +250,7 @@
         height: 40px;
         padding-left: 7px;
       }
-      .form-control:focus {
 
-      }
       input[type="text"]:focus {
         -webkit-box-shadow: none;
         outline: -webkit-focus-ring-color auto 0px;
@@ -278,30 +282,41 @@
           </div>
         </div>
 
-        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; max-height:40%; background-color: rgb(60, 60, 60); padding: 20px;">
+        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; background-color: rgb(60, 60, 60); padding: 20px;">
           <!-- Info about each track-->
-          <h4 style="color: rgb(110, 110, 110);">Track info</h4>
+          <div style="display:flex;">
+            <h4 style="color: rgb(110, 110, 110); display:inline-block;">Track info</h4>
+          </div>
           <form style="width: 100%; position: relative;">
 
             <div class="row" style="display: flex;">
               <div class="input-container">
                 <label class="track-info-label">Submitter</label>
-                <input type="text" class="track-info-textbox" id="textbox-submitted_by" name="submitted_by">
+                <input type="text" class="track-info-textbox" id="textbox-submitter" name="submitter" spellcheck="false">
               </div>
               <div class="input-container">
                 <label class="track-info-label">Time submitted</label>
-                <input type="text" class="track-info-textbox" id="textbox-time_submitted" name="time_submitted">
+                <input type="text" class="track-info-textbox" id="textbox-submission_time" name="submission_time" spellcheck="false">
               </div>
             </div>
 
             <div class="row" style="display: flex;">
               <div class="input-container">
                 <label class="track-info-label">Tail number</label>
-                <input type="text" class="track-info-textbox" id="textbox-registration" name="registration">
+                <input type="text" class="track-info-textbox" id="textbox-registration" name="registration" spellcheck="false">
               </div>
               <div class="input-container">
                 <label class="track-info-label">Editor</label>
-                <input type="text" class="track-info-textbox" id="textbox-editor" name="editor">
+                <input type="text" class="track-info-textbox" id="textbox-track_editor" name="editor" spellcheck="false">
+              </div>
+            </div>
+
+            <div class="row" style="display: flex;">
+              <div class="input-container" style="width:100%">
+                <label class="track-info-label">Submitter notes</label>
+                <div class="track-info-textbox" style="height:80px; overflow-y:auto; background-color: rgb(65, 65, 65); color(115, 115, 115);">
+                  <p id="p-submitter_notes" style="width:100%"></p>
+                </div>
               </div>
             </div>
 
@@ -663,7 +678,7 @@
        // Add the card content to the card
        $('<div id="' + contentID + '" class="collapse" aria-labeledby="' + cardHeaderID + '" data-parent="#file-list">' + 
           '<div class="card-body p-0" id="' + contentID + '-body">' +
-            '<div class="dark-scrollbar" id="legend-' + fileName + '" style="display:block; width:100%; overflow:auto; max-height:400px;"></div>' +
+            '<div class="dark-scrollbar" id="legend-' + fileName + '" style="display:block; width:100%; overflow:auto; max-height:250px;"></div>' +
           '</div>' +
           '<div class="card-footer"></div>' +
         '</div>'
@@ -789,7 +804,7 @@
             } 
         }
       });
-     
+      
     }
 
 
@@ -813,15 +828,37 @@
       var deferred = $.getJSON(
         filePath,
         function(data) {
+          /* data come in as
+          {
+            track_info: 
+              {
+                prop1: val1
+                ...
+              },
+            geojsons: 
+              {
+                0: geojson_data 
+                ...
+              }
+          }*/
+          console.log(filePath)
+          console.log(data)
+          data['track_info']['visible'] = true;
           // Each item in the JSON file is a separate geojson 
-          for (var segmentID in data) {
-            var geojson = data[segmentID];//$.parseJSON(data[segmentID]);
+          for (segmentID in data.geojsons) {
+            var geojson = data.geojsons[segmentID];
+            var firstProperties = geojson.features[0].properties
+            data.track_info['departure_datetime'] = firstProperties.departure_datetime
+            data.track_info['registration'] = firstProperties.registration
+            trackInfo[fileName][segmentID] = data.track_info
+            
             var color = getColor();
             colors[fileName][segmentID] = color;
             pointGeojsonLayers[fileName][segmentID] = L.geoJSON(geojson, {
               onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
               pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
             });
+
           }
         }
       ).done(function() {    
@@ -837,19 +874,13 @@
           line.on({click: onLineClick});
           lineLayers[fileName][segmentID] = line;
           polylineCoords.push(lineCoords[fileName][segmentID]);
-           
-          // Add info for the legend if it hasn't already been added
-          var thisInfo = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features[0].properties;
-          thisInfo['visible'] = true;
-          trackInfo[fileName][segmentID] = thisInfo;
         }
-
-        //fileWasSelected(fileName);
 
         // Show first line
         if (selectedLines[fileName] == undefined) {
           selectedLines[fileName] = 0;
         }
+
         showVertices(selectedLines[fileName]);
         var allLines = L.polyline(polylineCoords);
         fileExtents[fileName] = allLines.getBounds();
@@ -858,10 +889,11 @@
         // Add lines to legend
         updateLegend(fileName);
 
+        // Fill in the rest of the track info (from reading the geojsons)
+        fillTrackInfo(); 
       })
 
       return deferred;
-
     }
 
 
@@ -950,8 +982,10 @@
       for (key in thisInfo) {
         console.log(key + ': ' + thisInfo[key])
         $('#textbox-' + key).val(thisInfo[key]);
+        $('#p-' + key).text(thisInfo[key])//for the submitter comments
       }
     }
+
 
     //var startPoint = [63.1249, -149.254];
     var map = L.map('map', {editable: true})//.setView(startPoint, 10)
@@ -970,6 +1004,11 @@
     var selectedLines = {};
     var fileExtents = {};
     //var currentFile = ""; // keep track with a global var because Boostrap's .collapse() is asynchonous so the new file might be trying to load before the .show class is added to the .collapse element
+    
+    // Make sure files are read from disk every time
+    $(document).ready(function() {
+      $.ajaxSetup({ cache: false });
+    });
 
     $.ajax({
       url: 'geojson_io.php',
@@ -993,12 +1032,10 @@
             success: function(username){
               // If authentication failed, do nothing
               if (username) {
-                $('#textbox-editor').val(username);
+                $('#textbox-track_editor').val(username);
               }
             }
           })
-          // Fill in the rest of the track info (from reading the geojsons)
-          fillTrackInfo(); 
         })
       }
 

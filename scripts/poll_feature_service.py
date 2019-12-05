@@ -132,7 +132,7 @@ def get_submitter_email(agol_user, agol_user_emails):
     #   with "_nps" appended
     agol_user = agol_user.lower()
     if agol_user.endswith('_nps'):
-        return agol_user.replace('_nps')
+        return agol_user.replace('_nps', '')
     # Otherwise, try to look up the user in the
     elif agol_user in agol_user_emails:
         return agol_user_emails[agol_user]
@@ -150,6 +150,19 @@ def get_attachment_info(zip_path):
         submission_data = pd.read_sql("SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']), conn).squeeze(axis=0)
 
     return pd.concat([pd.Series(metadata), submission_data])
+
+
+def track_to_json(gdf, attachment_info):
+
+    unserializable_fields = ~gdf.dtypes.astype(str).isin(['int64', 'int32', 'float64', 'object'])
+    gdf.loc[:, unserializable_fields] = gdf.loc[:, unserializable_fields].astype(str)
+    geojson_strs = {}#seg_id: json.loads(df.to_json()) for seg_id, df in gdf.groupby('segment_id')}
+    for seg_id, df in gdf.groupby('segment_id'):#.apply(lambda df: df.index.min())
+        df['min_index'] = df.index.min()
+        df['point_index'] = df.index
+        geojson_strs[seg_id] = json.loads(df.to_json())
+
+    return {'geojsons': geojson_strs, 'track_info': attachment_info.astype(str).to_dict()}
 
 
 def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_conn, tracks_conn):
@@ -299,16 +312,20 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
             .to_sql('landings', landings_conn, if_exists='append', index=False)
 
     # Pre-process track data
+    import_params = param_dict['import_params'] if 'import_params' in param_dict else {}
     attachment_dir = os.path.join(download_dir, 'attachments')
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
 
         attachment_info = get_attachment_info(zip_path)
-
+        submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
         with zipfile.ZipFile(zip_path) as z:
             for fname in z.namelist():
-                _, ext = os.path.splitext(fname)
-                if ext not in ['.csv', '.gpx', '.gdb']:
+                basename, ext = os.path.splitext(fname)
+                basename = re.sub('\.|#', '_', basename)
+                if ext not in import_track.READ_FUNCTIONS:
                     MESSAGES.append(['%s is not in an accepted file format', 'warn_user'])
+                    continue
+
                 try:
                     z.extract(fname, attachment_dir)
                 except Exception as e:
@@ -317,8 +334,35 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                                     .format(file=fname,
                                             zip=zip_path,
                                             error=e,
-                                            submitter=get_submitter_email(attachment_info['Creator'], "param_dict['agol_users']")),
+                                            submitter=submitter),
                                      'warn_track'])
+
+                # Read the track file and get it into a format that the rest of import_track functions will understand
+                extracted_path = os.path.join(attachment_dir, fname)
+                gdf = import_track.format_track(extracted_path,
+                                                registration=attachment_info['tracks_tail_number'],
+                                                submission_method='survey123',
+                                                **import_params)
+                # Get submission info
+                this_agol_id = attachment_info['REL_GLOBALID'].replace('{', '').replace('}', '')
+                for k, v in submissions.loc[submissions.globalid == this_agol_id].squeeze().iteritems():
+                    # most object types can't be serialized as JSON, so make them strs
+                    attachment_info[k] = str(v) if v and v != 0 else ''
+                attachment_info['submitter'] = submitter
+                attachment_info['submitter_notes'] = attachment_info['tracks_notes']
+                '''gdf['submitter'] = submitter
+                gdf['agol_id'] = attachment_info['REL_GLOBALID'].replace('{', '').replace('}', '')
+                merged = gdf.merge(submissions, left_on='agol_id', right_on='globalid')
+                gdf['submission_time'] = merged.submission_time_y
+                gdf['submitter_notes'] = merged.tracks_notes'''
+
+                # Dump each line segment to a geojson string. Write a list of these strings as a JSON file to be read
+                #   by the web app
+                geojson_strs = track_to_json(gdf, attachment_info)
+                with open(os.path.join(attachment_dir, basename) + '_geojsons.json', 'w') as j:
+                    json.dump(geojson_strs, j, indent=4)
+                '''with open(os.path.join(attachment_dir, basename) + '_track_info.json', 'w') as j:
+                    json.dump(attachment_info.to_dict(), j)'''
 
     # Send email to track editors
 

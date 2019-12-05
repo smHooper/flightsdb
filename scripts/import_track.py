@@ -504,12 +504,14 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     gdf['duration_hrs'] = (gdf.landing_datetime - gdf.departure_datetime).dt.seconds/3600.0
 
     # Get metadata-y columns
-    gdf['time_submitted'] = (datetime.now()).strftime('%Y-%m-%d %H:%M')
+    gdf['submission_time'] = (datetime.now()).strftime('%Y-%m-%d %H:%M')
     gdf['submission_method'] = submission_method
     if operator_code:
         gdf['operator_code'] = operator_code
     if aircraft_type:
         gdf['aircraft_type'] = aircraft_type
+    if 'tracks_notes' in gdf:
+        gdf['submitter_notes'] = gdf.tracks_notes
 
     return gdf
 
@@ -531,11 +533,16 @@ def import_data(connection_txt, data=None, path=None, seg_time_diff=15, min_poin
     flight_columns = db_utils.get_db_columns('flights', engine)
     point_columns = db_utils.get_db_columns('flight_points', engine)
     line_columns = db_utils.get_db_columns('flight_lines', engine)
+    ''' ############ add submission table #############'''
 
     # separate flights, points, and lines
     flights = gdf[[c for c in flight_columns if c in gdf]].drop_duplicates()
     flights['end_datetime'] = gdf.groupby('flight_id').ak_datetime.max().values
-    flights['submitted_by'] = os.getlogin()
+    # if coming from web app, this should already be in the data so don't overwrite
+    if 'submitter' not in flights.columns:
+        flights['submitter'] = os.getlogin()
+    if 'track_editor' not in flights.columns:
+        flights['track_editor'] = flights.submitted_by
     flights['source_file'] = os.path.join(ARCHIVE_DIR, os.path.basename(path))
     if not len(flights):
         raise ValueError('No flight segments found in this file.')
