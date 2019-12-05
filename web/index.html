@@ -62,7 +62,8 @@
       }
 
       .card-header a.card-header-anchor-selected{
-        color: rgb(150, 150, 150);
+        transition: 0.3s;
+        color: hsl(38, 85%, 40%);
       }
 
       .show {
@@ -102,7 +103,7 @@
       }
 
       .legend-cell {
-        color: rgb(100, 100, 100);
+        color: rgb(110, 110, 110);
         text-align: center;
         display: inline-block;
         vertical-align: center;
@@ -243,6 +244,14 @@
         height: 40px;
         padding-left: 7px;
       }
+      .form-control:focus {
+
+      }
+      input[type="text"]:focus {
+        -webkit-box-shadow: none;
+        outline: -webkit-focus-ring-color auto 0px;
+        border: solid 1.5px hsl(38, 85%, 30%);
+      }
       .input-container {
         display: inline-block; 
         width: 50%; 
@@ -261,8 +270,8 @@
       <div id='menu-container' class="col-sm-3" style="display: flex; flex-direction: column;">
         <div>
           <!-- File menu and legend-->
-          <h3 style="color: rgb(110, 110, 110);">Files to import</h3>
-          <div style="min-height:65%; height:65%; overflow:auto; align-items:stretch;" >
+          <h4 style="color: rgb(110, 110, 110);">Files to import</h4>
+          <div style="min-height:65%; overflow:auto; align-items:stretch;" >
             <div class='accordion' id='file-list'>
               <!--items added dynamically on load -->
             </div>
@@ -271,6 +280,7 @@
 
         <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; max-height:40%; background-color: rgb(60, 60, 60); padding: 20px;">
           <!-- Info about each track-->
+          <h4 style="color: rgb(110, 110, 110);">Track info</h4>
           <form style="width: 100%; position: relative;">
 
             <div class="row" style="display: flex;">
@@ -773,10 +783,12 @@
             .find('a')
               //.css('color', 'rgb(150, 150, 150)')
               .addClass('card-header-anchor-selected');
-          
+            
+            if (oldFileName != thisFileName && trackInfo[thisFileName] != undefined) {
+              fillTrackInfo();
+            } 
         }
       });
-
      
     }
 
@@ -924,6 +936,17 @@
 
       var fileName = getSelectedFileName();
       var thisInfo = trackInfo[fileName][selectedLines[fileName]];
+
+      // If there's no info for the selected track (= -1), get the first 
+      //  one because each track for a given file has the same global track info
+      if (thisInfo == undefined) {
+        for (segmentID in trackInfo[fileName]) {
+          // get the first one
+          thisInfo = trackInfo[fileName][segmentID];
+          break;
+        }
+      }
+
       for (key in thisInfo) {
         console.log(key + ': ' + thisInfo[key])
         $('#textbox-' + key).val(thisInfo[key]);
