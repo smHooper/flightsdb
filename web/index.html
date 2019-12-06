@@ -26,14 +26,24 @@
         border-color: rgb(100, 100, 100);
       }
       
-      #map { 
+      /*#map { 
         position: relative; 
-        min-height: 800px;
+        min-height: 650px;
         margin-bottom: 0;
         margin-top: 0;
         width: 100%;
-      }
+      }*/
 
+      .leaflet-popup-content-wrapper {
+        background-color: rgb(85, 85, 85);
+        color: rgb(145, 145, 145);
+      }
+      .leaflet-popup-tip {
+        background-color: rgb(85, 85, 85);
+      }
+      .leaflet-popup-content p{
+        margin: 3px;
+      }
       /*.card-header {
         background-color: rgb(60, 60, 60);
         border-bottom:  
@@ -142,8 +152,8 @@
       }
 
       .data-button:hover {
-        /*background-color: hsl(38, 60%, 40%);*/
-        color: hsl(38, 95%, 45%);
+        background-color: hsl(38, 60%, 40%);
+        /*color: hsl(38, 95%, 45%);*/
       }
 
       td {
@@ -271,7 +281,7 @@
     
     <div class="row h-100" style="display: flex; width:100%">
       
-      <div id='menu-container' class="col-sm-3" style="display: flex; flex-direction: column;">
+      <div id='menu-container' class="col-sm-6 col-md-8 col-lg-4" style="display: flex; flex-direction: column;">
         <div>
           <!-- File menu and legend-->
           <h4 style="color: rgb(110, 110, 110);">Files to import</h4>
@@ -285,7 +295,13 @@
         <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; background-color: rgb(60, 60, 60); padding: 20px;">
           <!-- Info about each track-->
           <div style="display:flex;">
-            <h4 style="color: rgb(110, 110, 110); display:inline-block;">Track info</h4>
+            <div style="color: rgb(110, 110, 110); display:inline-block;">
+              <h4 style="color: inherit;">Track info</h4>
+              <!--<p id="track-info-subtitle" style="color: inherit; font-size:14px;"></p>
+              -->
+              <p id="p-submitted-at" style="color: inherit; font-size:14px; padding: 0px; margin-bottom:4px;"></p>
+              <p id="p-submitted-by" style="color: inherit; font-size:14px; padding: 0px;"></p>
+            </div>
           </div>
           <form style="width: 100%; position: relative;">
 
@@ -324,8 +340,8 @@
         </div>
       </div>
       
-      <div id='map-container' class="col-sm-9 col-md-9 col-lg-9" style="display: inline-block;">
-        <div id='map'>
+      <div id='map-container' class="col-sm-6 col-md-8 col-lg-8" style="display: inline-block;">
+        <div id='map'style="position: relative; min-height: 650px; margin-bottom: 0; margin-top: 0; width: 100%; height:90%;">
         </div>
 
         <div class="row" style="top: 10px;">
@@ -473,6 +489,32 @@
     }
 
 
+    function geojsonPointAsCircle(feature, latlng, color) {
+      var markerOptions = {
+        radius: 8,
+        weight: 1,
+        opacity: 1,
+        fillOpacity: 0.8,
+        fillColor: color,
+        color: color
+      }
+
+      var popup = L.popup({
+        autoPan: false,
+
+      })
+        .setContent(`
+          <div>
+            <p><strong>Time:</strong> ${feature.properties.ak_datetime}</p>
+            <p><strong>Altitude:</strong> ${feature.properties.altitude_ft} ft</p>
+          </div>
+        `);
+
+      return L.circleMarker(latlng, markerOptions)
+        .bindPopup(popup);
+    }
+
+
     function showVertices(id) {
 
       var fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
@@ -560,7 +602,7 @@
       When a line is clicked, hide the vertices of the active 
       line and show this line's vertices
       */
-      //e.orignalEvent.ctrlKey
+
       if (!e.originalEvent.ctrlKey) {
         var thisLineID = getLineID(e.target);
 
@@ -568,12 +610,21 @@
 
         selectLegendItem(thisLineID);
 
-        $(`#legend-${getSelectedFileName()}`)
-          .animate(
-            {scrollTop: $(`#legend-${getSelectedFileName()}`).position().top}, 
-            300
-          );
+        var scrollPosition = $(`#legend-${getSelectedFileName()}`).scrollTop();
+        var rowHeight = parseInt($(`#legend-${getSelectedFileName()}-${thisLineID}`).css('height').replace('px', ''));
+        var legendHeight = parseInt($(`#legend-${getSelectedFileName()}`).css('height').replace('px', ''));
+        var scrollTo = thisLineID * rowHeight - rowHeight;
 
+        //$(`#legend-${getSelectedFileName()}-${thisLineID}`).position().top
+        if (scrollTo < scrollPosition || scrollTo > scrollPosition + legendHeight) {
+          $(`#legend-${getSelectedFileName()}`)
+            .animate(
+              {scrollTop: scrollTo < 0 ? 0 : scrollTo}, 
+              300
+            );
+        } else {
+          var a = 1;
+        }
         L.DomEvent.stop(e) // don't propagate to the map
       }
     }
@@ -610,21 +661,6 @@
         deleteCurrentTrack();
       }
     }
-
-
-    function geojsonPointAsCircle(feature, latlng, color) {
-      var markerOptions = {
-        radius: 8,
-        weight: 1,
-        opacity: 1,
-        fillOpacity: 0.8,
-        fillColor: color,
-        color: color
-      }
-      return L.circleMarker(latlng, markerOptions);
-    }
-
-    //var currentLineID = 0;
     
 
     function onMapClick(e) {
@@ -770,6 +806,7 @@
 
 
     function fileWasSelected(filePath) {
+
       // remove selection if this is not the currently selected file.
       //  otherwise, add -selected style
       $('.collapse.show').collapse('hide')
@@ -841,8 +878,6 @@
                 ...
               }
           }*/
-          console.log(filePath)
-          console.log(data)
           data['track_info']['visible'] = true;
           // Each item in the JSON file is a separate geojson 
           for (segmentID in data.geojsons) {
@@ -980,10 +1015,13 @@
       }
 
       for (key in thisInfo) {
-        console.log(key + ': ' + thisInfo[key])
+        //console.log(key + ': ' + thisInfo[key])
         $('#textbox-' + key).val(thisInfo[key]);
         $('#p-' + key).text(thisInfo[key])//for the submitter comments
       }
+      //$('#track-info-subtitle').text(`Submitted at ${thisInfo.submission_time}\nby ${thisInfo.submitter}`)
+      $('#p-submitted-at').text(`Submitted at ${thisInfo.submission_time}`);
+      $('#p-submitted-by').text(`by ${thisInfo.submitter}`);
     }
 
 
@@ -1005,9 +1043,21 @@
     var fileExtents = {};
     //var currentFile = ""; // keep track with a global var because Boostrap's .collapse() is asynchonous so the new file might be trying to load before the .show class is added to the .collapse element
     
+    function getSelected(){
+      return selectedLines['201961_616tail09_geojsons']
+    }
     // Make sure files are read from disk every time
     $(document).ready(function() {
       $.ajaxSetup({ cache: false });
+      $('#map-container').css('height', $(window).height());
+
+      //
+      /*$('#legend-201961_616tail09_geojsons').scroll(function(){
+        console.log('scroll position: ' + $('#legend-201961_616tail09_geojsons').scrollTop());
+        console.log('row position: ' + $('#legend-201961_616tail09_geojsons-' + getSelected()).position().top);
+        console.log('');
+      })*/
+      //
     });
 
     $.ajax({
