@@ -559,13 +559,24 @@
       
       var geojsonPoints = pointGeojsonLayers[fileName][id];
       map.addLayer(geojsonPoints);
-      map.fitBounds(geojsonPoints.getBounds());
+
+      var layerBounds = geojsonPoints.getBounds();
+      //map.fitBounds(geojsonPoints.getBounds());
+      try {
+        map.setView(map.getCenter());
+      } catch {
+        map.fitBounds(layerBounds);
+      }
+      
+      if (!map.getBounds().contains(layerBounds)) {
+        map.fitBounds(fileExtents[fileName]);
+      }
+
       lineLayers[fileName][id].bringToFront();
       geojsonPoints.bringToFront();
 
       selectedLines[fileName] = id;
       
-
     }
 
 
@@ -627,6 +638,20 @@
         thisCheckbox.prop('checked', true);
         lineLayers[fileName][id].addTo(map);
       }
+
+      var scrollPosition = $(`#legend-${fileName}`).scrollTop();
+      var rowHeight = parseInt($(`#legend-${fileName}-${id}`).css('height').replace('px', ''));
+      var legendHeight = parseInt($(`#legend-${fileName}`).css('height').replace('px', ''));
+      var scrollTo = id * rowHeight;
+
+      // scroll to the row if it's off the screen
+      if (scrollTo < scrollPosition || scrollTo > scrollPosition + legendHeight - rowHeight) {
+        $(`#legend-${fileName}`)
+          .animate(
+            {scrollTop: scrollTo < 0 ? 0 : scrollTo}, 
+            300
+          );
+      } 
     }
 
 
@@ -642,20 +667,6 @@
         showVertices(thisLineID);
 
         selectLegendItem(thisLineID);
-
-        var scrollPosition = $(`#legend-${getSelectedFileName()}`).scrollTop();
-        var rowHeight = parseInt($(`#legend-${getSelectedFileName()}-${thisLineID}`).css('height').replace('px', ''));
-        var legendHeight = parseInt($(`#legend-${getSelectedFileName()}`).css('height').replace('px', ''));
-        var scrollTo = thisLineID * rowHeight - rowHeight;
-
-        // scroll to the row if it's off the screen
-        if (scrollTo < scrollPosition || scrollTo > scrollPosition + legendHeight) {
-          $(`#legend-${getSelectedFileName()}`)
-            .animate(
-              {scrollTop: scrollTo < 0 ? 0 : scrollTo}, 
-              300
-            );
-        } 
 
         L.DomEvent.stop(e) // don't propagate to the map
       }
@@ -678,7 +689,11 @@
         delete trackInfo[fileName][thisID];
         $(`#legend-${fileName}-${thisID}`)
           .fadeOut(500, function() {$(this).remove()});// remove the item from the legend
-        selectedLines[fileName] = -1;
+        
+        // Only reset the selected line if this line is the currently selected one
+        if (thisID == selectedLines[fileName]) {
+          selectedLines[fileName] = -1;
+        }
       } 
       //updateLegend();
 
@@ -795,21 +810,16 @@
         var legendItem = $(htmlString)
           .click(function(event) {
             // If the event originated on a checkbox, exit
-            if ($(event.target).hasClass('checkmark') || $(event.target).attr('checked')) {
+            if ($(event.target).hasClass('checkmark') || $(event.target).attr('checked') || $(event.target).hasClass('delete-button')) {
               return;
             }
+
 
             var thisID = $(this)[0].id.replace('legend-' + fileName + '-', '');
             showVertices(thisID);
             selectLegendItem(thisID);
           })
           .appendTo('#' + legendID);
-
-        /*if (legendItem[0].id.replace(`legend-${fileName}-`, '') == selectedLines[fileName] && selectedLines[fileName] !== undefined) {
-          legendItem.addClass('legend-row-selected')
-            .children()
-            .addClass('legend-cell-selected');
-        }*/
 
         // Handle clicks on this item's checkbox
         $('#legend-checkmark-' + fileName + '-' + segmentID).change(function(event) {
