@@ -4,4 +4,7 @@ web/data/*
 #ignore any geojsons
 *.geojson
 
+#ignore Adobe Illustrator docs
+*.ai
+
 scripts/__pycache__/*
