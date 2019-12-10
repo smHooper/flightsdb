@@ -105,7 +105,7 @@
       
       .legend-row:hover {
         color: rgb(120, 120, 120);
-        background-color: hsl(204, 7%, 27%);
+        background-color: hsl(204, 5%, 27%);
         /*background-color: rgb(65, 65, 70);*/
         cursor: pointer;
       }
@@ -299,10 +299,47 @@
         outline: -webkit-focus-ring-color auto 0px;
         border: solid 1.5px hsl(195, 65%, 42%);/*hsl(38, 85%, 30%);*/
       }
+
       .input-container {
         display: inline-block; 
         width: 50%; 
         padding: 15px;
+      }
+
+      select {
+        color: rgb(135, 135, 135);
+        background-color: rgb(75, 75, 75);
+        border: none;
+        display: block;
+        width: 100%;
+        min-width: 80px;
+        height: 40px;
+        padding-left: 7px;
+        -webkit-box-shadow: none;
+        outline: -webkit-focus-ring-color auto 0px;
+      }
+
+      select:focus {
+        border: solid 1.5px hsl(195, 65%, 42%);
+      }
+
+      .track-info-option {
+        background-color: rgb(85, 85, 85) !important;
+        color: rgb(145, 145, 145) !important;
+        border: none !important;
+      }
+
+      select option:selected {
+        background-color: hsl(204, 5%, 27%) !important;
+      }
+
+      .select-disabled {
+        -webkit-appearance: none;
+        background-color: rgb(67, 67, 67);
+      }
+
+      .select-disabled-label {
+        color: rgb(90, 90, 90);
       }
 
   </style>
@@ -337,18 +374,7 @@
             </div>
           </div>
           <form style="width: 100%; position: relative;">
-
-            <div class="row" style="display: flex;">
-              <div class="input-container">
-                <label class="track-info-label">Submitter</label>
-                <input type="text" class="track-info-textbox" id="textbox-submitter" name="submitter" spellcheck="false">
-              </div>
-              <div class="input-container">
-                <label class="track-info-label">Time submitted</label>
-                <input type="text" class="track-info-textbox" id="textbox-submission_time" name="submission_time" spellcheck="false">
-              </div>
-            </div>
-
+            
             <div class="row" style="display: flex;">
               <div class="input-container">
                 <label class="track-info-label">Tail number</label>
@@ -357,6 +383,21 @@
               <div class="input-container">
                 <label class="track-info-label">Editor</label>
                 <input type="text" class="track-info-textbox" id="textbox-track_editor" name="editor" spellcheck="false">
+              </div>
+            </div>
+            
+            <div class="row" style="display: flex;">
+              <div class="input-container">
+                <label class="track-info-label">Operator code</label>
+                <select class="track-info-textbox" id="select-operator_code" name="operator_code">
+                  <option class="track-info-option" value=""></option><!--make first option blank-->
+                </select>
+              </div>
+              <div class="input-container">
+                <label class="track-info-label" id="label-tracks_mission">NPS mission code</label>
+                <select class="track-info-textbox" id="select-tracks_mission" name="mission_code">
+                  <option class="track-info-option" value=""></option>
+                </select>
               </div>
             </div>
 
@@ -379,7 +420,7 @@
 
         <div class="row" style="top: 10px;">
           <div class="col-sm-2">
-            <button class="button data-button" id="save-button">Save tracks</button>
+            <button class="button data-button" id="save-button" onclick="writeJSON()">Save tracks</button>
           </div>
 
           <div class="col-sm-2">
@@ -404,7 +445,11 @@
 
 
     function getSelectedFileName() {
-      return $('.card-header-anchor-selected.card-link.text-center > .card-title').text();
+      try {
+        return $('.card-header-anchor-selected.card-link.text-center > .card-title').text();
+      } catch {
+        return '';
+      }
     }
 
 
@@ -550,7 +595,7 @@
 
     function showVertices(id, hideCurrent=true) {
 
-      var fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
+      var fileName = getSelectedFileName();
 
       var currentLineID = selectedLines[fileName];
       if (currentLineID >= 0 && hideCurrent) {
@@ -560,15 +605,23 @@
       var geojsonPoints = pointGeojsonLayers[fileName][id];
       map.addLayer(geojsonPoints);
 
+      // layer.bringToFront() requires that the layers are added to the 
+      //  map div first, which doesn't happen until the map view is set. 
+      //  This can either happen with map.setView() or map.fitBounds().
       var layerBounds = geojsonPoints.getBounds();
-      //map.fitBounds(geojsonPoints.getBounds());
       try {
+        // First try to set the view as the current view (i.e., don't move the map).
+        //  This fails if the map view hasn't been set yet and therefore doesn't 
+        //  have a "center"
         map.setView(map.getCenter());
       } catch {
+        // If that doesn't work, fit the map to the currently selected layer
         map.fitBounds(layerBounds);
       }
       
-      if (!map.getBounds().contains(layerBounds)) {
+      // If the layer isn't visible within the view, set the view to 
+      //  the entire file extent
+      if (!map.getBounds().intersects(layerBounds)) {
         map.fitBounds(fileExtents[fileName]);
       }
 
@@ -749,7 +802,7 @@
        .appendTo('#' + cardHeaderID)
        .on('click', function() {
         if (!$(this).hasClass('card-header-anchor-selected')){
-          
+
           // Make sure the new card is given the selected class before trying to load data
           fileWasSelected(fileName);
           
@@ -891,6 +944,10 @@
             
             if (oldFileName != thisFileName && trackInfo[thisFileName] != undefined) {
               fillTrackInfo();
+
+              // Even though the oeprator_code select's value changes, for some reason 
+              //  the onchange event isn't fired, so just do so manually
+              $('#select-operator_code').change()  
             }
         }
       });
@@ -915,9 +972,11 @@
       fileExtents[fileName] = {};
       trackInfo[fileName] = {};  
 
-      var deferred = $.getJSON(
-        filePath,
-        function(data) {
+      var deferred = $.ajax({ // use .ajax() instead of getJSON to set cache=false
+        url: filePath,
+        dataType: 'json',
+        cache: false,
+        success: function(data) {
           /* data come in as
           {
             track_info: 
@@ -949,7 +1008,7 @@
 
           }
         }
-      ).done(function() {    
+      }).done(function() {    
         // Once the async call is done, add all the lines and 
         //  the points for a single line to the map
         var polylineCoords = [];
@@ -969,10 +1028,10 @@
           selectedLines[fileName] = 0;
         }
 
-        showVertices(selectedLines[fileName]);
         var allLines = L.polyline(polylineCoords);
         fileExtents[fileName] = allLines.getBounds();
-        map.fitBounds(fileExtents[fileName]);
+        showVertices(selectedLines[fileName]);
+        //map.fitBounds(fileExtents[fileName]);
 
         // Add lines to legend
         updateLegend(fileName);
@@ -1052,6 +1111,7 @@
 
     }
 
+
     function fillTrackInfo(){
 
       var fileName = getSelectedFileName();
@@ -1071,10 +1131,87 @@
         //console.log(key + ': ' + thisInfo[key])
         $('#textbox-' + key).val(thisInfo[key]);
         $('#p-' + key).text(thisInfo[key])//for the submitter comments
+        $('#select-' + key).val(thisInfo[key])//for the select dropdowns
+        if (key == 'tracks_mission' || key == 'operator_code') {
+          console.log(`${key}: ${thisInfo[key]}`)
+          console.log($('#select-' + key).val())}
       }
       //$('#track-info-subtitle').text(`Submitted at ${thisInfo.submission_time}\nby ${thisInfo.submitter}`)
       $('#p-submitted-at').text(`Submitted at ${thisInfo.submission_time}`);
       $('#p-submitted-by').text(`by ${thisInfo.submitter}`);
+    }
+
+
+    function fillSelectOptions(selectElementID, queryString, columnName) {
+      
+      var deferred = $.ajax({
+        url: 'geojson_io.php',
+        method: 'POST',
+        data: {action: 'query', queryString: queryString},
+        cache: false,
+        success: function(queryResultString){
+          var queryResult = queryResultString.startsWith('ERROR') ? false : $.parseJSON(queryResultString);
+          if (queryResult) {
+            queryResult.forEach(function(object) {
+              $('#' + selectElementID).append(
+                `<option class="track-info-option" value="${object.value}">${object.value}</option>`
+              );
+            })
+          } else {
+            console.log(`error filling in ${selectElementID}: ${queryResultString}`);
+          }
+        }
+      });
+      return deferred;
+    }
+
+
+    function onOperatorChange(target){
+      console.log(trackInfo)
+
+      var selectedOperator = $(target).val();
+      var selectedMission = $('#select-tracks_mission').val();
+      var fileName = getSelectedFileName();
+
+      // Update track info
+      if (trackInfo[fileName] !== undefined) {
+        for (segmentID in trackInfo[fileName]) {
+          trackInfo[fileName][segmentID]['operator_code'] = selectedOperator; //capture value
+        }
+      }
+
+      // If the operator isn't the NPS, disable mission_code select
+      if (selectedOperator !== 'National Park Service') {
+        $('#label-tracks_mission').addClass('select-disabled-label');
+        // Record the currently selected mission code
+        if (trackInfo[fileName] !== undefined) {
+          console.log($('#select-tracks_mission'))
+          for (segmentID in trackInfo[fileName]) {
+            trackInfo[fileName][segmentID]['tracks_mission'] = selectedMission; //capture value
+          }
+        }
+        // Disable it and set the value as null
+        $('#select-tracks_mission')
+          .addClass('select-disabled')
+          .attr('disabled', 'true')
+          .val('');
+      // If it is NPS, make sure mission_code select is enabled
+      } else {
+        $('#label-tracks_mission').removeClass('select-disabled-label');
+        $('#select-tracks_mission')
+          .removeClass('select-disabled')
+          .removeAttr('disabled');
+        // Set the value to whatever was recorded before disabling
+        var thisInfo = trackInfo[fileName];
+        if (thisInfo !== undefined) {
+          for (segmentID in thisInfo) {
+            $('#select-tracks_mission').val(thisInfo[segmentID]['tracks_mission'].length ? thisInfo[segmentID]['tracks_mission'] : '');
+            break // just assign with the first one
+          }
+          
+        }
+      }
+      console.log(trackInfo)
     }
 
 
@@ -1099,6 +1236,7 @@
     $(document).ready(function() {
       $.ajaxSetup({ cache: false });
       $('#map-container').css('height', $(window).height());
+      //$('#menu-container').css('height', $('#map').height() + $('#save-button').height() + 10);
 
     });
 
@@ -1106,6 +1244,7 @@
       url: 'geojson_io.php',
       method: 'POST',
       data: {action: "getFiles"},
+      cache: false,
       success: function(json_string) {
         var files = $.parseJSON(json_string);
         files.forEach(function(filePath) {
@@ -1121,6 +1260,7 @@
             url: 'geojson_io.php',
             method: 'POST',
             data: {action: 'getUser'},
+            cache: false,
             success: function(username){
               // If authentication failed, do nothing
               if (username) {
@@ -1135,8 +1275,29 @@
 
     var deleteEvent = document.addEventListener('keydown', onKeyDown);
     map.addEventListener('click', onMapClick);// {
-    $('#save-button').click(writeJSON);
+    //$('#save-button').click(writeJSON);
+    
+    // Add options to the select elements. 
+    $.when(
+      fillSelectOptions('select-operator_code', "SELECT name AS value FROM operators ORDER BY sort_order;"),
+      fillSelectOptions('select-tracks_mission', "SELECT code AS value FROM nps_mission_codes ORDER BY code;")
+    ).then(function() {
+      fillTrackInfo() // Fill track info here because select options weren't available to fill before
+      $('#select-operator_code').change() // disable the mission code select if necessary after track info is filled in 
+    }) 
 
+
+    $('#select-operator_code').change(function() {onOperatorChange(this)})
+
+    $('#select-tracks_mission').click(function() {
+      var fileName = getSelectedFileName();
+      if (trackInfo[fileName]) {
+        console.log($(this.val))
+        for (segmentID in trackInfo[fileName]) {
+          trackInfo[fileName][segmentID]['tracks_mission'] = $(this).val();
+        }
+      }
+    })
     
   </script>
 </body>

@@ -2,6 +2,26 @@
 
 <?php
 
+include '../config/track-editor-config.php';
+
+
+function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr) {
+	/*return result of a postgres query as an array*/
+	
+	$conn = pg_connect("hostaddr=$ipAddress port=$port dbname=$dbName user=$username password=$password");
+	if (!$conn) {
+		return false;
+	}
+
+	$result = pg_query($conn, $queryStr);
+	if (!$result) {
+	  	echo pg_last_error();
+	}
+
+	return pg_fetch_all($result);
+}
+
+
 if (isset($_POST['action'])) {
 	
 	// retrieve the names of all files that need to be edited
@@ -23,10 +43,19 @@ if (isset($_POST['action'])) {
 	}
 
 	if ($_POST['action'] == 'getUser') {
-		//echo `//inpdenards/overflights/overflights/python -c "import os; print(os.environ.get('USERNAME'))"`;
-		if($_SERVER['AUTH_USER']) echo preg_replace("/^.+\\\\/", "", $_SERVER["AUTH_USER"]);
+		if ($_SERVER['AUTH_USER']) echo preg_replace("/^.+\\\\/", "", $_SERVER["AUTH_USER"]);
     	else echo false;
 
+	}
+
+	if ($_POST['action'] == 'query') {
+
+		if (isset($_POST['queryString'])) {
+			$result = runQuery($dbhost, $dbport, $dbname, $readonly_username, $readonly_password, $_POST['queryString']);
+			echo json_encode($result);
+		} else {
+			echo false;
+		}
 	}
 }
 
