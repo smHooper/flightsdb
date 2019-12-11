@@ -6,7 +6,8 @@
   <title>Overflight editor</title>
   <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.2.0/dist/leaflet.css" />
   <script src="./node_modules/leaflet/dist/leaflet.js"></script>
-  <script src="./node_modules/leaflet-filelayer/src/leaflet.filelayer.js"></script>
+  <script src="node_modules/leaflet-toolbar/dist/leaflet.toolbar.js"></script>
+  <link rel="stylesheet" href="node_modules/leaflet-toolbar/dist/leaflet.toolbar.css"/>
   <script src="./js/leaflet-providers.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
   <link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
@@ -24,6 +25,7 @@
         position: relative;
         border: 5px;
         border-color: rgb(100, 100, 100);
+        height: 100%;
       }
       
       /*#map { 
@@ -381,31 +383,29 @@
     
     <div class="row h-100" style="display: flex; width:100%">
       
-      <div id='menu-container' class="col-sm-6 col-md-4 col-lg-4" style="display: flex; flex-direction: column;">
+      <div id='menu-container' class="col-sm-6 col-md-4 col-lg-4" style="">
         <div>
           <!-- File menu and legend-->
           <h4 style="color: rgb(110, 110, 110);">Files to import</h4>
-          <div style="min-height:65%; overflow:auto; align-items:stretch;" >
+          <div style="height:100%; overflow:auto; align-items:stretch;" >
             <div class='accordion' id='file-list'>
               <!--items added dynamically on load -->
             </div>
           </div>
         </div>
 
-        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; background-color: rgb(60, 60, 60); padding: 20px;">
+        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; display: flex; flex-direction: column; flex:1; background-color: rgb(60, 60, 60); padding: 20px;">
           <!-- Info about each track-->
           <div style="display:flex;">
-            <div style="color: rgb(110, 110, 110); display:inline-block; width:100%">
-              <div style="display: block; width: 100%">
-                <h4 style="float: left; color: inherit">Track info</h4>
-                <button id="button-track-info-lock" onclick="lockButtonClick()"></button>
-              </div>
-              <!--<p id="track-info-subtitle" style="color: inherit; font-size:14px;"></p>
-              -->
-              <div style="display: block; float: left;">
-                <p id="p-submitted-at" style="float: left; display: block; color: inherit; font-size:14px; padding: 0px; margin-bottom:4px;"></p>
-                <p id="p-submitted-by" style="float: left; display: block; color: inherit; font-size:14px; padding: 0px;"></p>
-              </div>
+            <div style="color: rgb(110, 110, 110); width:100%">
+              <!--<div style="display: block; width: 100%">-->
+              <h4 style="display: inline-block; float: left; color: inherit">Track info</h4>
+              <button id="button-track-info-lock" style="display: inline-block;" onclick="lockButtonClick()"></button>
+
+            <div style="float: left; width:100%">
+              <p id="p-submitted-at" style="color: inherit; font-size:14px; padding: 0px; margin-bottom:4px;"> </p>
+              <p id="p-submitted-by" style="color: inherit; font-size:14px; padding: 0px;"> </p>
+            </div>
             </div>
           </div>
           <form id="form-track-info" style="width: 100%; position: relative;">
@@ -939,7 +939,7 @@
     function removeAllLayers() {
       
       map.eachLayer( function(layer) {
-        if (!(layer instanceof L.TileLayer)) {
+        if (!(layer instanceof L.TileLayer) && !(layer instanceof L.Toolbar2)) {
           map.removeLayer(layer);
         }
       })
@@ -1273,6 +1273,51 @@
       }
     }
 
+
+    function addMapNavToolbar() {
+      /* Add a toolbar for zooming to full extent and the extent of the selected track*/
+
+      var zoomSelected = L.Toolbar2.Action.extend({
+          options: {
+              toolbarIcon: {
+                  html: '<img src="imgs/zoom_selected_icon.svg"/>',
+                  tooltip: 'Zoom to selected track'
+              }
+          },
+          addHooks: function () {
+            var fileName = getSelectedFileName();
+            if (fileName !== undefined) {
+              map.fitBounds(lineLayers[fileName][selectedLines[fileName]].getBounds());
+            } else {
+              alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
+            }
+          }
+            
+      });
+
+      var zoomFull = L.Toolbar2.Action.extend({
+          options: {
+              toolbarIcon: {
+                  html: '<img src="imgs/zoom_full_icon.svg"/>',
+                  tooltip: 'Zoom to full extent'
+              }
+          },
+          addHooks: function () {
+            var fileName = getSelectedFileName();
+            if (fileName !== undefined) {
+              map.fitBounds(fileExtents[fileName]);
+            } else {
+              alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
+            }
+          }
+      });
+
+      new L.Toolbar2.Control({
+          actions: [zoomSelected, zoomFull],
+          position: 'topleft'
+      }).addTo(map);
+    }
+
     //var startPoint = [63.1249, -149.254];
     var map = L.map('map', {editable: true})//.setView(startPoint, 10)
     var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
@@ -1326,6 +1371,10 @@
               }
             }
           })
+
+          // Add map navigation toolbar. Must be added after tracks are 
+          //  loaded because the map view has to be set first
+          addMapNavToolbar();
         })
       }
 
