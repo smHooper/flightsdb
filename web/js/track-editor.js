@@ -509,7 +509,8 @@ function fileWasSelected(filePath) {
 
 					// Even though the oeprator_code select's value changes, for some reason 
 					//  the onchange event isn't fired, so just do so manually
-					$('#select-operator_code').change()  
+					$('#select-operator_code').change();
+					
 				}
 		}
 	});
@@ -556,10 +557,11 @@ function loadTracksFromJSON(filePath) {
 			// Each item in the JSON file is a separate geojson 
 			for (segmentID in data.geojsons) {
 				var geojson = data.geojsons[segmentID];
-				var firstProperties = geojson.features[0].properties
-				data.track_info['departure_datetime'] = firstProperties.departure_datetime
-				data.track_info['registration'] = firstProperties.registration
-				trackInfo[fileName][segmentID] = data.track_info
+				var firstProperties = geojson.features[0].properties;
+				data.track_info['departure_datetime'] = firstProperties.departure_datetime;
+				data.track_info['registration'] = firstProperties.registration;
+				trackInfo[fileName][segmentID] = data.track_info;
+				trackInfo[fileName][segmentID]['trackInfoUnlocked'] = false;
 				
 				var color = getColor();
 				colors[fileName][segmentID] = color;
@@ -635,7 +637,8 @@ function loadTracksFromMemory(fileName) {
 function fillTrackInfo(){
 
 	var fileName = getSelectedFileName();
-	var thisInfo = trackInfo[fileName][selectedLines[fileName]];
+	var currentSegmentID = selectedLines[fileName];
+	var thisInfo = trackInfo[fileName][currentSegmentID];
 
 	// If there's no info for the selected track (= -1), get the first 
 	//  one because each track for a given file has the same global track info
@@ -652,13 +655,15 @@ function fillTrackInfo(){
 		$('#textbox-' + key).val(thisInfo[key]);
 		$('#p-' + key).text(thisInfo[key])//for the submitter comments
 		$('#select-' + key).val(thisInfo[key])//for the select dropdowns
-		if (key == 'tracks_mission' || key == 'operator_code') {
-			console.log(`${key}: ${thisInfo[key]}`)
-			console.log($('#select-' + key).val())}
 	}
 	//$('#track-info-subtitle').text(`Submitted at ${thisInfo.submission_time}\nby ${thisInfo.submitter}`)
 	$('#p-submitted-at').text(`Submitted at ${thisInfo.submission_time}`);
 	$('#p-submitted-by').text(`by ${thisInfo.submitter}`);
+
+	// Change the state of the lock button (and the form) if necessary
+	if ($('#button-track-info-lock').hasClass('unlocked') != thisInfo.trackInfoUnlocked) {
+		lockButtonClick();	
+	}
 }
 
 
@@ -687,7 +692,6 @@ function fillSelectOptions(selectElementID, queryString, columnName) {
 
 
 function onOperatorChange(target){
-	console.log(trackInfo)
 
 	var selectedOperator = $(target).val();
 	var selectedMission = $('#select-tracks_mission').val();
@@ -705,7 +709,6 @@ function onOperatorChange(target){
 		$('#label-tracks_mission').addClass('select-disabled-label');
 		// Record the currently selected mission code
 		if (trackInfo[fileName] !== undefined) {
-			console.log($('#select-tracks_mission'))
 			for (segmentID in trackInfo[fileName]) {
 				trackInfo[fileName][segmentID]['tracks_mission'] = selectedMission; //capture value
 			}
@@ -731,7 +734,7 @@ function onOperatorChange(target){
 			
 		}
 	}
-	console.log(trackInfo)
+
 }
 
 
@@ -755,6 +758,16 @@ function lockButtonClick() {
 		infoForm.find('select').removeClass('locked')
 			.removeClass('locked')
 			.removeAttr('disabled');
+	}
+
+	// Check to see if mission code should be .disabled
+	onOperatorChange();
+
+	var fileName = getSelectedFileName();
+	if (trackInfo[fileName] !== undefined) {
+		for (segmentID in trackInfo[fileName]) {
+			trackInfo[fileName][segmentID]['trackInfoUnlocked'] = lockButton.hasClass('unlocked');
+		}
 	}
 }
 
