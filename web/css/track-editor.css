@@ -1,0 +1,359 @@
+body { 
+	height: 100%; 
+	width: 100%; 
+	background-color: rgb(50, 50, 50);
+}
+
+
+#menu-container {
+	position: relative;
+	border: 5px;
+	border-color: rgb(100, 100, 100);
+	height: 100%;
+}
+
+/*#map { 
+	position: relative; 
+	min-height: 650px;
+	margin-bottom: 0;
+	margin-top: 0;
+	width: 100%;
+}*/
+
+.leaflet-popup-content-wrapper {
+	background-color: rgb(85, 85, 85);
+	color: rgb(145, 145, 145);
+}
+
+.leaflet-popup-tip {
+	background-color: rgb(85, 85, 85);
+}
+
+.leaflet-popup-content p{
+	margin: 3px;
+}
+/*.card-header {
+	background-color: rgb(60, 60, 60);
+	border-bottom:  
+}*/
+.card {
+	/*height: 60px;*/
+	/*border: 2px solid rgb(100, 100, 100);*/
+	color: rgb(125, 125, 125);
+	background-color: rgb(75, 75, 75);
+
+}
+
+.card-header a{
+	transition: 0.3s;
+	color: rgb(125, 125, 125);
+}
+
+.card-header a:hover {
+	/*font-weight: bold;*/
+	color: rgb(150, 150, 150);
+	cursor: pointer;
+}
+
+.card-header-anchor-selected {
+	color: rgb(150, 150, 150);
+}
+
+.card-header a.card-header-anchor-selected{
+	transition: 0.3s;
+	color: hsl(195, 84%, 61%);
+}
+
+.show {
+	max-height: 20%;
+	/*border: 4px solid rgb(100, 100, 100);*/
+	/*font-weight: bold;*/
+	color: rgb(125, 125, 125);
+	background-color: rgb(60, 60, 60);
+	/*box-shadow: 0px 16px 16px 0 rgba(0,0,0,0.2);*/
+	text-align: center;
+}
+
+.card-footer {
+	height: 30px;
+	background-color: rgb(60, 60, 60);
+}
+/*.show:hover {
+	cursor: auto;
+	border: 4px solid rgb(100, 100, 100);
+}*/
+
+.legend-row {
+	height: 50px;
+	width: 100%;
+	transition: 0.2s;
+}
+
+.legend-row:hover {
+	color: rgb(120, 120, 120);
+	background-color: hsl(204, 5%, 27%);
+	/*background-color: rgb(65, 65, 70);*/
+	cursor: pointer;
+}
+
+.legend-row-selected {
+	height: 50px;
+	background-color: hsl(204, 15%, 30%);
+	/*background-color: rgb(80, 80, 90);*/
+	cursor: auto;
+}
+
+.legend-cell {
+	color: rgb(110, 110, 110);
+	text-align: center;
+	display: inline-block;
+	vertical-align: middle;
+	transition: 0.2s;
+	height: 100%;
+	padding-top: 12px;
+	padding-bottom: 12px;
+}
+
+.legend-cell:hover {
+	color: rgb(120, 120, 120);
+}
+
+.legend-cell-selected {
+	color: rgb(130, 130, 130);
+	text-align: center;
+	display: inline-block;
+	vertical-align: middle;
+	height: 100%;
+	padding-top: 12px;
+	padding-bottom: 12px;
+}
+
+.vertical-center {
+	margin: 0;
+	position: absolute;
+	top: 50%;
+	-ms-transform: translateY(-50%);
+	transform: translateY(-50%);
+}
+
+.delete-button {
+	border: none; 
+	background: url(../imgs/delete_icon_20px.png); 
+	opacity: 0.25;
+	height: 20px; 
+	width: 20px;
+	transition: 0.3s;
+	cursor: pointer;
+}
+
+.delete-button:hover {
+	opacity: 0.5;
+}
+
+#dashboard-container {
+	padding: 20;
+}
+
+.data-button {
+	height: 50px;
+	width: 150px;
+	top: 10px;
+	position: relative;
+	/*padding: 14px 28px;*/
+	font-size: 16px;
+	background-color: rgb(125, 125, 125);
+	color: rgb(200, 200, 200);
+	border: none;
+	display: inline-block;
+	transition: 0.4s;
+}
+
+.data-button:hover {
+	background-color: hsl(195, 50%, 45%);
+	/*color: hsl(38, 95%, 45%);*/
+}
+
+td {
+	color: rgb(100, 100, 100);
+	text-align: center;
+}
+
+.dark-scrollbar {
+	overflow-y: auto;
+}
+.dark-scrollbar::-webkit-scrollbar-track {
+		background-color: rgb(60, 60, 60);
+}
+.dark-scrollbar::-webkit-scrollbar-thumb {
+		background-color: rgb(110, 110, 110);
+}
+
+
+/* Custom checkbox*/
+/* The container */
+.checkmark-container {
+	display: block;
+	position: relative;
+	cursor: pointer;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	height: 100%;
+	width: 100%;
+}
+
+/* Hide the browser's default checkbox */
+.checkmark-container input {
+	position: absolute;
+	opacity: 0;
+	cursor: pointer;
+	height: 0;
+	width: 0;
+}
+
+/* Create a custom checkbox */
+.checkmark {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 20px;
+	width: 20px;
+	background-color: none;
+	border: 2px solid rgb(90, 90, 90);
+	vertical-align: center;
+	horizontal-align: center;
+}
+
+/*When the checkbox is checked, make the background lighter*/ 
+.checkmark-container input:checked ~ .checkmark {
+	background-color: rgb(100, 100, 100);
+	border: none;
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.checkmark:after {
+	content: "";
+	position: absolute;
+	/*display: none;*/
+	opacity: 0;
+}
+
+/* Show the checkmark when checked */
+.checkmark-container input:checked ~ .checkmark:after {
+	/*display: block;*/
+	opacity: 1;
+}
+
+/* Style the checkmark/indicator */
+.checkmark-container .checkmark:after {
+	left: 7px;
+	top: 2px;
+	width: 7px;
+	height: 12px;
+	border: solid rgb(180, 180, 180);
+	border-width: 0 2px 2px 0;
+	-webkit-transform: rotate(45deg);
+	-ms-transform: rotate(45deg);
+	transform: rotate(45deg);
+	vertical-align: center;
+}
+
+/* Track info form*/
+input {
+	box-sizing: border-box;
+
+}
+
+#button-track-info-lock {
+	float: right; 
+	border: none; 
+	background: url('../imgs/lock_icon_25px.png'); 
+	opacity: 0.40; 
+	height: 25px;  
+	width: 20px; 
+	transition: 0.3s; 
+	cursor: pointer;
+	transition: 0.2s;
+}
+
+#button-track-info-lock:focus {
+	outline: 0;
+} 
+/*#button-track-info-lock:hover {
+	opacity: 0.55;
+}*/
+
+#button-track-info-lock.unlocked {
+	background: url('../imgs/unlock_icon_25px.png'); 
+}
+
+.track-info-label {
+	color: rgb(125, 125, 125);
+	display: block;
+	margin-bottom: 10px;
+}
+.track-info-textbox {
+	color: rgb(135, 135, 135);
+	background-color: rgb(75, 75, 75);
+	border: none;
+	display: block;
+	width: 100%;
+	min-width: 80px;
+	height: 40px;
+	padding-left: 7px;
+}
+
+input[type="text"]:focus {
+	-webkit-box-shadow: none;
+	outline: -webkit-focus-ring-color auto 0px;
+	border: solid 1.5px hsl(195, 65%, 42%);/*hsl(38, 85%, 30%);*/
+}
+
+.input-container {
+	display: inline-block; 
+	width: 50%; 
+	padding: 15px;
+}
+
+select {
+	color: rgb(135, 135, 135);
+	background-color: rgb(75, 75, 75);
+	border: none;
+	display: block;
+	width: 100%;
+	min-width: 80px;
+	height: 40px;
+	padding-left: 7px;
+	-webkit-box-shadow: none;
+	outline: -webkit-focus-ring-color auto 0px;
+}
+
+select:focus {
+	border: solid 1.5px hsl(195, 65%, 42%);
+}
+
+.track-info-option {
+	background-color: rgb(85, 85, 85) !important;
+	color: rgb(145, 145, 145) !important;
+	border: none !important;
+}
+
+select option:selected {
+	background-color: hsl(204, 5%, 27%) !important;
+}
+
+.track-info-textbox.locked {
+	border: solid 2px rgb(75, 75, 75);
+	background: none;
+	color: rgb(125, 125, 125);
+}
+
+.select-disabled {
+	-webkit-appearance: none;
+	background-color: rgb(67, 67, 67);
+}
+
+.select-disabled-label {
+	color: rgb(90, 90, 90);
+}

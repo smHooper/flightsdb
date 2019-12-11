@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta name="viewport" content="width=device-width,height=device-height, user-scalable=no" />
+  <title>Overflight editor</title>
+  <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.2.0/dist/leaflet.css" />
+  <script src="./node_modules/leaflet/dist/leaflet.js"></script>
+  <script src="node_modules/leaflet-toolbar/dist/leaflet.toolbar.js"></script>
+  <link rel="stylesheet" href="node_modules/leaflet-toolbar/dist/leaflet.toolbar.css"/>
+  <script src="./js/leaflet-providers.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+  <link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
+  <script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+
+  <link rel="stylesheet" href="css/track-editor.css"/>
+
+</head>
+
+<body>
+
+  <div id="dashboard-container" class="container-fluid" style="display:flex;">
+    
+    <div class="row h-100" style="display: flex; width:100%">
+      
+      <div id='menu-container' class="col-sm-6 col-md-4 col-lg-4" style="">
+        <div>
+          <!-- File menu and legend-->
+          <h4 style="color: rgb(110, 110, 110);">Files to import</h4>
+          <div style="height:100%; overflow:auto; align-items:stretch;" >
+            <div class='accordion' id='file-list'>
+              <!--items added dynamically on load -->
+            </div>
+          </div>
+        </div>
+
+        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; display: flex; flex-direction: column; flex:1; background-color: rgb(60, 60, 60); padding: 20px;">
+          <!-- Info about each track-->
+          <div style="display:flex;">
+            <div style="color: rgb(110, 110, 110); width:100%">
+              <!--<div style="display: block; width: 100%">-->
+              <h4 style="display: inline-block; float: left; color: inherit">Track info</h4>
+              <button id="button-track-info-lock" style="display: inline-block;" onclick="lockButtonClick()"></button>
+
+            <div style="float: left; width:100%">
+              <p id="p-submitted-at" style="color: inherit; font-size:14px; padding: 0px; margin-bottom:4px;"> </p>
+              <p id="p-submitted-by" style="color: inherit; font-size:14px; padding: 0px;"> </p>
+            </div>
+            </div>
+          </div>
+          <form id="form-track-info" style="width: 100%; position: relative;">
+            
+            <div class="row" style="display: flex;">
+              <div class="input-container">
+                <label class="track-info-label">Tail number</label>
+                <input type="text" class="track-info-textbox locked" id="textbox-registration" name="registration" spellcheck="false" disabled="true">
+              </div>
+              <div class="input-container">
+                <label class="track-info-label">Editor</label>
+                <input type="text" class="track-info-textbox locked" id="textbox-track_editor" name="editor" spellcheck="false" disabled="true">
+              </div>
+            </div>
+            
+            <div class="row" style="display: flex;">
+              <div class="input-container">
+                <label class="track-info-label">Operator code</label>
+                <select class="track-info-textbox locked" id="select-operator_code" name="operator_code" disabled="true">
+                  <option class="track-info-option" value=""></option><!--make first option blank-->
+                </select>
+              </div>
+              <div class="input-container">
+                <label class="track-info-label" id="label-tracks_mission">NPS mission code</label>
+                <select class="track-info-textbox locked" id="select-tracks_mission" name="mission_code" disabled="true">
+                  <option class="track-info-option" value=""></option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row" style="display: flex;">
+              <div class="input-container" style="width:100%">
+                <label class="track-info-label">Submitter notes</label>
+                <div class="track-info-textbox locked" style="height:80px; overflow-y:auto; padding:7px;">
+                  <p id="p-submitter_notes" style="width:100%"></p>
+                </div>
+              </div>
+            </div>
+
+          </form>
+        </div>
+      </div>
+      
+      <div id='map-container' class="col-sm-6 col-md-8 col-lg-8" style="display: inline-block;">
+        <div id='map'style="position: relative; min-height: 650px; margin-bottom: 0; margin-top: 0; width: 100%; height:90%;">
+        </div>
+
+        <div class="row" style="top: 10px;">
+          <div class="col-sm-2">
+            <button class="button data-button" id="save-button" onclick="writeJSON()">Save tracks</button>
+          </div>
+
+          <div class="col-sm-2">
+            <!--<button class="button data-button" id="save-button">Import data</button>-->
+          </div>          
+        </div>
+      </div>
+    
+    </div>
+
+  </div>
+
+  <script src="js/track-editor.js"></script>
+  <script type="text/javascript">
+
+    var map = L.map('map', {editable: true})
+    var tilelayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, 2019'
+    }).addTo(map);
+    
+    map.doubleClickZoom.disable();
+    
+    var pointGeojsonLayers = {};
+    var lineLayers = {};
+    var lineCoords = {};
+    var colors = {};
+    var minVertexIndices = {};
+    var trackInfo = {};
+    var selectedLines = {};
+    var fileExtents = {};
+    
+    // Make sure files are read from disk every time
+    $(document).ready(function() {
+      $.ajaxSetup({ cache: false });
+      $('#map-container').css('height', $(window).height());
+      //$('#menu-container').css('height', $('#map').height() + $('#save-button').height() + 10);
+    });
+
+    $.ajax({
+      url: 'geojson_io.php',
+      method: 'POST',
+      data: {action: "getFiles"},
+      cache: false,
+      success: function(json_string) {
+        var files = $.parseJSON(json_string);
+        files.forEach(function(filePath) {
+          addFileToMenu(filePath);
+        })
+
+        fileWasSelected(files[0].replace('data/', '').replace('.json', ''))
+        var deferred = loadTracksFromJSON(files[0]) // load any file, doesn't matter which
+        
+        // When the tracks have finished loading, get track info
+        deferred.done(function() {
+          $.ajax({
+            url: 'geojson_io.php',
+            method: 'POST',
+            data: {action: 'getUser'},
+            cache: false,
+            success: function(username){
+              // If authentication failed, do nothing
+              if (username) {
+                $('#textbox-track_editor').val(username);
+              }
+            }
+          })
+
+          // Add map navigation toolbar. Must be added after tracks are 
+          //  loaded because the map view has to be set first
+          addMapNavToolbar();
+        })
+      }
+
+    });
+
+    var deleteEvent = document.addEventListener('keydown', onKeyDown);
+    map.addEventListener('click', onMapClick);// {
+    $('#save-button').click(writeJSON);
+    
+    // Add options to the select elements. 
+    $.when(
+      fillSelectOptions('select-operator_code', "SELECT name AS value FROM operators ORDER BY sort_order;"),
+      fillSelectOptions('select-tracks_mission', "SELECT code AS value FROM nps_mission_codes ORDER BY code;")
+    ).then(function() {
+      fillTrackInfo() // Fill track info here because select options weren't available to fill before
+      $('#select-operator_code').change() // disable the mission code select if necessary after track info is filled in 
+    }) 
+
+
+    $('#select-operator_code').change(function() {onOperatorChange(this)})
+
+    $('#select-tracks_mission').click(function() {
+      var fileName = getSelectedFileName();
+      if (trackInfo[fileName]) {
+        console.log($(this.val))
+        for (segmentID in trackInfo[fileName]) {
+          trackInfo[fileName][segmentID]['tracks_mission'] = $(this).val();
+        }
+      }
+    })
+    
+  </script>
+</body>
+</html>
