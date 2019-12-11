@@ -278,6 +278,30 @@
         box-sizing: border-box;
 
       }
+
+      #button-track-info-lock {
+        float: right; 
+        border: none; 
+        background: url('imgs/lock_icon_25px.png'); 
+        opacity: 0.40; 
+        height: 25px;  
+        width: 20px; 
+        transition: 0.3s; 
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      
+      #button-track-info-lock:focus {
+        outline: 0;
+      } 
+      /*#button-track-info-lock:hover {
+        opacity: 0.55;
+      }*/
+
+      #button-track-info-lock.unlocked {
+        background: url('imgs/unlock_icon_25px.png'); 
+      }
+
       .track-info-label {
         color: rgb(125, 125, 125);
         display: block;
@@ -333,6 +357,12 @@
         background-color: hsl(204, 5%, 27%) !important;
       }
 
+      .track-info-textbox.locked {
+        border: solid 2px rgb(75, 75, 75);
+        background: none;
+        color: rgb(125, 125, 125);
+      }
+
       .select-disabled {
         -webkit-appearance: none;
         background-color: rgb(67, 67, 67);
@@ -365,37 +395,42 @@
         <div class="dark-scrollbar" id="track-info-panel" style="width:100%; min-height:20%; background-color: rgb(60, 60, 60); padding: 20px;">
           <!-- Info about each track-->
           <div style="display:flex;">
-            <div style="color: rgb(110, 110, 110); display:inline-block;">
-              <h4 style="color: inherit;">Track info</h4>
+            <div style="color: rgb(110, 110, 110); display:inline-block; width:100%">
+              <div style="display: block; width: 100%">
+                <h4 style="float: left; color: inherit">Track info</h4>
+                <button id="button-track-info-lock" onclick="lockButtonClick()"></button>
+              </div>
               <!--<p id="track-info-subtitle" style="color: inherit; font-size:14px;"></p>
               -->
-              <p id="p-submitted-at" style="color: inherit; font-size:14px; padding: 0px; margin-bottom:4px;"></p>
-              <p id="p-submitted-by" style="color: inherit; font-size:14px; padding: 0px;"></p>
+              <div style="display: block; float: left;">
+                <p id="p-submitted-at" style="float: left; display: block; color: inherit; font-size:14px; padding: 0px; margin-bottom:4px;"></p>
+                <p id="p-submitted-by" style="float: left; display: block; color: inherit; font-size:14px; padding: 0px;"></p>
+              </div>
             </div>
           </div>
-          <form style="width: 100%; position: relative;">
+          <form id="form-track-info" style="width: 100%; position: relative;">
             
             <div class="row" style="display: flex;">
               <div class="input-container">
                 <label class="track-info-label">Tail number</label>
-                <input type="text" class="track-info-textbox" id="textbox-registration" name="registration" spellcheck="false">
+                <input type="text" class="track-info-textbox locked" id="textbox-registration" name="registration" spellcheck="false" disabled="true">
               </div>
               <div class="input-container">
                 <label class="track-info-label">Editor</label>
-                <input type="text" class="track-info-textbox" id="textbox-track_editor" name="editor" spellcheck="false">
+                <input type="text" class="track-info-textbox locked" id="textbox-track_editor" name="editor" spellcheck="false" disabled="true">
               </div>
             </div>
             
             <div class="row" style="display: flex;">
               <div class="input-container">
                 <label class="track-info-label">Operator code</label>
-                <select class="track-info-textbox" id="select-operator_code" name="operator_code">
+                <select class="track-info-textbox locked" id="select-operator_code" name="operator_code" disabled="true">
                   <option class="track-info-option" value=""></option><!--make first option blank-->
                 </select>
               </div>
               <div class="input-container">
                 <label class="track-info-label" id="label-tracks_mission">NPS mission code</label>
-                <select class="track-info-textbox" id="select-tracks_mission" name="mission_code">
+                <select class="track-info-textbox locked" id="select-tracks_mission" name="mission_code" disabled="true">
                   <option class="track-info-option" value=""></option>
                 </select>
               </div>
@@ -404,7 +439,7 @@
             <div class="row" style="display: flex;">
               <div class="input-container" style="width:100%">
                 <label class="track-info-label">Submitter notes</label>
-                <div class="track-info-textbox" style="height:80px; overflow-y:auto; background-color: rgb(65, 65, 65); color(115, 115, 115);">
+                <div class="track-info-textbox locked" style="height:80px; overflow-y:auto; padding:7px;">
                   <p id="p-submitter_notes" style="width:100%"></p>
                 </div>
               </div>
@@ -1214,6 +1249,29 @@
       console.log(trackInfo)
     }
 
+
+    function lockButtonClick() {
+
+      var lockButton = $('#button-track-info-lock')
+      var infoForm = $('#form-track-info')
+      if (lockButton.hasClass('unlocked')) {
+        lockButton.removeClass('unlocked')
+        infoForm.find('input[type="text"]')
+          .addClass('locked')
+          .attr('disabled', 'true');
+        infoForm.find('select')
+          .addClass('locked')
+          .attr('disabled', 'true');
+      } else {
+        lockButton.addClass('unlocked');
+        infoForm.find('input[type="text"]')
+          .removeClass('locked')
+          .removeAttr('disabled');
+        infoForm.find('select').removeClass('locked')
+          .removeClass('locked')
+          .removeAttr('disabled');
+      }
+    }
 
     //var startPoint = [63.1249, -149.254];
     var map = L.map('map', {editable: true})//.setView(startPoint, 10)
