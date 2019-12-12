@@ -225,6 +225,24 @@ function selectLegendItem(id) {
 	*/
 
 	var fileName = getSelectedFileName()
+	
+	// if there was no selected file, loop through and look for the visible line
+	if (id < 0) {
+		for (segmentID in trackInfo[fileName]) {
+			if (trackInfo[fileName][segmentID].visible) {
+				id = segmentID;
+				selectedLines[fileName] = segmentID;
+				break;
+			}
+		}
+
+		// If none were selected, just select the first one
+		if (id < 0) {
+			id = Object.keys(trackInfo[fileName])[0];
+			selectedLines[fileName] = id;
+		}
+	}
+
 	// Deselect all currently selected cell (<td>) items,
 	//  which actually contain the formatting
 	$('.legend-cell-selected')
@@ -238,7 +256,7 @@ function selectLegendItem(id) {
 
 	// The row was a assigned the id, so get it's children (the <td>s)
 	//  and add the class that contains the 
-	$('#legend-' + fileName + '-' + id)
+	$(`#legend-${fileName}-${id}`)
 		.removeClass('legend-row')
 		.addClass('legend-row-selected')
 		.children()
@@ -266,7 +284,9 @@ function selectLegendItem(id) {
 				{scrollTop: scrollTo < 0 ? 0 : scrollTo}, 
 				300
 			);
-	} 
+	}
+
+
 }
 
 
@@ -364,7 +384,7 @@ function addFileToMenu(filePath) {
 	 .appendTo('#' + cardHeaderID)
 	 .on('click', function() {
 		if (!$(this).hasClass('card-header-anchor-selected')){
-
+			
 			// Make sure the new card is given the selected class before trying to load data
 			fileWasSelected(fileName);
 			
@@ -437,24 +457,29 @@ function updateLegend(fileName){
 			.appendTo('#' + legendID);
 
 		// Handle clicks on this item's checkbox
-		$('#legend-checkmark-' + fileName + '-' + segmentID).change(function(event) {
-			
-			var thisID = $(this)[0].id.replace(`legend-checkmark-${fileName}-` , '');
+		var checkbox = $(`#legend-checkmark-${fileName}-${segmentID}`).change(function(event) {
+
+			var thisID = parseInt($(this)[0].id.replace(`legend-checkmark-${fileName}-` , ''));
 			if (!this.checked) {// state is after click
 				if (thisID == selectedLines[fileName]) {
 					hideVertices(thisID);
 				}
 				map.removeLayer(lineLayers[fileName][thisID]);
-				trackInfo[fileName][thisID].visible = false;
+				trackInfo[fileName][thisID]['visible'] = false;
+				var thisFileName = getSelectedFileName();
+				selectedLines[thisFileName] = selectedLines[thisFileName] == thisID ? -1 : selectedLines[thisFileName];
 			} else {
 				map.addLayer(lineLayers[fileName][thisID]);
-				trackInfo[fileName][thisID].visible = true;
+				trackInfo[fileName][thisID]['visible'] = true;
 			}
-			
+
 			// Make sure the click doesn't continue to the .legend-row and highlight it
 			event.stopPropagation();
 		})
-		
+
+		// Set the checbox as checked or not depending on if the line is visible
+		checkbox.prop('checked', thisInfo.visible);
+
 	}
 	
 	// select the row corresponding to the selected line
@@ -560,7 +585,7 @@ function loadTracksFromJSON(filePath) {
 				var firstProperties = geojson.features[0].properties;
 				data.track_info['departure_datetime'] = firstProperties.departure_datetime;
 				data.track_info['registration'] = firstProperties.registration;
-				trackInfo[fileName][segmentID] = data.track_info;
+				trackInfo[fileName][segmentID] = {...data.track_info};
 				trackInfo[fileName][segmentID]['trackInfoUnlocked'] = false;
 				
 				var color = getColor();
@@ -615,7 +640,9 @@ function loadTracksFromMemory(fileName) {
 
 	// Add the lines for this file
 	for (segmentID in lineLayers[fileName]) {
-		lineLayers[fileName][segmentID].addTo(map);
+		if (trackInfo[fileName][segmentID].visible) {
+			lineLayers[fileName][segmentID].addTo(map);
+		}
 	}
 
 	// show the right file as selected
