@@ -1,3 +1,7 @@
+
+var fileIsLoading = false;
+
+
 function getColor() {
 	var color = Math.floor(Math.random() * 16777216).toString(16);
 	var hexColor = '#000000'.slice(0, -color.length) + color;
@@ -543,8 +547,31 @@ function fileWasSelected(filePath) {
 }
 
 
+function showLoadingIndicator() {
+	$('#loading-indicator').css('display', 'block');
+	$('#loading-indicator-background').css('display', 'block');
+	// Wait for 1 second before showing the indicator
+	/*setTimeout(1000, function() {
+		if (fileIsLoading) {
+			$('#loading-indicator').css('display', 'block');
+			$('#loading-indicator-background').css('display', 'block');
+		}
+	})*/
+}
+
+function hideLoadingIndicator() {
+	$('#loading-indicator-background').css('display', 'none');
+	$('#loading-indicator').css('display', 'none');
+}
+
+
 function loadTracksFromJSON(filePath) {
 	// Read the track JSON file and 
+
+	// start the loading indicator
+	fileIsLoading = true;
+	showLoadingIndicator();
+
 
 	removeAllLayers();
 
@@ -626,7 +653,11 @@ function loadTracksFromJSON(filePath) {
 		updateLegend(fileName);
 
 		// Fill in the rest of the track info (from reading the geojsons)
-		fillTrackInfo(); 
+		fillTrackInfo();
+
+		// remove the loading indicator
+		hideLoadingIndicator();
+		
 	})
 
 	return deferred;
@@ -635,6 +666,8 @@ function loadTracksFromJSON(filePath) {
 
 function loadTracksFromMemory(fileName) {
 	
+	showLoadingIndicator();
+
 	// remove current layers
 	removeAllLayers();
 
@@ -658,6 +691,8 @@ function loadTracksFromMemory(fileName) {
 
 	// zoom to extent
 	map.fitBounds(fileExtents[fileName])
+
+	hideLoadingIndicator();
 }
 
 
