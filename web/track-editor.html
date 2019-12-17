@@ -22,14 +22,16 @@
   <!-- loading indicator should be hidden and will only be shown when loading a file -->
   <div id="loading-indicator-background" style="display: none;"></div>
   <div id="loading-indicator" style="display: none;"></div>
-  <div id="dashboard-container" class="container-fluid" style="display:flex;">
+  <div id="dashboard-container" class="container-fluid">
 
-    <div class="row h-100" style="display: flex; width:100%">
+    <div class="row col-12" id="file-menu-title" style="width:100%; display: block; margin-top: 10px">
+      <h4 style="color: rgb(110, 110, 110);">Files to import</h4>
+    </div>
+    <div class="row h-90" style="display: flex; width:100%; float:left;">
       
       <div id='menu-container' class="col-sm-6 col-md-4 col-lg-4" style="">
         <div>
           <!-- File menu and legend-->
-          <h4 style="color: rgb(110, 110, 110);">Files to import</h4>
           <div style="height:100%; overflow:auto; align-items:stretch;" >
             <div class='accordion' id='file-list'>
               <!--items added dynamically on load -->
@@ -101,7 +103,7 @@
             <button class="button data-button" id="save-button" onclick="onImportDataClick()" style="float:left;">Import tracks</button>
           </div>
           <div style="float:right; display:inline-block; color:rgb(110, 110, 110); flex:1; height:100%; margin-left:0;">
-            <p style="width:100%; float:right; font-size:14px; display:inline-block; margin-top:20px; text-align:right;">Questions? Contact the data steward at <a id="contact-link" style="padding-left: 7px; color:hsl(195, 85%, 50%); display:inline;"></a></p>
+            <p style="width:100%; float:right; font-size:14px; display:inline-block; margin-top:20px; text-align:right;">Questions? Contact the flight data steward at <a id="contact-link" style="color:hsl(195, 85%, 50%); display:inline;"></a></p>
           </div>         
         </div>
       </div>
@@ -132,7 +134,7 @@
     // Make sure files are read from disk every time
     $(document).ready(function() {
       $.ajaxSetup({ cache: false });
-      $('#map-container').css('height', $(window).height());
+      $('#map-container').css('height', $(window).height() - $('#file-menu-title').height());
       $('#contact-link')
         .attr('href', `mailTo:${dataSteward}`)
         .text(dataSteward);
