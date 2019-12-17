@@ -962,6 +962,37 @@ function addMapNavToolbar() {
 }
 
 
+function validateTrackInfo() {
+
+
+    var trackInfoInputs = $('.track-info-textbox, .track-info-textbox.locked');
+    for (elementID in trackInfoInputs) {
+        var thisElement = $(trackInfoInputs[elementID]);
+        var thisID = thisElement[0].id;
+        if (!thisElement.val().length && !thisID.includes('submitter_notes') && !thisElement.hasClass('select-disabled')){
+            var thisLabel = $(thisElement.siblings()[0]).text();
+            alert(`The "${thisLabel}" field is empty but all track info fields are mandatory.`);
+            thisElement.focus();
+            return false;
+        }
+    }
+
+    if (!$('#textbox-registration').val().match(/N\d{2,5}[A-Z]{0,2}/)) {
+        alert(`The "Tail number" field entry isn't valid.`);
+        $('#textbox-registration').focus();
+        return false;
+    }
+
+    if ($('#select-operator_code').val() === 'National Park Service' && !$('#select-nps_mission_code').val().length){
+        alert(`You must select an "NPS mission code" if the operator is the National Park Service`);
+        $('#select-nps_mission_code').focus();
+        return false;
+    }
+
+    return true;
+}
+
+
 function importData(){
 
     var fileName = getSelectedFileName();
@@ -1006,6 +1037,7 @@ function importData(){
         trackInfoString: trackInfoPath, //JSON.stringify(thisTrackInfo).replace('"', '\\"')
         stderrPath: stderrPath
     };
+    return;
 
     $.ajax({
         url: 'geojson_io.php',
@@ -1062,6 +1094,8 @@ function importData(){
 }
 
 function onImportDataClick(){
+
+    if (!validateTrackInfo()) return;
 
 	var fileName = getSelectedFileName();
 	var filePath = `data/edited/${fileName}.geojson`;
