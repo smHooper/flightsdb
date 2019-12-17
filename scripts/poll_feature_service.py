@@ -12,12 +12,13 @@ from sqlalchemy import create_engine
 
 import download_feature_service as download
 import import_track
+import db_utils
 import process_emails
 
 pd.set_option('display.max_columns', None)# useful for debugging
 pd.options.mode.chained_assignment = None
 
-SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
+SUBMISSION_TICKET_INTERVAL = 1#900 # seconds between submission of a particular user
 LOG_CACHE_DAYS = 14 # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off
@@ -314,6 +315,8 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # Pre-process track data
     import_params = param_dict['import_params'] if 'import_params' in param_dict else {}
     attachment_dir = os.path.join(download_dir, 'attachments')
+    operator_codes = db_utils.get_lookup_table(table='operators', conn=tracks_conn)
+    mission_codes = db_utils.get_lookup_table(table='nps_mission_codes', conn=tracks_conn)
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
 
         attachment_info = get_attachment_info(zip_path)
@@ -339,10 +342,18 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
 
                 # Read the track file and get it into a format that the rest of import_track functions will understand
                 extracted_path = os.path.join(attachment_dir, fname)
-                gdf = import_track.format_track(extracted_path,
-                                                registration=attachment_info['tracks_tail_number'],
-                                                submission_method='survey123',
-                                                **import_params)
+                try:
+                    gdf = import_track.format_track(extracted_path,
+                                                    registration=attachment_info['tracks_tail_number'],
+                                                    submission_method='survey123',
+                                                    **import_params)
+                except Exception as e:
+                    MESSAGES.append(['Error on file %s: %s' % (fname, e), 'warn_track'])
+
+                if not len(gdf):
+                    MESSAGES.append(['The file %s did not contain any readable tracks' % fname, 'warn_user'])
+                    continue
+
                 # Get submission info
                 this_agol_id = attachment_info['REL_GLOBALID'].replace('{', '').replace('}', '')
                 for k, v in submissions.loc[submissions.globalid == this_agol_id].squeeze().iteritems():
@@ -350,6 +361,20 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                     attachment_info[k] = str(v) if v and v != 0 else ''
                 attachment_info['submitter'] = submitter
                 attachment_info['submitter_notes'] = attachment_info['tracks_notes']
+
+                # Set the operator code to the operator name, not the code (easier to read for editors). The web app
+                #   will replace the name with the code on import
+                if attachment_info['tracks_operator'] in operator_codes:
+                    attachment_info['operator_code'] = operator_codes[attachment_info['tracks_operator']]
+                else:
+                    attachment_info['operator_code'] = ''
+
+                if attachment_info['tracks_mission'] in mission_codes:
+                    attachment_info['nps_mission_code'] = attachment_info['tracks_mission']#, mission_codes[attachment_info['tracks_mission']]
+                else:
+                    attachment_info['nps_mission_code'] = ''
+
+                attachment_info['source_file'] = os.path.join(import_track.ARCHIVE_DIR, fname)
                 '''gdf['submitter'] = submitter
                 gdf['agol_id'] = attachment_info['REL_GLOBALID'].replace('{', '').replace('}', '')
                 merged = gdf.merge(submissions, left_on='agol_id', right_on='globalid')

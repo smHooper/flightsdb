@@ -22,6 +22,58 @@ function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr) {
 }
 
 
+function runCmd($cmd) {
+	// can't get this to work for python commands because conda throws
+	// an error in conda-script (can't import cli.main)
+	$process = proc_open(
+		$cmd, 
+		array(
+			0 => array("pipe", "w"), //STDIN
+		    1 => array('pipe', 'w'), // STDOUT
+		    2 => array('pipe', 'w')  // STDERR
+		), 
+		$pipes,
+		NULL,
+		NULL,
+		array('bypass_shell' => true)
+	);
+
+	$resultObj; 
+
+	if (is_resource($process)) {
+
+	    $resultObj->stdout = stream_get_contents($pipes[1]);
+	    fclose($pipes[1]);
+
+	    $resultObj->stderr = stream_get_contents($pipes[2]);
+	    fclose($pipes[2]);
+
+	    $returnCode = proc_close($process);
+
+	    if ($returnCode) {
+	    	echo json_encode($resultObj);
+	    } else {
+	    	echo 'nothing';//false;
+	    }
+	} else {
+		echo json_encode($_SERVER);
+	}
+}
+
+
+function deleteFile($filePath) {
+
+	$fullPath = realpath($filePath);
+
+	if (file_exists($fullPath) && is_writable($fullPath)) {
+		unlink($fullPath);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+
 if (isset($_POST['action'])) {
 	
 	// retrieve the names of all files that need to be edited
@@ -55,6 +107,37 @@ if (isset($_POST['action'])) {
 			echo json_encode($result);
 		} else {
 			echo false;
+		}
+	}
+
+	if ($_POST['action'] == 'importData') {
+		if (isset($_POST['geojsonString']) && isset($_POST['trackInfoString'])) {
+			$geojson = $_POST['geojsonString'];
+			$trackInfo = $_POST['trackInfoString'];
+			$stderrPath = $_POST['stderrPath'];
+			$cmd = "conda activate overflights && python ..\\scripts\\import_from_editor.py $geojson $trackInfo $import_param_file 2> $stderrPath && conda deactivate";
+			//runCmd($cmd);
+			echo shell_exec($cmd);
+			//echo `python ..\\scripts\\import_from_editor.py {$geojson} {$trackInfo} {$import_param_file}`;
+			//$output = shell_exec($cmd);
+			//echo $cmd; 
+		}
+	}
+
+	if ($_POST['action'] == 'readTextFile') {
+		if (isset($_POST['textPath'])) {
+			echo file_get_contents($_POST['textPath']);
+		}
+	}
+
+	if ($_POST['action'] == 'deleteFile') {
+		//echo 'delete posted\n';
+		if (isset($_POST['filePath'])) {
+
+			echo deleteFile($_POST['filePath']) ? 'true' : 'false';
+			echo $_POST['filePath'];
+		} else {
+			echo 'filepath not set or is null';
 		}
 	}
 }

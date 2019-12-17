@@ -64,7 +64,7 @@ import process_emails
 import kml_parser
 
 
-CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)',	'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
+CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
                     'gsat': ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts'],
                     'spy': ['Registration', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Speed(knots)', 'Bearing', 'PointType', 'Description'],
                     'tms': ['Serial No.', ' UTC', ' Latitude', ' HemNS', ' Longititude', ' HemEW', ' Knots', ' Heading', ' Altitude (m)', ' HDOP', ' New Conn', ' Entered', ' Event'],
@@ -103,7 +103,7 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                        }
 ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
 
-ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files'
+ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files\tracks'
 
 REGISTRATION_REGEX = r'(?i)N\d{2,5}[A-Z]{0,2}'
 
@@ -516,18 +516,25 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     return gdf
 
 
-def import_data(connection_txt, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None):
+def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None, engine=None):
 
-    if path:
+
+    if type(data) == gpd.geodataframe.GeoDataFrame:
+        gdf = data.copy()
+    elif path:
         gdf = format_track(path, seg_time_diff=seg_time_diff, min_point_distance=min_point_distance,
                            registration=registration, submission_method=submission_method,
                            operator_code=operator_code, aircraft_type=aircraft_type)
-    elif type(data) == gpd.geodataframe.GeoDataFrame:
-        gdf = data.copy()
     else:
         raise ValueError('Either data (a geodataframe) or path (to a valid track file) must be given')
 
-    engine = db_utils.connect_db(connection_txt)
+    if not engine and connection_txt:
+        engine = db_utils.connect_db(connection_txt)
+    elif not engine:
+        raise ValueError('Either an SQLAlchemy Engine (from create_engine()) or connection_txt must be given')
+
+    # drop any segments with only one vertex
+    gdf = gdf.loc[gdf.duration_hrs > 0]
 
     # get columns from DB tables
     flight_columns = db_utils.get_db_columns('flights', engine)
@@ -539,11 +546,12 @@ def import_data(connection_txt, data=None, path=None, seg_time_diff=15, min_poin
     flights = gdf[[c for c in flight_columns if c in gdf]].drop_duplicates()
     flights['end_datetime'] = gdf.groupby('flight_id').ak_datetime.max().values
     # if coming from web app, this should already be in the data so don't overwrite
-    if 'submitter' not in flights.columns:
-        flights['submitter'] = os.getlogin()
+    #if 'submitter' not in flights.columns:
+    #    flights['submitter'] = os.getlogin()
     if 'track_editor' not in flights.columns:
-        flights['track_editor'] = flights.submitted_by
-    flights['source_file'] = os.path.join(ARCHIVE_DIR, os.path.basename(path))
+        flights['track_editor'] = os.getlogin()#flights.submitter
+    if path and 'source_file' not in flights.columns:
+        flights['source_file'] = os.path.join(ARCHIVE_DIR, os.path.basename(path))
     if not len(flights):
         raise ValueError('No flight segments found in this file.')
 
@@ -622,7 +630,7 @@ def import_data(connection_txt, data=None, path=None, seg_time_diff=15, min_poin
 
         # INSERT info about this aircraft if it doesn't already exist. If it does, UPDATE it if necessary
         if ssl_cert_path:
-            ainfo.update_aircraft_info(conn, registration, ssl_cert_path)
+            ainfo.update_aircraft_info(conn, registration, ssl_cert_path)#'''
 
     # Archive the data file
     if not os.path.isdir(ARCHIVE_DIR):
@@ -630,11 +638,13 @@ def import_data(connection_txt, data=None, path=None, seg_time_diff=15, min_poin
             os.mkdir(ARCHIVE_DIR)
         except:
             pass
-    try:
-        shutil.copy(path, ARCHIVE_DIR)
-    except Exception as e:
-        warnings.warn('Data successfully imported, but could not copy track files because %s. You will have to '
-                      'manually copy and paste this file to %s' % (e, ARCHIVE_DIR))
+    if path:
+        try:
+            shutil.copy(path, ARCHIVE_DIR)
+            os.remove(path)
+        except Exception as e:
+            warnings.warn('Data successfully imported, but could not copy track files because %s. You will have to '
+                          'manually copy and paste this file to %s' % (e, ARCHIVE_DIR))
 
     if not silent:
         sys.stdout.write('%s flight tracks imported:\n\t-%s' % (len(flights), '\n\t-'.join(flight_ids.flight_id)))
