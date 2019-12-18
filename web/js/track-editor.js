@@ -1,6 +1,6 @@
 
-var fileIsLoading = false;
 var dataSteward = 'dena_flight_data@nps.gov';
+var zoomMapCalled = 0;
 
 function getColor() {
 	var color = Math.floor(Math.random() * 16777216).toString(16);
@@ -17,6 +17,94 @@ function getSelectedFileName() {
 		return '';
 	}
 }
+
+
+function onMapZoom() {
+	/* 
+	when the map changes extent, add the extent to the zoom buffer
+	so users can navigate to and from previous extents
+	*/
+
+	try {
+		var currentBounds = map.getBounds();
+	} catch {
+		// bounds haven't been set yet
+		return;
+	}
+
+	var previousMapIndex = currentMapExtentIndex;
+	if (mapExtentBuffer[previousMapIndex] != currentBounds) {
+		currentMapExtentIndex ++;
+		mapExtentBuffer.push(currentBounds);
+		mapExtentBuffer = mapExtentBuffer.slice(0, currentMapExtentIndex + 1);
+	}
+
+	$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 ? 1 : 0.5);
+	$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.5);
+
+
+	console.log("onMapZoom => currentMapExtentIndex: " + currentMapExtentIndex)
+	console.log(mapExtentBuffer)
+}
+
+
+function zoomMap() {
+
+	zoomMapCalled ++; // should never exceed 1
+
+	var zoomTo = mapExtentBuffer[currentMapExtentIndex];
+	var currentBuffer = [...mapExtentBuffer];// copy the buffer
+	map.fitBounds(zoomTo);
+
+	//fitBounds() will trigger onMapZoom, so reset what it did
+	// 	delay this by 1 seconds so the move event has time to fire, 
+	//	because it happens asynchronously
+	setTimeout(
+		function() {
+			mapExtentBuffer = [...currentBuffer];
+			currentMapExtentIndex = currentMapExtentIndex > 0 ? currentMapExtentIndex - 1 : 0;
+			// Set style here too because buffer might not be accurate in onMapZoom()
+			$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 ? 1 : 0.5);
+			$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.5);
+			zoomMapCalled --; // reset value so callers no map finished moving
+				console.log(mapExtentBuffer)
+	console.log("zoomMap => currentMapExtentIndex: " + currentMapExtentIndex)
+		},
+		1000);
+
+}
+
+
+function onPreviousExtentClick() {
+	
+	// if the map is currently moving, do nothing
+	if (zoomMapCalled) return; 
+
+	if (currentMapExtentIndex >= 1) {
+		
+		currentMapExtentIndex --;
+		zoomMap();
+	}
+}
+
+
+function onNextExtentClick() {
+
+	// if the map is currently moving, do nothing
+	if (zoomMapCalled) return;
+
+	var bufferLength = mapExtentBuffer.length;
+
+	// Use separate conditional test to ensure that if current extent is the second to last 
+	//	(and it will be the last) that the button looks disabled
+	if (currentMapExtentIndex >= bufferLength - 1) {
+		currentMapExtentIndex = bufferLength - 1;
+	} else {
+		currentMapExtentIndex ++;			
+		zoomMap();
+	}
+}
+
 
 
 function splitAtVertex(segmentID, vertexID, minVertexIndex){
@@ -322,9 +410,21 @@ function removeFile(fileName) {
 
     fileWasSelected(nextFileName);
     if (pointGeojsonLayers[nextFileName] == undefined) {
-        loadTracksFromJSON(`data/${nextFileName}_geojsons.json`);
+		loadTracksFromJSON(filePath)
+			.done(() => {
+				hideLoadingIndicator('loadTracksFromJSON')
+				// Reset zoom buffer
+				mapExtentBuffer = [map.getBounds()]
+				currentMapExtentIndex = 0;
+			});
     } else {
-        loadTracksFromMemory(nextFileName);
+        loadTracksFromMemory(nextFileName)
+        	.then(() => {
+				hideLoadingIndicator('loadTracksFromMemory')
+				// Reset zoom buffer
+				mapExtentBuffer = [map.getBounds()]
+				currentMapExtentIndex = 0;
+			});
     }
 
     //############# handle situations when there is no .next()##############3
@@ -436,10 +536,22 @@ function addFileToMenu(filePath) {
 			
 			// If the points don't yet exist, this file hasn't been loaded, so load them
 			if (pointGeojsonLayers[fileName] == undefined) {
-				loadTracksFromJSON(filePath);
-			} else {
-				loadTracksFromMemory(fileName);
-			}
+				loadTracksFromJSON(filePath)
+					.done(() => {
+						hideLoadingIndicator('loadTracksFromJSON')
+						// Reset zoom buffer
+						mapExtentBuffer = [map.getBounds()]
+						currentMapExtentIndex = 0;
+					});
+		    } else {
+		        loadTracksFromMemory(fileName)
+		        	.then(() => {
+						hideLoadingIndicator('loadTracksFromMemory')
+						// Reset zoom buffer
+						mapExtentBuffer = [map.getBounds()]
+						currentMapExtentIndex = 0;
+					});
+		    }
 		}
 	 });
 
@@ -594,7 +706,7 @@ function showLoadingIndicator() {
     //set a timer to turn off the indicator after a max of 5 seconds because 
     //  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
     //  with who called it
-    setTimeout(hideLoadingIndicator, 5000);
+    //setTimeout(hideLoadingIndicator, 5000);
 
     var thisCaller = showLoadingIndicator.caller.name;
 
@@ -602,16 +714,20 @@ function showLoadingIndicator() {
 	$('#loading-indicator-background').css('display', 'block');
 
     // check the .data() to see if any other functions called this
-    if (indicator.data('callers') === undefined) {
+    indicator.data('callers', indicator.data('callers') === undefined ? 
+    	[thisCaller] : indicator.data('callers').concat([thisCaller])
+    )//*/
+    /*if (indicator.data('callers') === undefined) {
         // If it's not defined, this is the only caller so set the value
         //   to an array to new callers can be added
         indicator.data('callers', [thisCaller])
     } else {
         // If it does exist, append this caller to the existing
         indicator.data('callers', indicator.data('callers').concat([thisCaller]))
-    }
+    }//*/
 
 }
+
 
 function hideLoadingIndicator(caller) {
     
@@ -640,7 +756,6 @@ function loadTracksFromJSON(filePath) {
 	// Read the track JSON file and 
 
 	// start the loading indicator
-	fileIsLoading = true;
 	showLoadingIndicator();
 
 	removeAllLayers();
@@ -724,17 +839,14 @@ function loadTracksFromJSON(filePath) {
 		// Fill in the rest of the track info (from reading the geojsons)
 		fillTrackInfo();
 
-		// remove the loading indicator
-		hideLoadingIndicator('loadTracksFromJSON');
-		
 	})
 
 	return deferred;
 }
 
 
-function loadTracksFromMemory(fileName) {
-	
+async function loadTracksFromMemory(fileName) {
+
 	showLoadingIndicator();
 
 	// remove current layers
@@ -759,9 +871,13 @@ function loadTracksFromMemory(fileName) {
 	}
 
 	// zoom to extent
-	map.fitBounds(fileExtents[fileName])
+	//map.fitBounds(fileExtents[fileName])
 
-	hideLoadingIndicator('loadTracksFromMemory');
+	//hideLoadingIndicator('loadTracksFromMemory');
+
+	// Reset zoom buffer
+	mapExtentBuffer = [map.getBounds()]
+	currentMapExtentIndex = 0;
 }
 
 
@@ -921,42 +1037,64 @@ function addMapNavToolbar() {
 	/* Add a toolbar for zooming to full extent and the extent of the selected track*/
 
 	var zoomSelected = L.Toolbar2.Action.extend({
-			options: {
-					toolbarIcon: {
-							html: '<img src="imgs/zoom_selected_icon.svg"/>',
-							tooltip: 'Zoom to selected track'
-					}
-			},
-			addHooks: function () {
-				var fileName = getSelectedFileName();
-				if (fileName !== undefined) {
-					map.fitBounds(lineLayers[fileName][selectedLines[fileName]].getBounds());
-				} else {
-					alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
-				}
+		options: {
+			toolbarIcon: {
+					html: '<img src="imgs/zoom_selected_icon.svg"/>',
+					tooltip: 'Zoom to selected track'
 			}
+		},
+		addHooks: function () {
+			var fileName = getSelectedFileName();
+			if (fileName !== undefined) {
+				map.fitBounds(lineLayers[fileName][selectedLines[fileName]].getBounds());
+			} else {
+				alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
+			}
+		}
 				
 	});
 
 	var zoomFull = L.Toolbar2.Action.extend({
-			options: {
-					toolbarIcon: {
-							html: '<img src="imgs/zoom_full_icon.svg"/>',
-							tooltip: 'Zoom to full extent'
-					}
-			},
-			addHooks: function () {
-				var fileName = getSelectedFileName();
-				if (fileName !== undefined) {
-					map.fitBounds(fileExtents[fileName]);
-				} else {
-					alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
-				}
+		options: {
+			toolbarIcon: {
+					html: '<img src="imgs/zoom_full_icon.svg"/>',
+					tooltip: 'Zoom to full extent'
 			}
+		},
+		addHooks: function () {
+			var fileName = getSelectedFileName();
+			if (fileName !== undefined) {
+				map.fitBounds(fileExtents[fileName]);
+			} else {
+				alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
+			}
+		}
+	});
+
+	var zoomPrevious = L.Toolbar2.Action.extend({
+		
+		options: {
+			toolbarIcon: {
+				html: '<img id="img-zoom_previous" src="imgs/zoom_previous_icon.svg" style="opacity: 0.5;"/>',
+				tooltip: 'Zoom to previous extent'
+			}
+		},
+		addHooks: onPreviousExtentClick
+	});
+
+	var zoomNext = L.Toolbar2.Action.extend({
+		
+		options: {
+			toolbarIcon: {
+					html: '<img id="img-zoom_next" src="imgs/zoom_next_icon.svg" style="opacity: 0.5;"/>',
+					tooltip: 'Zoom to next extent'
+			}
+		},
+		addHooks: onNextExtentClick
 	});
 
 	new L.Toolbar2.Control({
-			actions: [zoomSelected, zoomFull],
+			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext],
 			position: 'topleft'
 	}).addTo(map);
 }
