@@ -39,7 +39,7 @@ function onMapZoom() {
 		mapExtentBuffer = mapExtentBuffer.slice(0, currentMapExtentIndex + 1);
 	}
 
-	$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 ? 1 : 0.5);
+	$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.5);
 	$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.5);
 
 
@@ -64,7 +64,7 @@ function zoomMap() {
 			mapExtentBuffer = [...currentBuffer];
 			currentMapExtentIndex = currentMapExtentIndex > 0 ? currentMapExtentIndex - 1 : 0;
 			// Set style here too because buffer might not be accurate in onMapZoom()
-			$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 ? 1 : 0.5);
+			$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.5);
 			$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.5);
 			zoomMapCalled --; // reset value so callers no map finished moving
 				console.log(mapExtentBuffer)
@@ -403,30 +403,37 @@ function onLineClick(e) {
 function removeFile(fileName) {
 
     var nextCard = $(`#card-${fileName}`).next();
+    // check if there is a next card. If not, try to get the previous card
+    nextCard = nextCard.length ? nextCard : $(`#card-${fileName}`).prev()
+
     $(`#card-${fileName}`)
         .fadeOut(500, function() {$(this).remove()});// remove the item from the legend
 
-    var nextFileName = nextCard[0].id.replace('card-', '');
+   	if (nextCard.length) {
+	    var nextFileName = nextCard[0].id.replace('card-', '');
+	    var nextFilePath = `data/${nextFileName}_geojsons.json`;
 
-    fileWasSelected(nextFileName);
-    if (pointGeojsonLayers[nextFileName] == undefined) {
-		loadTracksFromJSON(filePath)
-			.done(() => {
-				hideLoadingIndicator('loadTracksFromJSON')
-				// Reset zoom buffer
-				mapExtentBuffer = [map.getBounds()]
-				currentMapExtentIndex = 0;
-			});
-    } else {
-        loadTracksFromMemory(nextFileName)
-        	.then(() => {
-				hideLoadingIndicator('loadTracksFromMemory')
-				// Reset zoom buffer
-				mapExtentBuffer = [map.getBounds()]
-				currentMapExtentIndex = 0;
-			});
-    }
-
+	    fileWasSelected(nextFileName);
+	    if (pointGeojsonLayers[nextFileName] == undefined) {
+			loadTracksFromJSON(nextFilePath)
+				.done(() => {
+					hideLoadingIndicator('loadTracksFromJSON')
+					// Reset zoom buffer
+					//mapExtentBuffer = [map.getBounds()]
+					//currentMapExtentIndex = 0;
+				});
+	    } else {
+	        loadTracksFromMemory(nextFilePath)
+	        	.then(() => {
+					hideLoadingIndicator('loadTracksFromMemory')
+					// Reset zoom buffer
+					//mapExtentBuffer = [map.getBounds()]
+					//currentMapExtentIndex = 0;
+				});
+	    }
+	} else {
+		// show the no data div
+	}
     //############# handle situations when there is no .next()##############3
 
     // send ajax to delete file
@@ -540,16 +547,16 @@ function addFileToMenu(filePath) {
 					.done(() => {
 						hideLoadingIndicator('loadTracksFromJSON')
 						// Reset zoom buffer
-						mapExtentBuffer = [map.getBounds()]
-						currentMapExtentIndex = 0;
+						//mapExtentBuffer = [map.getBounds()]
+						//currentMapExtentIndex = 0;
 					});
 		    } else {
 		        loadTracksFromMemory(fileName)
 		        	.then(() => {
 						hideLoadingIndicator('loadTracksFromMemory')
 						// Reset zoom buffer
-						mapExtentBuffer = [map.getBounds()]
-						currentMapExtentIndex = 0;
+						//mapExtentBuffer = [map.getBounds()]
+						//currentMapExtentIndex = 0;
 					});
 		    }
 		}
@@ -831,7 +838,11 @@ function loadTracksFromJSON(filePath) {
 		var allLines = L.polyline(polylineCoords);
 		fileExtents[fileName] = allLines.getBounds();
 		showVertices(selectedLines[fileName]);
-		//map.fitBounds(fileExtents[fileName]);
+
+		// Reset zoom buffer
+		mapExtentBuffer = []
+		currentMapExtentIndex = -1;
+		map.fitBounds(fileExtents[fileName]);
 
 		// Add lines to legend
 		updateLegend(fileName);
@@ -870,14 +881,17 @@ async function loadTracksFromMemory(fileName) {
 		showVertices(selectedLines[fileName], hideCurrent=false);
 	}
 
+	mapExtentBuffer = []
+	currentMapExtentIndex = -1;
+
 	// zoom to extent
-	//map.fitBounds(fileExtents[fileName])
+	map.fitBounds(fileExtents[fileName])
 
 	//hideLoadingIndicator('loadTracksFromMemory');
 
 	// Reset zoom buffer
-	mapExtentBuffer = [map.getBounds()]
-	currentMapExtentIndex = 0;
+	//mapExtentBuffer = [map.getBounds()]
+	//currentMapExtentIndex = 0;
 }
 
 

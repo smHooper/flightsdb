@@ -152,6 +152,10 @@
       cache: false,
       success: function(json_string) {
         var files = $.parseJSON(json_string);
+
+        //check if there are any files. If not, show a message indicating that
+        
+        
         files.forEach(function(filePath) {
           addFileToMenu(filePath);
         })
