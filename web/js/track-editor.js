@@ -1,6 +1,11 @@
 
 var dataSteward = 'dena_flight_data@nps.gov';
 var zoomMapCalled = 0;
+var noFileGIFS = [
+	"https://media2.giphy.com/media/l2Je0ihsoThQy6D0Q/giphy.gif?cid=790b76112a7424c801a727f0e2d02ccc6731809cafdc8d60&rid=giphy.gif",
+    "https://media.tenor.com/images/ea9f942522f48f3897999cda42778e6a/tenor.gif",
+    "https://media.tenor.com/images/18bc79d054124aa3d8c594f6555383ed/tenor.gif" 
+];
 
 function getColor() {
 	var color = Math.floor(Math.random() * 16777216).toString(16);
@@ -39,12 +44,9 @@ function onMapZoom() {
 		mapExtentBuffer = mapExtentBuffer.slice(0, currentMapExtentIndex + 1);
 	}
 
-	$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.5);
-	$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.5);
+	$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.35);
+	$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.35);
 
-
-	console.log("onMapZoom => currentMapExtentIndex: " + currentMapExtentIndex)
-	console.log(mapExtentBuffer)
 }
 
 
@@ -64,11 +66,9 @@ function zoomMap() {
 			mapExtentBuffer = [...currentBuffer];
 			currentMapExtentIndex = currentMapExtentIndex > 0 ? currentMapExtentIndex - 1 : 0;
 			// Set style here too because buffer might not be accurate in onMapZoom()
-			$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.5);
-			$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.5);
+			$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.35);
+			$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.35);
 			zoomMapCalled --; // reset value so callers no map finished moving
-				console.log(mapExtentBuffer)
-	console.log("zoomMap => currentMapExtentIndex: " + currentMapExtentIndex)
 		},
 		1000);
 
@@ -178,6 +178,7 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex){
 	trackInfo[fileName][newSegmentID] = thisInfo;
 	showVertices(newSegmentID);
 	updateLegend(fileName);
+	isEditing[fileName] = true;
 }
 
 
@@ -239,6 +240,8 @@ function geojsonPointAsCircle(feature, latlng, color) {
 			<div>
 				<p><strong>Time:</strong> ${feature.properties.ak_datetime}</p>
 				<p><strong>Altitude:</strong> ${feature.properties.altitude_ft} ft</p>
+				<p><strong>Speed:</strong> ${feature.properties.knots} kn</p>
+				<p><strong>Heading:</strong> ${feature.properties.heading}°</p>
 			</div>
 		`);
 
@@ -400,7 +403,14 @@ function onLineClick(e) {
 }
 
 
-function removeFile(fileName) {
+function showNoFileMessage() {
+	
+	$('#no-files-message').css('display', 'block');
+	$('#no-files-gif').attr('src', noFileGIFS[Math.floor(Math.random() * noFileGIFS.length)]);
+}
+
+
+async function removeFile(fileName) {
 
     var nextCard = $(`#card-${fileName}`).next();
     // check if there is a next card. If not, try to get the previous card
@@ -432,13 +442,16 @@ function removeFile(fileName) {
 				});
 	    }
 	} else {
-		// show the no data div
+		showLoadingIndicator();
+		setTimeout(() => {
+			hideLoadingIndicator();
+			showNoFileMessage();
+		}, 1000);
 	}
-    //############# handle situations when there is no .next()##############3
 
     // send ajax to delete file
     var oldFilePath = `data/${fileName}_geojsons.json`;
-    $.ajax({
+    /*$.ajax({
         url: 'geojson_io.php',
         method: 'POST',
         data: {action: 'deleteFile', filePath: oldFilePath},
@@ -448,7 +461,9 @@ function removeFile(fileName) {
                 alert(`problem deleting file ${oldFilePath}. This file will have to be manually deleted.`)
             }
         }
-    });
+    });*/
+
+    delete isEditing[fileName];
 
 }
 
@@ -482,6 +497,8 @@ function deleteTrack(id=undefined) {
 		if (thisID == selectedLines[fileName]) {
 			selectedLines[fileName] = -1;
 		}
+
+		isEditing[fileName] = true;
 	} 
 	//updateLegend();
 
@@ -570,6 +587,8 @@ function addFileToMenu(filePath) {
 			'<div class="card-footer"></div>' +
 		'</div>'
 		).appendTo('#' + cardID);
+
+	 isEditing[fileName] = false;
 
 }
 
@@ -710,10 +729,10 @@ function fileWasSelected(filePath) {
 
 function showLoadingIndicator() {
 
-    //set a timer to turn off the indicator after a max of 5 seconds because 
+    //set a timer to turn off the indicator after a max of 15 seconds because 
     //  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
     //  with who called it
-    //setTimeout(hideLoadingIndicator, 5000);
+    setTimeout(hideLoadingIndicator, 15000);
 
     var thisCaller = showLoadingIndicator.caller.name;
 
@@ -723,15 +742,7 @@ function showLoadingIndicator() {
     // check the .data() to see if any other functions called this
     indicator.data('callers', indicator.data('callers') === undefined ? 
     	[thisCaller] : indicator.data('callers').concat([thisCaller])
-    )//*/
-    /*if (indicator.data('callers') === undefined) {
-        // If it's not defined, this is the only caller so set the value
-        //   to an array to new callers can be added
-        indicator.data('callers', [thisCaller])
-    } else {
-        // If it does exist, append this caller to the existing
-        indicator.data('callers', indicator.data('callers').concat([thisCaller]))
-    }//*/
+    )
 
 }
 
@@ -938,7 +949,7 @@ function onTrackInfoElementChange(target) {
 }
 
 
-function fillSelectOptions(selectElementID, queryString, columnName) {
+function fillSelectOptions(selectElementID, queryString) {
 	
     showLoadingIndicator();
 
@@ -1089,7 +1100,7 @@ function addMapNavToolbar() {
 		
 		options: {
 			toolbarIcon: {
-				html: '<img id="img-zoom_previous" src="imgs/zoom_previous_icon.svg" style="opacity: 0.5;"/>',
+				html: '<img id="img-zoom_previous" src="imgs/zoom_previous_icon.svg" style="opacity: 0.35;"/>',
 				tooltip: 'Zoom to previous extent'
 			}
 		},
@@ -1100,7 +1111,7 @@ function addMapNavToolbar() {
 		
 		options: {
 			toolbarIcon: {
-					html: '<img id="img-zoom_next" src="imgs/zoom_next_icon.svg" style="opacity: 0.5;"/>',
+					html: '<img id="img-zoom_next" src="imgs/zoom_next_icon.svg" style="opacity: 0.35;"/>',
 					tooltip: 'Zoom to next extent'
 			}
 		},
