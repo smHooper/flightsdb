@@ -116,11 +116,7 @@ if (isset($_POST['action'])) {
 			$trackInfo = $_POST['trackInfoString'];
 			$stderrPath = $_POST['stderrPath'];
 			$cmd = "conda activate overflights && python ..\\scripts\\import_from_editor.py $geojson $trackInfo $import_param_file 2> $stderrPath && conda deactivate";
-			//runCmd($cmd);
 			echo shell_exec($cmd);
-			//echo `python ..\\scripts\\import_from_editor.py {$geojson} {$trackInfo} {$import_param_file}`;
-			//$output = shell_exec($cmd);
-			//echo $cmd; 
 		}
 	}
 
@@ -131,9 +127,7 @@ if (isset($_POST['action'])) {
 	}
 
 	if ($_POST['action'] == 'deleteFile') {
-		//echo 'delete posted\n';
 		if (isset($_POST['filePath'])) {
-
 			echo deleteFile($_POST['filePath']) ? 'true' : 'false';
 			echo $_POST['filePath'];
 		} else {

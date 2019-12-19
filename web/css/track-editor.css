@@ -61,6 +61,16 @@ body {
 }
 
 
+/***** No-files message ****/
+#no-files-message {
+	background-color: rgb(50, 50, 50);
+	margin: 0;
+	position: absolute;
+	z-index: 9999;
+	height: 100%;
+	width: 100%;
+}
+
 /***** Leaflet map stuff*****/
 .leaflet-popup-content-wrapper {
 	background-color: rgb(85, 85, 85);
@@ -178,9 +188,9 @@ body {
 	transform: translateY(-50%);
 }
 
-.delete-button {
+.delete-track-button {
 	border: none; 
-	background: url(../imgs/delete_icon_20px.png); 
+	background: url(../imgs/delete_icon_20px.png) no-repeat; 
 	opacity: 0.25;
 	height: 20px; 
 	width: 20px;
@@ -188,8 +198,23 @@ body {
 	cursor: pointer;
 }
 
-.delete-button:hover {
+.delete-track-button:hover {
 	opacity: 0.5;
+}
+
+.file-card-button {
+	border: none; 
+	opacity: 0.40;
+	height: 30px; 
+	width: 30px;
+	/*padding-left: 5px;
+	padding-right: 5px;*/
+	transition: 0.3s;
+	cursor: pointer;
+}
+
+.file-card-button:hover{
+	opacity: 0.65;
 }
 
 #dashboard-container {

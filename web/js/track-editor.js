@@ -17,7 +17,7 @@ function getColor() {
 
 function getSelectedFileName() {
 	try {
-		return $('.card-header-anchor-selected.card-link.text-center > .card-title').text();
+		return $('.card-header-anchor-selected.card-link > .card-title').text();
 	} catch {
 		return '';
 	}
@@ -433,7 +433,7 @@ async function removeFile(fileName) {
 					//currentMapExtentIndex = 0;
 				});
 	    } else {
-	        loadTracksFromMemory(nextFilePath)
+	        loadTracksFromMemory(nextFileName)
 	        	.then(() => {
 					hideLoadingIndicator('loadTracksFromMemory')
 					// Reset zoom buffer
@@ -543,16 +543,24 @@ function addFileToMenu(filePath) {
 	 var contentID = 'cardContent-' + fileName;
 	 // add the card
 	 $('<div class="card" id="' + cardID + '">' + 
-				'<div class="card-header px-0" id="' + cardHeaderID + '"></div>' +
+				'<div class="card-header px-0" id="' + cardHeaderID + '" style="width:100%;"></div>' +
 			'</div>'
 		).appendTo('#file-list');
 
 	 // add an anchor to the card header
-	 $(`<a class="collapsed card-link text-center" data-toggle="collapse" href="#${contentID}">
-				<p class="card-title">${fileName}</p>
-			</a>`)
-	 .appendTo('#' + cardHeaderID)
-	 .on('click', function() {
+	$(
+	`<div class="row mx-0" style="width:100%; display: flex; flex-direction: column; height: 40px;">
+	 	<a class="collapsed card-link" data-toggle="collapse" href="#${contentID}" style="display:inline-block; flex: 1; min-width:50%; max-width:75%; padding-left:5%;">
+			<p class="card-title">${fileName}</p>
+		</a>
+		<div style="display:inline-block; float:right; width: 100px;">
+			<button class="file-card-button" title="Delete file" id="delete-${fileName}" style="margin-left:0; float: left; display:none; background: url(../imgs/delete_icon_30px.svg) no-repeat;"></button>
+			<button class="file-card-button" title="Import tracks from file" id="import-${fileName}" style="display:none; margin-left:10%; margin-right:5%; float:right; width:40px; background: url(../imgs/import_data_icon_30px.svg) no-repeat;"></button>
+		</div>
+	</div>`
+	)
+	.appendTo('#' + cardHeaderID)
+	.find('a').on('click', function(event) {
 		if (!$(this).hasClass('card-header-anchor-selected')){
 			
 			// Make sure the new card is given the selected class before trying to load data
@@ -561,23 +569,23 @@ function addFileToMenu(filePath) {
 			// If the points don't yet exist, this file hasn't been loaded, so load them
 			if (pointGeojsonLayers[fileName] == undefined) {
 				loadTracksFromJSON(filePath)
-					.done(() => {
-						hideLoadingIndicator('loadTracksFromJSON')
-						// Reset zoom buffer
-						//mapExtentBuffer = [map.getBounds()]
-						//currentMapExtentIndex = 0;
-					});
+					.done(() =>  hideLoadingIndicator('loadTracksFromMemory'));
 		    } else {
 		        loadTracksFromMemory(fileName)
-		        	.then(() => {
-						hideLoadingIndicator('loadTracksFromMemory')
-						// Reset zoom buffer
-						//mapExtentBuffer = [map.getBounds()]
-						//currentMapExtentIndex = 0;
-					});
+		        	.then(() => hideLoadingIndicator('loadTracksFromMemory'));
 		    }
 		}
 	 });
+
+	// Add event handlers that prevent propogation to the card
+	$(`#delete-${fileName}`).click((event) => {
+		removeFile(fileName);
+		event.stopPropagation();
+	})
+	$(`#import-${fileName}`).click((event) => {
+		onImportDataClick(fileName);
+		event.stopPropagation();
+	})
 
 	 // Add the card content to the card
 	 $('<div id="' + contentID + '" class="collapse" aria-labeledby="' + cardHeaderID + '" data-parent="#file-list">' + 
@@ -616,7 +624,7 @@ function updateLegend(fileName){
 			</div>
 			<div class="legend-cell" style="width:40%; max-width: 60%; text-align:left;">${thisInfo.departure_datetime}</div>
 			<div class="legend-cell" style="max-width:10%; width:10%; margin-left:10px; margin-right:10px;">
-				<button class="delete-button" onclick="deleteTrack(${segmentID})"></button>
+				<button class="delete-track-button" title="Delete track" onclick="deleteTrack(${segmentID})"></button>
 			</div>
 			<div class="legend-cell" style="text-align:center; max-width:10%; width:10%; padding-right:10px; padding-left:10px;">
 				<label class="checkmark-container">
@@ -629,7 +637,7 @@ function updateLegend(fileName){
 		var legendItem = $(htmlString)
 			.click(function(event) {
 				// If the event originated on a checkbox, exit
-				if ($(event.target).hasClass('checkmark') || $(event.target).attr('checked') || $(event.target).hasClass('delete-button')) {
+				if ($(event.target).hasClass('checkmark') || $(event.target).attr('checked') || $(event.target).hasClass('delete-track-button')) {
 					return;
 				}
 
@@ -700,6 +708,7 @@ function fileWasSelected(filePath) {
 				/*.hover(function() {
 					$(this).css('color', 'rgb(125, 125, 125)')
 				});*/
+	$('#card-' + oldFileName).find('button').css('display', 'none');
 
 	$('.collapse').each(function(){
 		var thisFileName = $(this)[0].id.replace('cardContent-', '');
@@ -712,15 +721,15 @@ function fileWasSelected(filePath) {
 				.find('a')
 					//.css('color', 'rgb(150, 150, 150)')
 					.addClass('card-header-anchor-selected');
-				
-				if (oldFileName != thisFileName && trackInfo[thisFileName] != undefined) {
-					fillTrackInfo();
+			$('#card-' + thisFileName).find('button').css('display', 'inline-block');
+			if (oldFileName != thisFileName && trackInfo[thisFileName] != undefined) {
+				fillTrackInfo();
 
-					// Even though the oeprator_code select's value changes, for some reason 
-					//  the onchange event isn't fired, so just do so manually
-					$('#select-operator_code').change();
-					
-				}
+				// Even though the oeprator_code select's value changes, for some reason 
+				//  the onchange event isn't fired, so just do so manually
+				$('#select-operator_code').change();
+				
+			}
 		}
 	});
 
@@ -928,6 +937,10 @@ function fillTrackInfo(){
 		$('#p-' + key).text(thisInfo[key])//for the submitter comments
 		$('#select-' + key).val(thisInfo[key])//for the select dropdowns
 	}
+
+	if ($('#select-operator_code').val() !== 'National Park Service') {
+		$('#select-nps_mission_code').addClass('select-disabled')
+	}
 	//$('#track-info-subtitle').text(`Submitted at ${thisInfo.submission_time}\nby ${thisInfo.submitter}`)
 	$('#p-submitted-at').text(`Submitted at ${thisInfo.submission_time}`);
 	$('#p-submitted-by').text(`by ${thisInfo.submitter}`);
@@ -1128,11 +1141,12 @@ function addMapNavToolbar() {
 function validateTrackInfo() {
 
 
-    var trackInfoInputs = $('.track-info-textbox, .track-info-textbox.locked');
+    var trackInfoInputs = $('.track-info-textbox, .track-info-textbox.locked').toArray();
     for (elementID in trackInfoInputs) {
         var thisElement = $(trackInfoInputs[elementID]);
+        if (!(thisElement.is('input') || thisElement.is('select'))) continue;
         var thisID = thisElement[0].id;
-        if (!thisElement.val().length && !thisID.includes('submitter_notes') && !thisElement.hasClass('select-disabled')){
+        if (!(thisElement.val().length) && !thisElement.hasClass('select-disabled')){
             var thisLabel = $(thisElement.siblings()[0]).text();
             alert(`The "${thisLabel}" field is empty but all track info fields are mandatory.`);
             thisElement.focus();
@@ -1156,9 +1170,9 @@ function validateTrackInfo() {
 }
 
 
-function importData(){
+function importData(fileName){
 
-    var fileName = getSelectedFileName();
+    //var fileName = getSelectedFileName();
     var filePath = `data/edited/${fileName}.geojson`;
     
     // The point layes are in the format {segID: {geojson}} so just combine all of 
@@ -1190,17 +1204,16 @@ function importData(){
     var thisTrackInfo = {...trackInfo[fileName][Object.keys(trackInfo[fileName])[0]]};
     thisTrackInfo['track_editor'] = $('#textbox-track_editor').val();
 
-    console.log(`python ..\\scripts\\import_from_editor.py '../web/${filePath}' '../web/${filePath.replace('.geojson', '_track_info.json')}'' \\\\inpdenards\\overflights\\config\\poll_feature_service_params.json`)
+    console.log(`python ..\\scripts\\import_from_editor.py ../web/${filePath} ../web/${filePath.replace('.geojson', '_track_info.json')} \\\\inpdenards\\overflights\\config\\poll_feature_service_params.json`)
     // send a post request to the PHP script
     var trackInfoPath = filePath.replace('.geojson', '_track_info.json')
-    var stderrPath = filePath.replace('data/', 'errorLogs').replace('.geojson', `_${Date.now()}.err`);
+    var stderrPath = `errorLogs/${fileName}_${Date.now()}.log`;
     var data = {
         action: "importData",
         geojsonString: filePath,//JSON.stringify(thisGeojson).replace('"', '\\"'),
         trackInfoString: trackInfoPath, //JSON.stringify(thisTrackInfo).replace('"', '\\"')
         stderrPath: stderrPath
     };
-    return;
 
     $.ajax({
         url: 'geojson_io.php',
@@ -1256,11 +1269,13 @@ function importData(){
 
 }
 
-function onImportDataClick(){
+function onImportDataClick(fileName=undefined){
 
-    if (!validateTrackInfo()) return;
+    if (!validateTrackInfo()) {
+    	return;	
+    } 
 
-	var fileName = getSelectedFileName();
+	var fileName = fileName === undefined ? getSelectedFileName() : fileName;
 	var filePath = `data/edited/${fileName}.geojson`;
 	
 	// The point layes are in the format {segID: {geojson}} so just combine all of 
@@ -1318,7 +1333,7 @@ function onImportDataClick(){
                 alert(`JSON track failed to save because of a ${status} error: ${error}`)
             }
 		})
-        .done(importData);
+        .done(() => importData(fileName));
 	})
 
 
