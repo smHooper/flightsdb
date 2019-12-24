@@ -1,7 +1,7 @@
 
-var dataSteward = 'dena_flight_data@nps.gov';
+const dataSteward = 'dena_flight_data@nps.gov';
 var zoomMapCalled = 0;
-var noFileGIFS = [
+const noFileGIFS = [
 	"https://media2.giphy.com/media/l2Je0ihsoThQy6D0Q/giphy.gif?cid=790b76112a7424c801a727f0e2d02ccc6731809cafdc8d60&rid=giphy.gif",
     "https://media.tenor.com/images/ea9f942522f48f3897999cda42778e6a/tenor.gif",
     "https://media.tenor.com/images/18bc79d054124aa3d8c594f6555383ed/tenor.gif" 
@@ -182,8 +182,8 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex){
 }
 
 
-function onPointClick(event, segmentID, vertexID, minVertexIndex) {
-	if (event.originalEvent.ctrlKey) {
+function onVertexClick(event, segmentID, vertexID, minVertexIndex) {
+	if (event.originalEvent.ctrlKey || $('#img-split_vertex').parent().hasClass('map-tool-selected')) {
 		splitAtVertex(segmentID, vertexID, minVertexIndex)
 	}
 }
@@ -207,7 +207,7 @@ function onEachPoint(feature, layer, fileName) {
 	}
 	
 	layer.addEventListener({
-		click: (e => onPointClick(e, properties.mapID, properties.point_index, properties.min_index))
+		click: (e => onVertexClick(e, properties.mapID, properties.point_index, properties.min_index))
 	});
 
 	// Add coordinates to dict of coordinate arrays for creating lines later
@@ -554,7 +554,7 @@ function addFileToMenu(filePath) {
 			<p class="card-title">${fileName}</p>
 		</a>
 		<div style="display:inline-block; float:right; width: 100px;">
-			<button class="file-card-button" title="Delete file" id="delete-${fileName}" style="margin-left:0; float: left; display:none; background: url(../imgs/delete_icon_30px.svg) no-repeat;"></button>
+			<button class="file-card-button" title="Delete file" id="delete-${fileName}" style="margin-left:0; float: left; display:none; background: url(../imgs/delete_file_icon_30px.svg) no-repeat;"></button>
 			<button class="file-card-button" title="Import tracks from file" id="import-${fileName}" style="display:none; margin-left:10%; margin-right:5%; float:right; width:40px; background: url(../imgs/import_data_icon_30px.svg) no-repeat;"></button>
 		</div>
 	</div>`
@@ -1071,9 +1071,20 @@ function lockButtonClick() {
 }
 
 
-function addMapNavToolbar() {
+function onSplitButtonClick() {
+
+	var thisTool = $('#img-split_vertex').parent();
+	//thisTool.data('selected', thisTool.data('selected') ? false : true)
+	thisTool.hasClass('map-tool-selected') ? 
+		thisTool.removeClass('map-tool-selected') :
+		thisTool.addClass('map-tool-selected');
+}
+
+
+function addMapToolbars() {
 	/* Add a toolbar for zooming to full extent and the extent of the selected track*/
 
+	// Map nav toolbar
 	var zoomSelected = L.Toolbar2.Action.extend({
 		options: {
 			toolbarIcon: {
@@ -1131,11 +1142,33 @@ function addMapNavToolbar() {
 		addHooks: onNextExtentClick
 	});
 
-	new L.Toolbar2.Control({
-			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext],
+
+	// Editing toolbar
+	var cut = L.Toolbar2.Action.extend({
+		
+		options: {
+			toolbarIcon: {
+					html: '<img id="img-split_vertex" src="imgs/cut_icon_30px.svg"/>',
+					tooltip: 'Split track at vertex'
+			}
+		},
+		addHooks: onSplitButtonClick
+	});
+
+	new L.Toolbar2.Control({	
+			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext, cut],
 			position: 'topleft'
 	}).addTo(map);
+
+
+
+	/*new L.Toolbar2.Control({
+			actions: [cut],
+			position: 'bottomleft'
+	}).addTo(map);*/
+
 }
+
 
 
 function validateTrackInfo() {

@@ -84,10 +84,28 @@ body {
 .leaflet-popup-content p{
 	margin: 3px;
 }
+
+.leaflet-toolbar-icon.map-tool-selected img, .leaflet-toolbar-icon.map-tool-selected img:hover {
+	background-color: hsl(195, 84%, 70%);
+	border-radius: 0 0 5px 5px;
+}
+
+.leaflet-toolbar-icon img:hover {
+	background-color: hsl(195, 60%, 85%);
+	border-radius: 0 0 5px 5px;
+}
+
+.leaflet-toolbar-icon img {
+	transition: 0.2s;
+}
+
 /*.card-header {
 	background-color: rgb(60, 60, 60);
 	border-bottom:  
 }*/
+
+
+/****** file menu **********/
 .card {
 	/*height: 60px;*/
 	/*border: 2px solid rgb(100, 100, 100);*/
@@ -190,7 +208,7 @@ body {
 
 .delete-track-button {
 	border: none; 
-	background: url(../imgs/delete_icon_20px.png) no-repeat; 
+	background: url(../imgs/delete_track_icon_20px.svg) no-repeat; 
 	opacity: 0.25;
 	height: 20px; 
 	width: 20px;
@@ -335,13 +353,12 @@ input {
 #button-track-info-lock {
 	float: right; 
 	border: none; 
-	background: url('../imgs/lock_icon_25px.png'); 
+	background: url('../imgs/lock_icon_25px.svg') no-repeat; 
 	opacity: 0.40; 
 	height: 25px;  
-	width: 20px; 
+	width: 25px; 
 	transition: 0.3s; 
 	cursor: pointer;
-	transition: 0.2s;
 }
 
 #button-track-info-lock:focus {
@@ -352,8 +369,14 @@ input {
 }*/
 
 #button-track-info-lock.unlocked {
-	background: url('../imgs/unlock_icon_25px.png'); 
+	background: url('../imgs/unlock_icon_25px.svg') no-repeat; 
 }
+
+
+#button-track-info-lock:hover, #button-track-info-lock.unlocked:hover {
+	opacity: 0.5;
+}
+
 
 .track-info-label {
 	color: rgb(125, 125, 125);
