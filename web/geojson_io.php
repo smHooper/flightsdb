@@ -7,7 +7,7 @@ include '../config/track-editor-config.php';
 
 function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr) {
 	/*return result of a postgres query as an array*/
-	
+
 	$conn = pg_connect("hostaddr=$ipAddress port=$port dbname=$dbName user=$username password=$password");
 	if (!$conn) {
 		return false;
@@ -18,7 +18,8 @@ function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr) {
 	  	echo pg_last_error();
 	}
 
-	return pg_fetch_all($result);
+	$resultArray = pg_fetch_all($result) ? pg_fetch_all($result) : array("query returned an empty result");
+	return $resultArray;
 }
 
 
@@ -103,10 +104,10 @@ if (isset($_POST['action'])) {
 	if ($_POST['action'] == 'query') {
 
 		if (isset($_POST['queryString'])) {
-			$result = runQuery($dbhost, $dbport, $dbname, $readonly_username, $readonly_password, $_POST['queryString']);
+			$result = runQuery($dbhost, $dbport, $_POST['dbname'], $readonly_username, $readonly_password, $_POST['queryString']);
 			echo json_encode($result);
 		} else {
-			echo false;
+			echo "php query failed";//false;
 		}
 	}
 

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+		
+<head>      
+	<meta charset='utf-8'>
+	<meta name="viewport" content="width=device-width,height=device-height, user-scalable=no" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+		<link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css"/>
+		<script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+
+		<link rel="stylesheet" href="css/scenic-landing-query.css"/>
+		<link rel="stylesheet" href="css/flights.css"/>
+
+</head>
+
+
+<body>
+	 <!-- loading indicator should be hidden and will only be shown when loading a file -->
+  	<div id="loading-indicator-background" style="display: none;"></div>
+  	<div id="loading-indicator" style="display: none;"></div>
+	<div id="main-container" style="padding: 50px;">
+		<form class="row mx-0" style="width:100%; display: flex;">
+			<div style="width: 100%;">
+				<div class="query-input-container">
+					<label class="query-input-label">Start date</label>
+				</div>
+
+				<div class="query-input-container">
+					<label class="query-input-label">End date</label>
+				</div>
+				
+				<div class="query-input-container">
+					<label class="query-input-label">Flight operator</label>
+				</div>
+
+				<div class="query-input-container" style="padding-right:0;">
+					<label class="query-input-label"> </label>
+				</div>
+			</div>
+
+			<div style="width: 100%;">
+				<div class="query-input-container">
+					<input class="query-input" type="date" id="input-start_date">
+				</div>
+
+				<div class="query-input-container">
+					<input class="query-input" type="date" id="input-end_date" value="2019-01-01">
+				</div>
+				
+				<div class="query-input-container">
+					<select class="query-input" id="select-operator">
+						<option value="">Select an operator</option>
+					</select>
+				</div>
+
+				<div class="query-input-container mx-0" style="padding-right:0;">
+					<input class="query-input" type="submit" style="width:65%; float:right; border:none; background-color:hsl(195, 84%, 45%); color:white;" value="Run query" onclick="onRunClick(event)">
+				</div>
+			</div>
+
+		</form>
+
+		<div style="width: 100%;">
+			<table id="result-table" style="width: 100%; margin-top: 50px;">
+				<thead>
+					<tr id="result-header-row" style="border-bottom: none;">
+						<th style="width: 100%;"></th><!--make an empty header just to show where the result will be-->
+					</tr>
+				</thead>
+				<tbody style="overflow-y: auto;">
+					<tr id="result-header-row" style="border-bottom: none;">
+						<td style="width: 100%;">Select an operator and click run query to show landing fees</td><!--and an empty row-->
+					</tr>
+				</tbody>
+				<tfoot>
+					<!--put summary stats here-->
+				</tfoot>
+			</table>
+		</div>
+		
+	</div>
+
+	<script src="js/scenic-landing-query.js"></script>
+	<script type="text/javascript">
+		
+		//import * as flights from './js/flights.js';
+
+		//document.getElementById('input-end_date').value = '2019-01-01';
+		$(document).ready(() => {
+			let today = new Date();
+			$('#input-end_date').val(today.getChromeFormattedString(today));
+			$('#input-start_date').val(today.addDays(-14).getChromeFormattedString());
+
+			showLoadingIndicator()
+			fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators ORDER BY sort_order;", 'scenic_landings')
+			.done(hideLoadingIndicator())
+
+		})
+
+	</script>
+
+</body>
+
+
+</html>

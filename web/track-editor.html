@@ -14,6 +14,7 @@
   <script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
 
   <link rel="stylesheet" href="css/track-editor.css"/>
+  <link rel="stylesheet" href="css/flights.css"/>
 
 </head>
 
@@ -144,6 +145,8 @@
     var selectedLines = {};
     var fileExtents = {};
     var isEditing = {};
+    var editingBufferIndex = 0;
+    var editingBuffer = [];
     
     // Make sure files are read from disk every time
     $(document).ready(function() {
@@ -211,8 +214,8 @@
     
     // Add options to the select elements. 
     $.when(
-      fillSelectOptions('select-operator_code', "SELECT name AS value FROM operators ORDER BY sort_order;"),
-      fillSelectOptions('select-nps_mission_code', "SELECT code AS value FROM nps_mission_codes ORDER BY code;")
+      fillSelectOptions('select-operator_code', "SELECT name AS value FROM operators ORDER BY sort_order;", 'overflights'),
+      fillSelectOptions('select-nps_mission_code', "SELECT code AS value FROM nps_mission_codes ORDER BY code;", 'overflights')
     ).then(function() {
       fillTrackInfo(); // Fill track info here because select options weren't available to fill before
       $('#select-operator_code').change(); // disable the mission code select if necessary after track info is filled in 

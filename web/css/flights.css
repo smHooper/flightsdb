@@ -1,0 +1,38 @@
+#loading-indicator {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 9999;
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  border: 16px solid #f3f3f3;
+  border-radius: 50%;
+  border-top: 16px solid hsl(195, 84%, 55%);
+  width: 120px;
+  height: 120px;
+  -webkit-animation: spin 2s linear infinite;
+  animation: spin 2s linear infinite;
+}
+
+#loading-indicator-background {
+	position: absolute;
+	z-index: 9998;
+	margin: 0;
+	height: 100%;
+	width: 100%;
+	background-color: white;
+	opacity: 0.4;
+}
+
+/**** Loading indicator ******/
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* safari */
+@-webkit-keyframes spin {
+  0% { -webkit-transform: rotate(0deg); }
+  100% { -webkit-transform: rotate(360deg); }
+}
