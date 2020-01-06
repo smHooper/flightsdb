@@ -4,7 +4,11 @@ web/data/*
 #ignore any geojsons
 *.geojson
 
-#ignore Adobe Illustrator docs
+#ignore Adobe Illustrator and PS docs
 *.ai
+*.psd
+
+# the stupid Windows files that are created when image files are created or modified
+*Thumbs.db
 
 scripts/__pycache__/*

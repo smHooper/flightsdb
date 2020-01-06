@@ -4,6 +4,18 @@
 }*/
 
 
+
+
+body { 
+  background-image: url('../imgs/scenic_landing_bg.jpg');
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-position: center bottom; 
+  background-color: #e0e3e8;
+  /*background-size: contain;*/
+}
+
+
 .query-input-container {
 	display: inline-block; 
 	width: 24%; 
@@ -25,23 +37,102 @@
 input {
 	transition: 0.3s;
 }
+
+input[type="submit"] {
+	background-color: hsl(195, 84%, 45%); 
+	color: white;
+	border-radius: 7px;
+}
+
 input[type="submit"]:hover {
-	box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.4);
+	/*box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.4);*/
+	background-color: hsl(195, 90%, 40%);
+}
+
+
+
+#result-table {
+	background-color: #a5aeb080;/*rgba(255, 255, 255, 0.5)*/
+}
+
+.result-table-cell, .result-table-column-header {
+	text-align: center;
+	min-width: 170px;
+	padding: 8px 15px 8px 15px;
+	display: inline-block;
+	max-width: 250px;
+	color: white;
+}
+
+.result-table-column-header {
+	background-color: #894C4C;/*hsl(217, 5%, 77%);*/
+	display: inline-block;
+	font-weight: bold;
+}
+
+.result-table-row, .result-table-header {
+	width: 100%;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.result-table-header {
+	height: 60px;
+}
+
+.result-table-row {
+	height: 40px;
+}
+
+.result-table-card {
+	border-bottom: 1px solid black;
+
+}
+
+.landing-table-column-header {
+	background-color: #e7edeede;/*rgba(255, 255, 255, 0.3)*/
+}
+
+.landing-table-cell {
+	background-color: #d1d5d7e6;/*rgba(255, 255, 255, 0.1);*/
+}
+
+.row {
+	margin-right: 0px;
+    margin-left: 0px;
+}
+
+.card {
+	border: none;
+	background-color: rgba(0, 0, 0, 0);
+}
+.card-header {
+	background-color: #936262e6;/*hsla(217, 5%, 50%, 0.1);*/
+}
+.card-header a {
+	color: black;
+}
+
+/*table {background-color: rgb(0, 0, 0, 0)}*/
+
+tr {
+	border-bottom: 1px solid #84848480;/*hsl(100, 0%, 80%);*/
 }
 
 td, th {
 	text-align: center;
 	width: 100px;
+}
+
+td {
 	height: 40px;
 }
 
 th {
-	background-color: rgb(225, 225, 225)
+	height: 50px;
+	font-weight: 600;
 }
 
-tr {
-	border-bottom: 1px solid black;
-}
-table {
-
-}
+/*th {
+	background-color: hsl(217, 5%, 77%);
+}*/
