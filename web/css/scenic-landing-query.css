@@ -32,7 +32,10 @@ body {
 	height: 50px;
 	padding-left: 10px;
 	float: left;
+	background-color: hsl(218, 15%, 95%);
+	border: 1px solid rgb(169, 167, 167);
 }
+	
 
 input {
 	transition: 0.3s;
@@ -49,6 +52,10 @@ input[type="submit"]:hover {
 	background-color: hsl(195, 90%, 40%);
 }
 
+input[type="submit"]:focus {
+	-webkit-box-shadow: none;
+	outline: -webkit-focus-ring-color auto 0px;
+}
 
 
 #result-table {
@@ -71,13 +78,15 @@ input[type="submit"]:hover {
 }
 
 .result-table-row, .result-table-header {
-	width: 100%;
+	width: 97%;
 	justify-content: space-between;
 	align-items: center;
 }
 
 .result-table-header {
 	height: 60px;
+	width: 100%;
+	padding-right: 3%;
 }
 
 .result-table-row {
@@ -111,6 +120,18 @@ input[type="submit"]:hover {
 }
 .card-header a {
 	color: black;
+	display: flex;
+	align-items: center;
+}
+
+/* Add animated chevron to card*/
+.card-header .fa {
+  transition: .3s transform ease-in-out;
+  color: white;
+  margin-right: 15px;
+}
+.card-header .collapsed .fa {
+  transform: rotate(90deg);
 }
 
 /*table {background-color: rgb(0, 0, 0, 0)}*/

@@ -18,6 +18,8 @@ const landingColumns = [
 	"justification"
 ];
 
+var landingQueryResult = {}; //global var to store result for writing CSV  
+
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
     date.setDate(date.getDate() + days);
@@ -63,6 +65,9 @@ function fillSelectOptions(selectElementID, queryString, dbname, optionClassName
 
 
 function onRunClick(event) {
+
+	// prevent the form from resetting
+	event.returnValue = false;
 
 	const operator_code = $('#select-operator').val();
 	if (!operator_code.length) {
@@ -115,6 +120,7 @@ function onRunClick(event) {
 					hideLoadingIndicator();
 				} else {
 					showQueryResult(queryResult).then(hideLoadingIndicator('onRunClick'));
+					landingQueryResult = {...queryResult};
 				}
 			} else {
 				console.log(`error running query: ${queryResultString}`);
@@ -123,7 +129,6 @@ function onRunClick(event) {
 	}).fail((xhr, status, error) => {
 		console.log(`query failed with status ${status} because ${error} from query:\n${sql}`)
 	});
-	event.returnValue = false;
 }
 
 
@@ -149,36 +154,12 @@ async function showQueryResult(result) {
 			flights[thisFlightID].landings = [];
 		}
 
-		//flights[thisFlightID] = {};
-
-
 		let thisLanding = {};
 		for (i in landingColumns) {
 			let column = landingColumns[i];
 			thisLanding[column] = row[column];
 		}
 		flights[thisFlightID].landings.push(thisLanding);
-
-		/*if (flights[thisFlightID].landings === undefined) {
-			flights[thisFlightID].landings = [thisLanding];
-		} else {
-			flights[thisFlightID].landings.push(thisLanding)
-		}*/
-
-		/*for (column in row) {
-			if (flightColumns.includes(column)) {
-				flights[thisFlightID][column] = row[column]
-			} else if (landingColumns.includes(column)) {
-				if (flights[thisFlightID].landings === undefined) flights[thisFlightID].landings = [];
-				let landingIndex = flights[thisFlightID].landings.length - 1;
-				let thisLanding = flights[thisFlightID].landings[landingIndex];
-				if (thisLanding === undefined) {
-					flights[thisFlightID].landings.push({});
-					landingIndex ++;
-				}
-				flights[thisFlightID].landings[landingIndex][column] = row[column];
-			}
-		}*/
 	}
 
 	var landingColumnRow = '';
@@ -222,11 +203,12 @@ async function showQueryResult(result) {
 			}
 			landingRows += `<tr>${thisRow}</tr>`;
 		}
-
+		//
 		$(`<div class="card" id="result-row-${id}"> 
 				<div class="card-header max-0 px-0" id="cardHeader-${id}" style="width:100%;">
 					<a class="collapsed card-link" data-toggle="collapse" href="#cardContent-${id}" style="width: 100%;">
 						<div class="row result-table-row">${tableCells}</div>
+						<i class="fa fa-chevron-down pull-right"></i>
 					</a>
 				</div>
 				<div class="collapse" id="cardContent-${id}" aria-labeledby="cardHeader-${id}" data-parent="result-table-body" style="width: 100%; padding-left: 5%;">
@@ -243,6 +225,9 @@ async function showQueryResult(result) {
 		).appendTo('#result-table-body')
 	}
 
+	$(`#cardHeader-${Object.keys(flights)[0]} > a`).removeClass('collapsed');
+	$(`#cardContent-${Object.keys(flights)[0]}`).addClass('show');
+
 	var sumRow = '';
 	for (column in sums) {
 		let columnID = column.replace(' ', '_');
@@ -256,7 +241,9 @@ async function showQueryResult(result) {
 		let columnWidth = $(`#column-${columnID}`).width();
 		$('#result-table-body').find(`.result-table-cell.cell-${columnID}`).css('width', columnWidth);
 	}
-	$(`<div class="row result-table-row" id="sum-row" style="font-weight: bold; border-bottom: none; background-color: #8e5757e6;">${sumRow}</div>`).appendTo('#result-table-body')	
+	$(`
+		<div class="row result-table-header" id="sum-row" style="font-weight: 500; border-bottom: none; background-color: #8e5757e6; height: 40px;">${sumRow}</div>
+	`).appendTo('#result-table-body')	
 
 
 

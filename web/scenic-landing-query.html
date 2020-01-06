@@ -8,7 +8,8 @@
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
 	<link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css"/>
 	<script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
-
+	<link href="//netdna.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet">
+	
 	<link rel="stylesheet" href="css/scenic-landing-query.css"/>
 	<link rel="stylesheet" href="css/flights.css"/>
 	
@@ -67,11 +68,11 @@
 		</form>
 
 		<div id='result-table' style="width:100%; display: flex; overflow-x: auto; margin-top: 50px; flex-wrap: wrap;">
-			<div class="row result-table-header" id="result-header-row" style="width:100%; background-color: #894C4C;">
+			<div class="row result-table-header" id="result-header-row" style="background-color: #894C4C;">
 				<div class="result-table-cell" style="width: 100%;"></div>
 			</div>
-			<div style="overflow-y: auto; width:100%;" >
-				<div id="place-holder" style="width: 100%; text-align: center;">Select an operator and click run query to show landing fees</div>
+			<div style="overflow-y: auto; width:100%;">
+				<div id="place-holder" style="width: 100%; text-align: center; height: 40px; padding: 8px;">Select an operator and click run query to show landing fees</div>
 				<div class='accordion' id='result-table-body'>
 					<!--items added dynamically when query is run -->
 				</div>
