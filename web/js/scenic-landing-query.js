@@ -8,7 +8,8 @@ const flightColumns = [
 	'departure time',
 	'scenic route',
 	'total passengers',
-	'total fee'
+	'total fee',
+	'flight notes'
 ];
 const landingColumns = [
 	"landing location", 
@@ -33,6 +34,18 @@ Date.prototype.getChromeFormattedString = function() {
 	let day = '0' + (this.getDate())
 	return `${this.getFullYear()}-${month.slice(month.length - 2, month.length)}-${day.slice(day.length - 2, day.length)}`;
 }
+
+
+// jquery pseudo-selector to determine if ellipsis is active
+$.expr[':'].truncated = function(jqObject) {
+	if (Math.ceil($(jqObject).outerWidth()) < $(jqObject)[0].scrollWidth) {
+		console.log($(jqObject).attr('id'))
+		console.log((Math.ceil($(jqObject).outerWidth()) < $(jqObject)[0].scrollWidth))
+	}
+	return (Math.ceil($(jqObject).outerWidth()) < $(jqObject)[0].scrollWidth);
+
+}
+
 
 
 function fillSelectOptions(selectElementID, queryString, dbname, optionClassName='track-info-option') {
@@ -86,6 +99,7 @@ function onRunClick(event) {
 			flights.departure_datetime::date AS "departure date", 
 			to_char(flights.departure_datetime, 'HH:MI AM') AS "departure time", 
 			coalesce(flights.scenic_route, '') AS "scenic route",
+			coalesce(flights.notes, '') AS "flight notes", 
 			concession_fees.n_passengers AS "total passengers", 
 			concession_fees.fee AS "total fee", 
 			landing_locations.name AS "landing location", 
@@ -119,8 +133,13 @@ function onRunClick(event) {
 					alert(`There were no scenic landings for ${$('#select-operator option:selected').text()} during the selected date range`);
 					hideLoadingIndicator();
 				} else {
-					showQueryResult(queryResult).then(hideLoadingIndicator('onRunClick'));
-					landingQueryResult = {...queryResult};
+					showQueryResult(queryResult).then(() => {
+						hideLoadingIndicator('onRunClick');
+						// Show the first flight's landings after a brief delay
+						setTimeout(() => {$('.card-header > a').get(0).click()}, 300);
+					})
+					landingQueryResult['operator'] = $('#select-operator option:selected').text();
+					landingQueryResult['data'] = [...queryResult];//{...queryResult};
 				}
 			} else {
 				console.log(`error running query: ${queryResultString}`);
@@ -129,6 +148,54 @@ function onRunClick(event) {
 	}).fail((xhr, status, error) => {
 		console.log(`query failed with status ${status} because ${error} from query:\n${sql}`)
 	});
+}
+
+
+function showExpandedText(event, cellID) {
+
+	// Prevent the 
+	event.stopPropagation();
+
+	let thisCell = $('#' + cellID);
+	let truncatable = thisCell.find('.truncatable');
+	let text = truncatable.text();
+	let position = truncatable.
+	$(`
+		<div class="expanded-text">${text}</div>
+	`)
+	//thisCell.append()
+
+}
+
+function resizeColumns() {
+
+	for (i in flightColumns) {
+		let columnID = flightColumns[i].replace(' ', '_');
+		try {
+			//let padding = parseInt($(`#column-${columnID}`).css('padding-left').replace('px', '')) * 2;
+			let columnWidth = $(`#column-${columnID}`).outerWidth() //+ padding;
+			$('#result-table-body').find(`.result-table-cell.cell-${columnID}`).css('width', columnWidth);
+		} catch {
+			continue;
+		}
+	}
+
+	// find any divs truncated because their too long and add a button to show the full text
+	/*$('.result-table-cell > .truncatable:truncated').each(function(){
+		//console.log(this)
+		//if ($(this).hasClass('result-table-cell')) {
+		let thisCell = $(this).parent();
+		$(`
+			<button class="expand-truncated-button">
+				<h4 style="color: white;">+</h4>
+			</button>
+		`).click((event) => {showExpandedText(event, $(thisCell).attr('id'))})
+		.appendTo(thisCell);
+		//$(thisCell).append(buttonHTML)
+		$(this).addClass('truncated');
+		//}
+
+	});*/
 }
 
 
@@ -177,9 +244,10 @@ async function showQueryResult(result) {
 		var tableCells = '';
 		for (i in flightColumns) {
 			let column = flightColumns[i];
+			let style = column.includes(' notes') ? 'style="width: 30%"' : ""
 			let columnID = column.replace(' ', '_');
 			if (!$(`#column-${columnID}`).length) {
-				$(`<div class="result-table-column-header" id="column-${columnID}">${column}</div>`)
+				$(`<div class="result-table-column-header" id="column-${columnID}" ${style}>${column}</div>`)
 					.appendTo('#result-header-row')
 				columnIndices[column] = columnIndex;
 				columnIndex ++;
@@ -187,7 +255,11 @@ async function showQueryResult(result) {
 
 			var thisValue = thisFlight[column];
 			let cellValue = column === 'total fee' ? '$' + parseFloat(thisValue).toFixed(2) : thisValue;
-			tableCells += `<div class="result-table-cell cell-${columnID}">${cellValue}</div>`
+			tableCells += 
+				`<div class="result-table-cell cell-${columnID}" id="result-table-${id}-${columnID}">
+					<div class="truncatable">${cellValue}</div>
+				</div>
+				`
 
 			thisValue = !isNaN(parseFloat(thisValue)) && isFinite(thisValue) ? parseFloat(thisValue) : '';
 			sums[column] = sums[column] === undefined ? thisValue : sums[column] + thisValue;
@@ -225,9 +297,6 @@ async function showQueryResult(result) {
 		).appendTo('#result-table-body')
 	}
 
-	$(`#cardHeader-${Object.keys(flights)[0]} > a`).removeClass('collapsed');
-	$(`#cardContent-${Object.keys(flights)[0]}`).addClass('show');
-
 	var sumRow = '';
 	for (column in sums) {
 		let columnID = column.replace(' ', '_');
@@ -236,18 +305,19 @@ async function showQueryResult(result) {
 		} else {
 			sumRow += `<div class="result-table-cell cell-${columnID}"></div>`
 		}
-		
-		// Set the width for each cell to be the same as it's column
-		let columnWidth = $(`#column-${columnID}`).width();
-		$('#result-table-body').find(`.result-table-cell.cell-${columnID}`).css('width', columnWidth);
 	}
+
 	$(`
 		<div class="row result-table-header" id="sum-row" style="font-weight: 500; border-bottom: none; background-color: #8e5757e6; height: 40px;">${sumRow}</div>
 	`).appendTo('#result-table-body')	
 
+	// Set the width for each cell to be the same as it's column
+	resizeColumns();
 
+	// Show the export button
+	$('#export-button-container').css('display', 'flex');
+}	
 
-}
 
 function showLoadingIndicator() {
 
@@ -292,3 +362,15 @@ function hideLoadingIndicator(caller) {
 }
 
 
+function onExportDataClick() {
+	// Save query result to disk
+
+	const filename = `landing_fees_${landingQueryResult['operator'].replace(' ', '_').toLowerCase()}_${$('#input-start_date').val()}_${$('#input-end_date').val()}.csv`
+
+	let csvString = $.csv.fromObjects(landingQueryResult.data)
+	let a = $(`<a href="data:text/plain;charset=utf-8,${encodeURIComponent(csvString)}" download="${filename}"></a>`)
+		.appendTo('body')
+		.get(0).click(); // need to trigger the native dom click event because jQuery excludes it
+	$(a).remove();
+
+}

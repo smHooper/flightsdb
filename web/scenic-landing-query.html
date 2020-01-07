@@ -61,13 +61,13 @@
 				</div>
 
 				<div class="query-input-container mx-0" style="padding-right: 0; float: right;">
-					<input class="query-input" type="submit" style="width: 65%; float: right; border:none;" value="Run query" onclick="onRunClick(event)">
+					<input class="query-input" type="submit" style="width: 65%; float: right; border:none;" value="Search flights" onclick="onRunClick(event)">
 				</div>
 			</div>
 
 		</form>
 
-		<div id='result-table' style="width:100%; display: flex; overflow-x: auto; margin-top: 50px; flex-wrap: wrap;">
+		<div id='result-table' style="width: 100%; display: flex; overflow-x: auto; margin-top: 50px; flex-wrap: wrap;">
 			<div class="row result-table-header" id="result-header-row" style="background-color: #894C4C;">
 				<div class="result-table-cell" style="width: 100%;"></div>
 			</div>
@@ -79,27 +79,15 @@
 			</div>
 		</div>
 
-		<!--<div style="width: 100%;">
-			<table id="result-table" style="width: 100%; margin-top: 50px;">
-				<thead>
-					<tr id="result-header-row" style="border-bottom: none;">
-						<th style="width: 100%;"></th>make an empty header just to show where the result will be
-					</tr>
-				</thead>
-				<tbody style="overflow-y: auto;">
-					<tr id="result-header-row" style="border-bottom: none;">
-						<td style="width: 100%;">Select an operator and click run query to show landing fees</td> and an empty row 
-					</tr>
-				</tbody>
-				<tfoot>
-					put summary stats here
-				</tfoot>
-			</table>
-		</div>-->
-		
+		<div id="export-button-container" style="margin-top: 50px; width: 100%; display: none; justify-content: center;">
+			<button id="export-file-button">Save results</button>
+			<!--<input id="file-input" type="file" name="export-save-path" style="display: none;" />-->
+		</div>
 	</div>
 
+
 	<script src="js/scenic-landing-query.js"></script>
+	<script src="js/jquery.csv.min.js"></script>
 	<script type="text/javascript">
 		
 		//import * as flights from './js/flights.js';
@@ -110,10 +98,14 @@
 			$('#input-end_date').val(today.getChromeFormattedString(today));
 			$('#input-start_date').val(today.addDays(-14).getChromeFormattedString());
 
-			showLoadingIndicator()
+			showLoadingIndicator();
 			fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators ORDER BY sort_order;", 'scenic_landings')
-			.done(hideLoadingIndicator())
+				.done(hideLoadingIndicator());
 
+			$(window).resize(resizeColumns);
+
+			//$('#file-input').change(onFileInputChange);
+			$('#export-file-button').click(onExportDataClick);
 		})
 
 	</script>

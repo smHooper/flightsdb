@@ -35,28 +35,32 @@ body {
 	background-color: hsl(218, 15%, 95%);
 	border: 1px solid rgb(169, 167, 167);
 }
-	
 
 input {
 	transition: 0.3s;
 }
 
-input[type="submit"] {
+input[type="submit"], button {
 	background-color: hsl(195, 84%, 45%); 
 	color: white;
 	border-radius: 7px;
 }
 
-input[type="submit"]:hover {
+input[type="submit"]:hover, button:hover {
 	/*box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.4);*/
 	background-color: hsl(195, 90%, 40%);
 }
 
-input[type="submit"]:focus {
+input[type="submit"]:focus, button:focus {
 	-webkit-box-shadow: none;
 	outline: -webkit-focus-ring-color auto 0px;
 }
 
+#export-file-button {
+	width: 20%;
+	height: 50px;
+	border: none;
+}
 
 #result-table {
 	background-color: #a5aeb080;/*rgba(255, 255, 255, 0.5)*/
@@ -64,11 +68,33 @@ input[type="submit"]:focus {
 
 .result-table-cell, .result-table-column-header {
 	text-align: center;
-	min-width: 170px;
+	min-width: 80px;
 	padding: 8px 15px 8px 15px;
 	display: inline-block;
-	max-width: 250px;
 	color: white;
+}
+
+.result-table-cell, .landing-table-cell {
+}
+
+.truncatable {
+	text-align: inherit;
+	display: inherit;
+	white-space: nowrap;
+  	overflow: hidden;
+  	text-overflow: ellipsis;
+}
+.truncatable.truncated {
+	width: 90%;
+	display: inline-block;
+}
+
+.expand-truncated-button {
+	z-index: 100; 
+	background-color: Transparent; 
+	border: none; 
+	display: inline-block;
+	width: 5%;
 }
 
 .result-table-column-header {
