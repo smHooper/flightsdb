@@ -103,6 +103,9 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                        }
 ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
 
+# Columns to use to verify that the file was read correctly
+VALIDATION_COLUMNS = pd.Series(['geometry', 'utc_datetime', 'altitude_ft', 'longitude', 'latitude', 'x_albers', 'y_albers', 'diff_m', 'diff_seconds', 'm_per_sec', 'knots', 'previous_lat', 'previous_lon', 'heading'])
+
 ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files\tracks'
 
 REGISTRATION_REGEX = r'(?i)N\d{2,5}[A-Z]{0,2}'
@@ -451,12 +454,32 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
 
     _, extension = os.path.splitext(path)
 
-    if not extension.lower() in READ_FUNCTIONS:
-        sorted_extensions = [c.replace('.', '').upper() for c in sorted(READ_FUNCTIONS.keys())]
-        raise IOError('Unexpected file type found: %s. Only %s, and %s currently accepted.' %
-                      (extension.replace('.', '').upper(), ', '.join(sorted_extensions[:-1]), sorted_extensions[-1]))
-    # apply function from dict based on file extension
-    gdf = READ_FUNCTIONS[extension.lower()](path)
+    # try to apply function from dict based on file extension
+    try:
+        gdf = READ_FUNCTIONS[extension.lower()](path)
+    except:
+        # If that failed, try each track reading function
+        for ext in READ_FUNCTIONS.keys():
+            if ext == extension.lower():
+                continue # already tried this one so no sense in wasting the effort
+            else:
+                try:
+                    gdf = READ_FUNCTIONS[ext](path)
+                    # It might be possible for the read function to return a Geodataframe that just doesn't have the
+                    #   right cols. If it doesn't, raise a generic exception to try the next function
+                    if not VALIDATION_COLUMNS.isin(gdf.columns).all():
+                        raise
+                    break # if we got here, that means the file was successfully read
+                except:
+                    continue
+
+    if not 'gdf' in globals():
+        error_message = 'Unable to read the file %s' % path
+        if not extension.lower() in READ_FUNCTIONS:
+            sorted_extensions = [c.replace('.', '').upper() for c in sorted(READ_FUNCTIONS.keys())]
+            error_message += ' because it is likely of an unsupported file type: %s. Only %s, and %s currently accepted.' % \
+                             (extension.replace('.', '').upper(), ', '.join(sorted_extensions[:-1]), sorted_extensions[-1])
+        raise IOError(error_message)
 
     # Calculate local (AK) time
     timezone = pytz.timezone('US/Alaska')
