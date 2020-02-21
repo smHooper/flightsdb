@@ -37,14 +37,13 @@ Date.prototype.getChromeFormattedString = function() {
 }
 
 
-// jquery pseudo-selector to determine if ellipsis is active
+// jquery pseudo-selectors to determine if ellipsis is active or not
 $.expr[':'].truncated = function(jqObject) {
-	if (Math.ceil($(jqObject).outerWidth()) < $(jqObject)[0].scrollWidth) {
-		console.log($(jqObject).attr('id'))
-		console.log((Math.ceil($(jqObject).outerWidth()) < $(jqObject)[0].scrollWidth))
-	}
 	return (Math.ceil($(jqObject).outerWidth()) < $(jqObject)[0].scrollWidth);
+}
 
+$.expr[':'].extended = function(jqObject) {
+	return (Math.ceil($(jqObject).outerWidth()) >= $(jqObject)[0].scrollWidth);
 }
 
 
@@ -221,6 +220,24 @@ function onRunClick(event) {
 }
 
 
+function getTextWidth(textString, font) { 
+
+    canvas = document.createElement('canvas'); 
+    context = canvas.getContext('2d'); 
+    context.font = font; 
+    width = Math.ceil(context.measureText(textString).width); 
+
+    return width;
+}
+
+
+function removeModalExpandedText() {
+	
+	$('.modal-background').remove();
+	$('.modal-content').remove();
+}
+
+
 function showExpandedText(event, cellID) {
 
 	// Prevent the 
@@ -229,13 +246,42 @@ function showExpandedText(event, cellID) {
 	let thisCell = $('#' + cellID);
 	let truncatable = thisCell.find('.truncatable');
 	let text = truncatable.text();
-	let position = truncatable.
-	$(`
-		<div class="expanded-text">${text}</div>
-	`)
-	//thisCell.append()
+	let font = truncatable.css('font');
+	let textWidth = getTextWidth(text, font);
+	let nLines = Math.ceil(textWidth / 400) + 2;
+	let position = truncatable.position();
+	
+	// If the truncatable div doesn't have it's own background color, find the first parent that does
+	var thisBackgroundColor = truncatable.css('background-color')
+	if (thisBackgroundColor === 'rgba(0, 0, 0, 0)') {
+		let opaqueBgParents = truncatable.parents().filter(function() {
+		    return $(this).css('background-color') !== 'rgba(0, 0, 0, 0)'}
+		)
+		thisBackgroundColor = opaqueBgParents.length ? $(opaqueBgParents.get(0)).css('background-color') : '#894C4C'
+	}
 
-}
+	// Add the modal div
+	let modalHeight = truncatable.css('line-height').replace('px', '') * nLines + 30
+	let truncatableStyle = 
+		`
+		background-color: ${thisBackgroundColor}; 
+		color: ${truncatable.css('color')};
+		height: ${modalHeight}px;
+		`;
+	$(`
+		<div class="modal-background"></div>
+		<div class="modal-content" style="${truncatableStyle}">
+			<div style="width: 100%; height: 24px;">
+				<span class="close-modal-text-button">&times;</span>
+			</div>
+			<div class="modal-expanded-text" style="width: 100%; height: ${modalHeight - 30}px;">${text}</div>
+		</div>
+	`).appendTo('body');
+	
+	$('.modal-background').click(removeModalExpandedText);
+	$('.close-modal-text-button').click(removeModalExpandedText)
+}	
+
 
 function resizeColumns() {
 
@@ -251,21 +297,24 @@ function resizeColumns() {
 	}
 
 	// find any divs truncated because their too long and add a button to show the full text
-	/*$('.result-table-cell > .truncatable:truncated').each(function(){
-		//console.log(this)
-		//if ($(this).hasClass('result-table-cell')) {
+	$('.result-table-cell > .truncatable:truncated').each(function(){
 		let thisCell = $(this).parent();
-		$(`
-			<button class="expand-truncated-button">
-				<h4 style="color: white;">+</h4>
-			</button>
-		`).click((event) => {showExpandedText(event, $(thisCell).attr('id'))})
-		.appendTo(thisCell);
-		//$(thisCell).append(buttonHTML)
-		$(this).addClass('truncated');
-		//}
+		if (!thisCell.find('.expand-truncated-button').length) { 
+			$(`
+				<button class="expand-truncated-button">
+					<h4 style="color: white;">+</h4>
+				</button>
+			`).click((event) => {showExpandedText(event, $(thisCell).attr('id'))})
+			.appendTo(thisCell);
+			$(this).addClass('truncated');
+		}
+	});//*/
 
-	});*/
+	// find any divs that were truncated, but are now fully visible and remove the expand button
+	$('.result-table-cell > .truncatable:extended').each(function(){
+		let thisCell = $(this).parent();
+		thisCell.find('.expand-truncated-button').remove();
+	})
 }
 
 
