@@ -12,14 +12,21 @@ body {
   background-attachment: fixed;
   background-position: center bottom; 
   background-color: #e0e3e8;
+  overflow-x: auto;
   /*background-size: contain;*/
 }
 
 
+.query-form-row {
+	width: 100%;
+	justify-content: space-between;
+	padding-bottom: 50px;
+	align-content: center;
+}
 .query-input-container {
 	display: inline-block; 
-	width: 24%; 
-	padding-right: 4%;
+	width: 32%; 
+	/*padding-right: 4%;*/
 }
 
 .query-input-label {
@@ -132,6 +139,10 @@ input[type="submit"]:focus, button:focus {
 	background-color: #d1d5d7e6;/*rgba(255, 255, 255, 0.1);*/
 }
 
+.landing-row-hidden {
+	display: none;
+}
+
 .row {
 	margin-right: 0px;
     margin-left: 0px;
@@ -180,6 +191,78 @@ th {
 	font-weight: 600;
 }
 
+/* Custom checkbox*/
+/* The container */
+.checkmark-container {
+	display: inline-flex;
+	align-items: center;
+	position: relative;
+	cursor: pointer;
+	padding-left: 35px;
+	padding-right: 50px;
+  	margin-bottom: 12px;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	height:20px;
+}
+
+/* Hide the browser's default checkbox */
+.checkmark-container input {
+	position: absolute;
+	opacity: 0;
+	cursor: pointer;
+	height: 0;
+	width: 0;
+}
+
+/* Create a custom checkbox */
+.checkmark {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 20px;
+	width: 20px;
+	background-color: none;
+	border: 2px solid hsl(195, 84%, 45%);
+	vertical-align: center;
+	horizontal-align: center;
+}
+
+/*When the checkbox is checked, fill in background*/ 
+.checkmark-container input:checked ~ .checkmark {
+	background-color: hsl(195, 84%, 45%);
+	border: none;
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.checkmark:after {
+	content: "";
+	position: absolute;
+	/*display: none;*/
+	opacity: 0;
+}
+
+/* Show the checkmark when checked */
+.checkmark-container input:checked ~ .checkmark:after {
+	/*display: block;*/
+	opacity: 1;
+}
+
+/* Style the checkmark/indicator */
+.checkmark-container .checkmark:after {
+	left: 7px;
+	top: 2px;
+	width: 7px;
+	height: 12px;
+	border: solid white;
+	border-width: 0 2px 2px 0;
+	-webkit-transform: rotate(45deg);
+	-ms-transform: rotate(45deg);
+	transform: rotate(45deg);
+	vertical-align: center;
+}
 /*th {
 	background-color: hsl(217, 5%, 77%);
 }*/

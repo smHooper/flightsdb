@@ -21,6 +21,7 @@ const landingColumns = [
 
 var landingQueryResult = {}; //global var to store result for writing CSV  
 
+
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
     date.setDate(date.getDate() + days);
@@ -45,7 +46,6 @@ $.expr[':'].truncated = function(jqObject) {
 	return (Math.ceil($(jqObject).outerWidth()) < $(jqObject)[0].scrollWidth);
 
 }
-
 
 
 function fillSelectOptions(selectElementID, queryString, dbname, optionClassName='track-info-option') {
@@ -75,6 +75,76 @@ function fillSelectOptions(selectElementID, queryString, dbname, optionClassName
 
     return deferred;
 }
+
+
+// Checkbox buttons
+/*function initCheckboxes() {
+    $('.button-checkbox').each(function () {
+
+        // Settings
+        var $widget = $(this),
+            $button = $widget.find('button'),
+            $checkbox = $widget.find('input:checkbox'),
+            color = $button.data('color'),
+            settings = {
+                on: {
+                    icon: 'glyphicon glyphicon-check'
+                },
+                off: {
+                    icon: 'glyphicon glyphicon-unchecked'
+                }
+            };
+
+        // Event Handlers
+        $button.on('click', function () {
+            $checkbox.prop('checked', !$checkbox.is(':checked'));
+            $checkbox.triggerHandler('change');
+            updateDisplay();
+        });
+        $checkbox.on('change', function () {
+            updateDisplay();
+        });
+
+        // Actions
+        function updateDisplay() {
+            var isChecked = $checkbox.is(':checked');
+
+            // Set the button's state
+            $button.data('state', (isChecked) ? "on" : "off");
+
+            // Set the button's icon
+            $button.find('.state-icon')
+                .removeClass()
+                .addClass('state-icon ' + settings[$button.data('state')].icon);
+
+            // Update the button's color
+            if (isChecked) {
+                $button
+                    .removeClass('btn-default')
+                    .addClass('btn-' + color + ' active');
+            }
+            else {
+                $button
+                    .removeClass('btn-' + color + ' active')
+                    .addClass('btn-default');
+            }
+        }
+
+        // Initialization
+        function init() {
+
+            updateDisplay();
+
+            // Inject the icon if applicable
+            if ($button.find('.state-icon').length == 0) {
+                $button.prepend('<i class="state-icon ' + settings[$button.data('state')].icon + '"></i> ');
+            }
+        }
+        init();
+    });
+};*/
+
+
 
 
 function onRunClick(event) {
@@ -199,7 +269,7 @@ function resizeColumns() {
 }
 
 
-async function showQueryResult(result) {
+async function showQueryResult(result, selectedAnchor=false) {
 
 	$('#result-header-row').empty();
 	$('#place-holder').css('display', 'none');
@@ -235,6 +305,13 @@ async function showQueryResult(result) {
 		let columnID = column.replace(' ', '_');
 		landingColumnRow += `<th class="landing-table-column-header" id="column-${columnID}">${column}</th> `
 	}
+
+	let displayLandingTypes = {};
+	$(`input[type='checkbox']`).each(function() {
+		let landingType = $(this).attr('id').replace('checkmark-', '')
+		//// need to add function to change the checked vs not check prop
+		displayLandingTypes[landingType] = $(this).get(0).checked;
+	})
 
 	var columnIndex = 0;
 	var columnIndices = {};
@@ -273,7 +350,9 @@ async function showQueryResult(result) {
 				let columnID = column.replace(' ', '_');
 				thisRow += `<td class="landing-table-cell cell-${columnID}">${thisLanding[column]}</td>`;
 			}
-			landingRows += `<tr>${thisRow}</tr>`;
+			let landingType = thisLanding['landing type'];
+			let displayClass = displayLandingTypes[landingType] ? '' : 'class=landing-row-hidden'
+			landingRows += `<tr ${displayClass}>${thisRow}</tr>`;
 		}
 		//
 		$(`<div class="card" id="result-row-${id}"> 
@@ -316,7 +395,28 @@ async function showQueryResult(result) {
 
 	// Show the export button
 	$('#export-button-container').css('display', 'flex');
+
+	/*if (selectedAnchor !== false) {
+		//$(`${selectedCardID} > a`).get(0).click()
+		selectedAnchor.get(0).click()
+
+	}*/
 }	
+
+
+function onCheckboxClick() {
+	
+	// If a query has been run, show/hide the associated landing type
+	if (Object.keys(landingQueryResult).length) {
+		/*var selectedAnchor = false;
+		$('.card').find('a').each(function() {
+			if (!$(this).hasClass('collapsed')) {
+				selectedAnchor = $(this)
+			}
+		})*/
+		showQueryResult(landingQueryResult.data);
+	}
+}
 
 
 function showLoadingIndicator() {
@@ -374,3 +474,5 @@ function onExportDataClick() {
 	$(a).remove();
 
 }
+
+
