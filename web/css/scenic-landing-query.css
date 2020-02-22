@@ -91,6 +91,10 @@ input[type="submit"]:focus, button:focus {
   	overflow: hidden;
   	text-overflow: ellipsis;
 }
+span.truncatable {
+	position: absolute;
+	margin-top: -12px;
+}
 .truncatable.truncated {
 	width: 90%;
 	display: inline-block;
@@ -149,6 +153,7 @@ input[type="submit"]:focus, button:focus {
 
 .landing-table-cell {
 	background-color: #d1d5d7e6;/*rgba(255, 255, 255, 0.1);*/
+	position: relative;
 }
 
 .landing-row-hidden {
@@ -192,11 +197,43 @@ tr {
 td, th {
 	text-align: center;
 	width: 100px;
+	max-width: 200px;
+	padding-left: 10px;
+	padding-right: 10px;
 }
 
 td {
 	height: 40px;
+	overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: white-space 0.5s ease-in-out;
 }
+
+/*td.truncated {
+	padding-right: 40px;
+}*/
+
+.cell-landing_notes, .cell-justification {
+	width: 25%;
+	text-align: left;
+}
+
+.cell-landing_location {
+	text-align: left;
+	width: 15%;
+}
+
+.cell-landing_type {
+ 	width: 15%;
+ }
+ 
+.cell-landing_passengers {
+	width: 10%;
+}
+
+
+
 
 th {
 	height: 50px;

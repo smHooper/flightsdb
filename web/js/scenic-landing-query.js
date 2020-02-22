@@ -282,6 +282,19 @@ function showExpandedText(event, cellID) {
 	$('.close-modal-text-button').click(removeModalExpandedText)
 }	
 
+function addExpandTruncatedButton(parentCell, thisElement) {
+	if (!parentCell.find('.expand-truncated-button').length) { 
+		let thisTextColor = thisElement.css('color');
+		$(`
+			<button class="expand-truncated-button">
+				<h4 style="color: ${thisTextColor};">+</h4>
+			</button>
+		`).click((event) => {showExpandedText(event, parentCell.attr('id'))})
+		.appendTo(parentCell);
+		thisElement.addClass('truncated');
+	}
+}
+
 
 function resizeColumns() {
 
@@ -298,17 +311,13 @@ function resizeColumns() {
 
 	// find any divs truncated because their too long and add a button to show the full text
 	$('.result-table-cell > .truncatable:truncated').each(function(){
-		let thisCell = $(this).parent();
-		if (!thisCell.find('.expand-truncated-button').length) { 
-			$(`
-				<button class="expand-truncated-button">
-					<h4 style="color: white;">+</h4>
-				</button>
-			`).click((event) => {showExpandedText(event, $(thisCell).attr('id'))})
-			.appendTo(thisCell);
-			$(this).addClass('truncated');
-		}
+		addExpandTruncatedButton($(this).parent(), $(this));
 	});//*/
+
+	/*$('td:truncated').each(function(){
+		addExpandTruncatedButton($(this), $(this));
+
+	});*/
 
 	// find any divs that were truncated, but are now fully visible and remove the expand button
 	$('.result-table-cell > .truncatable:extended').each(function(){
@@ -397,7 +406,11 @@ async function showQueryResult(result, selectedAnchor=false) {
 			let thisRow = '';
 			for (column in thisLanding) {
 				let columnID = column.replace(' ', '_');
-				thisRow += `<td class="landing-table-cell cell-${columnID}">${thisLanding[column]}</td>`;
+				thisRow += 
+					`<td class="landing-table-cell cell-${columnID}">${thisLanding[column]}</td>`;
+					/*`<td class="landing-table-cell cell-${columnID}"> 
+						<span class="truncatable" style="width: 100%">${thisLanding[column]}</span> 
+					</td>`*/
 			}
 			let landingType = thisLanding['landing type'];
 			let displayClass = displayLandingTypes[landingType] ? '' : 'class=landing-row-hidden'
@@ -424,6 +437,19 @@ async function showQueryResult(result, selectedAnchor=false) {
 			</div>`
 		).appendTo('#result-table-body')
 	}
+
+	// Expand on double-click (and show help tip to indicate this)
+	$('td').dblclick(function() {
+		$(this).css('white-space',
+			$(this).css('white-space') === 'nowrap' ? 'normal' : 'nowrap')
+	})
+	.hover(function() {
+		if (Math.ceil($(this).outerWidth()) < $(this)[0].scrollWidth) {
+			$(this).attr('title', 'Double-click to expand full text')
+		} else {
+			$(this).attr('title', '')
+		}
+	});
 
 	var sumRow = '';
 	for (column in sums) {
