@@ -309,7 +309,7 @@ function showLoadingIndicator() {
     //set a timer to turn off the indicator after a max of 15 seconds because 
     //  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
     //  with who called it
-    setTimeout(hideLoadingIndicator, 15000);
+    setTimeout(hideLoadingIndicator, 5000);
 
     var thisCaller = showLoadingIndicator.caller.name;
 

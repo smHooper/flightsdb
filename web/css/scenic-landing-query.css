@@ -123,7 +123,7 @@ span.truncatable {
 	background-color: #894C4C;/*hsl(217, 5%, 77%);*/
 	display: inline-block;
 	font-weight: bold;
-	font-size: 20px;
+	/*font-size: 20px;*/
 }
 
 .result-table-row, .result-table-header {
@@ -227,7 +227,7 @@ td {
 .cell-landing_type {
  	width: 15%;
  }
- 
+
 .cell-landing_passengers {
 	width: 10%;
 }

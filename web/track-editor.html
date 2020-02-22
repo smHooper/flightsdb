@@ -155,6 +155,7 @@
       $('#contact-link')
         .attr('href', `mailTo:${dataSteward}`)
         .text(dataSteward);
+
       //$('#menu-container').css('height', $('#map').height() + $('#save-button').height() + 10);
     });
 
@@ -192,6 +193,16 @@
               if (username) {
                 $('#textbox-track_editor').val(username);
               }
+
+              // register change event on all track info inputs. Do this here so that the ajax call 
+              //  to fill in the inputs doesn't finish after the change event is registered
+              $('.track-info-textbox').each(function () {
+                $(this).change((event) => {
+                  onTrackInfoElementChange(event.target);
+                  let fileName = getSelectedFileName();
+                  if (fileName.length) isEditing[fileName] = true;
+                })
+              })
             }
           })
 
@@ -219,15 +230,6 @@
       $('#select-operator_code').change(); // disable the mission code select if necessary after track info is filled in 
       hideLoadingIndicator('fillSelectOptions');
     }) 
-
-    // register change event on all track info inputs
-    $('.track-info-textbox').each(function () {
-      $(this).change((event) => {
-        onTrackInfoElementChange(event.target);
-        let fileName = getSelectedFileName();
-        if (fileName.length) isEditing[fileName] = true;
-      })
-    })
 
     $('#select-operator_code').change(function() {onOperatorChange($(this).val())})
 
