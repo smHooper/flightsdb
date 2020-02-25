@@ -57,6 +57,11 @@ body {
 
 .leaflet-toolbar-icon img {
 	transition: 0.2s;
+	opacity: 1;
+}
+
+.leaflet-toolbar-icon.leaflet-toolbar-icon-disabled img {
+	opacity: 0.35;
 }
 
 /*.card-header {

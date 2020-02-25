@@ -205,6 +205,7 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 				mergeSegID: newSegmentID
 			}
 		}
+		toggleUndoButton();
 	}
 
 
@@ -680,6 +681,7 @@ function deleteTrack(id=undefined, showAlert=true, isRedo=false) {
 					segmentID: thisID
 				}
 			}
+			toggleUndoButton();
 		}
 
 		// Delete items and remove from legend
@@ -759,12 +761,24 @@ function redoDeleteTrack({fileName, segmentID}) {
 }
 
 
+function toggleUndoButton() {
+	
+	if (editingBufferIndex >= 1 ) {
+		$('#img-undo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', editingBufferIndex < redoBuffer.length ? 1 : 0.35)
+	} else {
+		$('#img-undo').parent().addClass('leaflet-toolbar-icon-disabled');
+	}
+}
+
+
 function undoMapEdit() {
 
 	let editAction = undoBuffer[editingBufferIndex];
 	editAction.function(editAction.args);
 	editingBufferIndex --;
 
+	$('#img-redo').parent().removeClass('leaflet-toolbar-icon-disabled');
+	toggleUndoButton();
 }
 
 
@@ -773,6 +787,30 @@ function redoMapEdit() {
 	let editAction = redoBuffer[editingBufferIndex];
 	editAction.function(editAction.args);
 	editingBufferIndex ++;
+
+	$('#img-undo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', 1);
+	if (editingBufferIndex < redoBuffer.length) {
+		$('#img-redo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', editingBufferIndex < redoBuffer.length ? 1 : 0.35)
+	} else {
+		$('#img-redo').parent().addClass('leaflet-toolbar-icon-disabled');
+	}
+}
+
+
+function undoButtonClick() {
+
+	// If the button is disabled, exit
+	if ($('#img-undo').parent().hasClass('leaflet-toolbar-icon-disabled')) return;
+
+	undoMapEdit();
+}
+
+function redoButtonClick() {
+
+	// If the button is disabled, exit
+	if ($('#img-redo').parent().hasClass('leaflet-toolbar-icon-disabled')) return;
+
+	redoMapEdit();
 }
 
 
@@ -1397,18 +1435,35 @@ function addMapToolbars() {
 		addHooks: onSplitButtonClick
 	});
 
+	var undo = L.Toolbar2.Action.extend({
+		
+		options: {
+			toolbarIcon: {
+					html: '<img id="img-undo" src="imgs/undo_icon.svg"/>',
+					tooltip: 'Undo map edit'
+			}
+		},
+		addHooks: undoButtonClick
+	});
+
+	var redo = L.Toolbar2.Action.extend({
+		
+		options: {
+			toolbarIcon: {
+					html: '<img id="img-redo" src="imgs/redo_icon.svg"/>',
+					tooltip: 'Redo map edit'
+			}
+		},
+		addHooks: redoButtonClick
+	});
 	new L.Toolbar2.Control({	
-			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext, cut],
+			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext, cut, undo, redo],
 			position: 'topleft'
 	}).addTo(map);
 
-
-
-	/*new L.Toolbar2.Control({
-			actions: [cut],
-			position: 'bottomleft'
-	}).addTo(map);*/
-
+	// add disabled class to buttons that need it
+	$('#img-undo').parent().addClass('leaflet-toolbar-icon-disabled');
+	$('#img-redo').parent().addClass('leaflet-toolbar-icon-disabled');
 }
 
 
