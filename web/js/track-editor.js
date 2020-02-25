@@ -24,6 +24,25 @@ function getSelectedFileName() {
 }
 
 
+function toggleZoomNextPreviousButtons() {
+
+	if (mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0) {
+		$('#img-zoom_previous').parent().removeClass('leaflet-toolbar-icon-disabled');
+	} else {
+		$('#img-zoom_previous').parent().addClass('leaflet-toolbar-icon-disabled');
+	}
+
+	if (mapExtentBuffer.length > currentMapExtentIndex + 1) {
+		$('#img-zoom_next').parent().removeClass('leaflet-toolbar-icon-disabled');
+	} else {
+		$('#img-zoom_next').parent().addClass('leaflet-toolbar-icon-disabled');
+	}
+	//$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.35);
+	//$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.35);
+
+}
+
+
 function onMapZoom() {
 	/* 
 	when the map changes extent, add the extent to the zoom buffer
@@ -44,8 +63,7 @@ function onMapZoom() {
 		mapExtentBuffer = mapExtentBuffer.slice(0, currentMapExtentIndex + 1);
 	}
 
-	$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.35);
-	$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.35);
+	toggleZoomNextPreviousButtons();
 
 }
 
@@ -393,6 +411,7 @@ function showVertices(id, hideCurrent=true) {
 	geojsonPoints.bringToFront();
 
 	selectedLines[fileName] = id;
+	$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 	
 }
 
@@ -505,6 +524,7 @@ function selectLegendItem(id) {
 			if (trackInfo[fileName][segmentID].visible) {
 				id = segmentID;
 				selectedLines[fileName] = segmentID;
+				$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 				break;
 			}
 		}
@@ -513,6 +533,7 @@ function selectLegendItem(id) {
 		if (id < 0) {
 			id = Object.keys(trackInfo[fileName])[0];
 			selectedLines[fileName] = id;
+			$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 		}
 	}
 
@@ -694,6 +715,7 @@ function deleteTrack(id=undefined, showAlert=true, isRedo=false) {
 		// Only reset the selected line if this line is the currently selected one
 		if (thisID == selectedLines[fileName]) {
 			selectedLines[fileName] = -1;
+			$('#img-zoom_selected').parent().addClass('leaflet-toolbar-icon-disabled');
 		}
 
 		isEditing[fileName] = true;
@@ -730,6 +752,7 @@ function undoDeleteTrack({fileName, pointGeoJSON, latlngs, thisTrackInfo, segmen
 	    if (selectedLines[fileName] !== segmentID) {
 			hideVertices(selectedLines[fileName]);
 			selectedLines[fileName] = segmentID;
+			$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 		}
 	}
 
@@ -852,6 +875,7 @@ function onMapClick(e) {
 	if (currentLineID >= 0 && !e.originalEvent.ctrlKey) {
 		hideVertices(currentLineID);
 		selectedLines[fileName] = -1;
+		$('#img-zoom_selected').parent().addClass('leaflet-toolbar-icon-disabled');
 	}
 }
 
@@ -1133,6 +1157,7 @@ function loadTracksFromJSON(filePath) {
 		// Show first line
 		if (selectedLines[fileName] == undefined) {
 			selectedLines[fileName] = 0;
+			$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 		}
 
 		var allLines = L.polyline(polylineCoords);
@@ -1368,16 +1393,18 @@ function addMapToolbars() {
 	var zoomSelected = L.Toolbar2.Action.extend({
 		options: {
 			toolbarIcon: {
-					html: '<img src="imgs/zoom_selected_icon.svg"/>',
+					html: '<img id="img-zoom_selected" src="imgs/zoom_selected_icon.svg"/>',
 					tooltip: 'Zoom to selected track'
 			}
 		},
 		addHooks: function () {
-			var fileName = getSelectedFileName();
-			if (fileName !== undefined) {
-				map.fitBounds(lineLayers[fileName][selectedLines[fileName]].getBounds());
-			} else {
-				alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
+			if (!$('#img-zoom_selected').parent().hasClass('leaflet-toolbar-icon-disabled')) {
+				var fileName = getSelectedFileName();
+				if (fileName !== undefined) {
+					map.fitBounds(lineLayers[fileName][selectedLines[fileName]].getBounds());
+				} else {
+					alert('The map is currently loading. Please wait to zoom until all tracks are loaded.');
+				}
 			}
 		}
 				
@@ -1386,7 +1413,7 @@ function addMapToolbars() {
 	var zoomFull = L.Toolbar2.Action.extend({
 		options: {
 			toolbarIcon: {
-					html: '<img src="imgs/zoom_full_icon.svg"/>',
+					html: '<img id="img-zoom_full" src="imgs/zoom_full_icon.svg"/>',
 					tooltip: 'Zoom to full extent'
 			}
 		},
@@ -1404,7 +1431,7 @@ function addMapToolbars() {
 		
 		options: {
 			toolbarIcon: {
-				html: '<img id="img-zoom_previous" src="imgs/zoom_previous_icon.svg" style="opacity: 0.35;"/>',
+				html: '<img class="leaflet-toolbar-icon-img-disablable" id="img-zoom_previous" src="imgs/zoom_previous_icon.svg"/>',
 				tooltip: 'Zoom to previous extent'
 			}
 		},
@@ -1415,7 +1442,7 @@ function addMapToolbars() {
 		
 		options: {
 			toolbarIcon: {
-					html: '<img id="img-zoom_next" src="imgs/zoom_next_icon.svg" style="opacity: 0.35;"/>',
+					html: '<img class="leaflet-toolbar-icon-img-disablable" id="img-zoom_next" src="imgs/zoom_next_icon.svg"/>',
 					tooltip: 'Zoom to next extent'
 			}
 		},
@@ -1439,7 +1466,7 @@ function addMapToolbars() {
 		
 		options: {
 			toolbarIcon: {
-					html: '<img id="img-undo" src="imgs/undo_icon.svg"/>',
+					html: '<img class="leaflet-toolbar-icon-img-disablable" id="img-undo" src="imgs/undo_icon.svg"/>',
 					tooltip: 'Undo map edit'
 			}
 		},
@@ -1450,7 +1477,7 @@ function addMapToolbars() {
 		
 		options: {
 			toolbarIcon: {
-					html: '<img id="img-redo" src="imgs/redo_icon.svg"/>',
+					html: '<img class="leaflet-toolbar-icon-img-disablable" id="img-redo" src="imgs/redo_icon.svg"/>',
 					tooltip: 'Redo map edit'
 			}
 		},
@@ -1462,8 +1489,7 @@ function addMapToolbars() {
 	}).addTo(map);
 
 	// add disabled class to buttons that need it
-	$('#img-undo').parent().addClass('leaflet-toolbar-icon-disabled');
-	$('#img-redo').parent().addClass('leaflet-toolbar-icon-disabled');
+	$('.leaflet-toolbar-icon-img-disablable').parent().addClass('leaflet-toolbar-icon-disabled');
 }
 
 
