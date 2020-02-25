@@ -144,7 +144,8 @@
     var fileExtents = {};
     var isEditing = {};
     var editingBufferIndex = 0;
-    var editingBuffer = [];
+    var undoBuffer = [];
+    var redoBuffer = [];
     
     // Make sure files are read from disk every time
     $(document).ready(function() {
