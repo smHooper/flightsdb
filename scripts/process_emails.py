@@ -4,6 +4,7 @@ import imaplib
 import email
 import smtplib
 import pandas as pd
+from getpass import getpass
 from email.mime import text as mimetext, multipart as mimemultipart, base as mimebase
 
 import read_landing_submission as submission
@@ -98,14 +99,14 @@ def get_email_credentials(credentials_txt):
                 password = line.split(':')[1].strip()
 
     if not username:
-        username = input('No username found in text file. Username?: ')
+        username = getpass('No username found in text file. Username?: ')
     if not password:
-        password = input('No password found in text file. Password}?: ')
+        password = getpass('No password found in text file. Password}?: ')
 
     return username, password
 
 
-def send_email(message_body, subject, sender, recipients, server, attachments=[]):
+def send_email(message_body, subject, sender, recipients, server, attachments=[], message_body_type='plain'):
 
     msg_root = mimemultipart.MIMEMultipart('mixed')
     msg_root['Date'] = email.utils.formatdate(localtime=True)
@@ -113,7 +114,7 @@ def send_email(message_body, subject, sender, recipients, server, attachments=[]
     msg_root['To'] = ', '.join(recipients)
     msg_root['Subject'] = email.header.Header(subject, 'utf-8')
 
-    msg_txt = mimetext.MIMEText(message_body.encode('utf-8'), 'plain', 'utf-8')
+    msg_txt = mimetext.MIMEText(message_body, message_body_type, 'utf-8')
     msg_root.attach(msg_txt)
 
     for attachment in attachments:
