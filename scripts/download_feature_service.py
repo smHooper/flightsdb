@@ -87,15 +87,14 @@ def get_token(credentials_json=None, credentials={}, portal_url=None, service_ur
     if sorted(credentials.keys()) == sorted(LOGIN_CREDENTIALS) or all([portal_url, service_url, username]):
         username = credentials['username'] if credentials_json else username
         token_params = {'username': username,
-                        'password': credentials['password'] if credentials_json
+                        'password': credentials['password'] if (credentials_json or credentials)
                                     else getpass.getpass("AGOL password for '%s':" % username),
                         'client': 'referer',
                         'referer': credentials['portal_url'] if credentials_json else portal_url,
-                        'expiration': 60,
                         'f': 'json'
                         }
         # generateToken only responds to POST request
-        token_response = requests.post(portal_url + '/sharing/rest/generateToken?', params=token_params, verify=ssl_cert)
+        token_response = requests.post(portal_url + '/sharing/rest/generateToken', params=token_params, verify=ssl_cert)
 
     elif sorted(credentials.keys()) == sorted(APP_CREDENTIALS) or all([portal_url, service_url, client_id, client_secret]):
         token_params = {'client_id': credentials['client_id'] if credentials_json else client_id,
