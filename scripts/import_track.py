@@ -67,7 +67,7 @@ import kml_parser
 CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
                     'gsat': ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts'],
                     'spy': ['Registration', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Speed(knots)', 'Bearing', 'PointType', 'Description'],
-                    'tms': ['Serial No.', ' UTC', ' Latitude', ' HemNS', ' Longititude', ' HemEW', ' Knots', ' Heading', ' Altitude (m)', ' HDOP', ' New Conn', ' Entered', ' Event'],
+                    'tms': ['Serial No.', ' UTC', ' Latitude', ' HemNS',  ' Longititude', ' HemEW', ' Knots', ' Heading', ' Altitude (m)', ' HDOP', ' New Conn', ' Entered', ' Event'],
                      'foreflight': ['Pilot', 'Tail Number', 'Derived Origin', 'Start Latitude', 'Start Longitude', 'Derived Destination', 'End Latitude', 'End Longitude', 'Start Time', 'End Time', 'Total Duration', 'Total Distance', 'Initial Attitude Source', 'Device Model', 'Device Model Detailed', 'iOS Version', 'Battery Level', 'Battery State', 'GPS Source', 'Maximum Vertical Error', 'Minimum Vertical Error', 'Average Vertical Error', 'Maximum Horizontal Error', 'Minimum Horizontal Error', 'Average Horizontal Error', 'Imported From', 'Route Waypoints']
                }
 
@@ -473,7 +473,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
                 except:
                     continue
 
-    if not 'gdf' in globals():
+    if not 'gdf' in locals():
         error_message = 'Unable to read the file %s' % path
         if not extension.lower() in READ_FUNCTIONS:
             sorted_extensions = [c.replace('.', '').upper() for c in sorted(READ_FUNCTIONS.keys())]
