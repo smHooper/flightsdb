@@ -150,7 +150,7 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
           "INNER JOIN flights ON flights.id = {table}.flight_id " \
           "{aircraft_join}" \
           "WHERE " \
-          "   {date_field}::date BETWEEN {start_date} AND {end_date} AND " \
+          "   {date_field}::date BETWEEN '{start_date}' AND '{end_date}' AND " \
           "   {time_clause}" \
           "   {bbox_criteria}" \
           "   {spatial_filter}" \
@@ -168,6 +168,7 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
                 spatial_filter=" AND ST_Intersects(geom, ST_GeomFromText('%s', 4326))" % mask_wkt if mask_file and not clip_output else '',
                 other_criteria=" AND " + sql_criteria if sql_criteria else ''
                 )
+    
     with engine.connect() as conn, conn.begin():
         data = gpd.GeoDataFrame.from_postgis(sql, conn, geom_col='geom')
 
@@ -179,7 +180,10 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
         # convert all datetime cols to str because fiona (underlying GeoPandas) freaks out about datetimes
         for c in datetime_columns:
             data[c] = data[c].astype(str)
-        data.to_file(output_path, driver=FIONA_DRIVERS[extension])
+        data.to_file(output_path, driver=FIONA_DRIVERS[path_extension])
+
+    return data
+
 
 if __name__ == '__main__':
 
