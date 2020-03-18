@@ -232,8 +232,8 @@ def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=Tr
                 #   that has the same name, the original doesn't get written over
                 name, extension = os.path.splitext(row.ATT_NAME)
                 attachment_id = row.GLOBALID.replace('{', '').replace('}', '') #for some annoying reason, ids have braces
-                attachment_path = os.path.join(attachments_dir, '{name}_{id}{ext}'
-                                               .format(name=name, id=attachment_id, ext=extension))
+                attachment_path = os.path.join(attachments_dir, '{name}{ext}'
+                                               .format(name=name, ext=extension))
                 with open(attachment_path, 'wb') as attachment_pointer:
                     attachment_pointer.write(row.DATA)
 
