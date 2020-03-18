@@ -12,3 +12,4 @@ web/data/*
 *Thumbs.db
 
 scripts/__pycache__/*
+*.pyc
