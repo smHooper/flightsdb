@@ -450,7 +450,7 @@ def check_duplicate_flights(registration, connection, start_time, end_time):
     return matching_flights
 
 
-def format_track(path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None):
+def format_track(path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, force_registration=True):
 
     _, extension = os.path.splitext(path)
 
@@ -486,7 +486,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
 
     # Validate the registration
-    if 'registration' in gdf.columns: # Already in a column in the data
+    if 'registration' in gdf.columns and not force_registration: # Already in a column in the data
         if registration:
             warnings.warn('registration %s was given but the registration column found in the data will be '
                           'used instead' % registration)
