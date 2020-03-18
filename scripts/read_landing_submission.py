@@ -63,15 +63,15 @@ def import_data(landings_path, connection_txt, sheet_name='data'):
     engine = db_utils.connect_db(connection_txt)
     operator_codes = db_utils.get_lookup_table(engine, 'operators', index_col='name', value_col='code')
     df.replace({'operator_code': operator_codes}, inplace=True)
-    df['flight_identifier'] = df.apply(lambda row: '{operator}_{aircraft}_{departure}'
+    df['flight_id'] = df.apply(lambda row: '{operator}_{aircraft}_{departure}'
                                        .format(operator=row.operator_code,
                                                aircraft=row.aircraft_type.replace(' ', ''),
                                                departure=row.departure_datetime.strftime('%Y%m%d_%H%M')),
                                        axis=1)
 
     # Separate the flight info from landing data
-    flights = df.loc[:, ['flight_identifier'] + FLIGHT_TBL_COLS]
-    fees = df.loc[:, ['flight_identifier'] + FEE_TBL_COLS]
+    flights = df.loc[:, ['flight_id'] + FLIGHT_TBL_COLS]
+    fees = df.loc[:, ['flight_id'] + FEE_TBL_COLS]
     landing_data = df.drop(FLIGHT_TBL_COLS + FEE_TBL_COLS, axis=1)
 
     flights['time_submitted'] = pd.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -90,18 +90,18 @@ def import_data(landings_path, connection_txt, sheet_name='data'):
     with engine.connect() as conn, conn.begin():
         # Insert only new flights because if there were already tracks for these flights that were already processed,
         #   the flights are already in the DB
-        existing_flight_ids = pd.read_sql("SELECT flight_identifier FROM flights", conn).squeeze()
-        flights.loc[~flights.flight_identifier.isin(existing_flight_ids)].to_sql('flights', conn, if_exists='append', index=False)
+        existing_flight_ids = pd.read_sql("SELECT flight_id FROM flights", conn).squeeze()
+        flights.loc[~flights.flight_id.isin(existing_flight_ids)].to_sql('flights', conn, if_exists='append', index=False)
 
         # Get the IDs of flights that were just inserted
-        flight_ids = pd.read_sql("SELECT id, flight_identifier FROM flights WHERE flight_identifier IN ('%s')"
-                                 % "', '".join(flights.flight_identifier),
+        flight_ids = pd.read_sql("SELECT id, flight_id FROM flights WHERE flight_id IN ('%s')"
+                                 % "', '".join(flights.flight_id),
                                  conn)
-        fees = fees.merge(flight_ids, on='flight_identifier').rename(columns={'id': 'flight_id'})
-        fees.loc[~fees.flight_identifier.isin(existing_flight_ids)]\
-            .drop('flight_identifier', axis=1)\
+        fees = fees.merge(flight_ids, on='flight_id').rename(columns={'id': 'flight_id'})
+        fees.loc[~fees.flight_id.isin(existing_flight_ids)]\
+            .drop('flight_id', axis=1)\
             .to_sql('concession_fees', conn, if_exists='append', index=False)
-        landings = landings.merge(flight_ids, on='flight_identifier').rename(columns={'id': 'flight_id'})
+        landings = landings.merge(flight_ids, on='flight_id').rename(columns={'id': 'flight_id'})
 
         # Remove any notes that were intended for data entry, then replace location names with codes
         locations = pd.read_sql_table('landing_locations', conn)
