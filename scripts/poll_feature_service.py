@@ -36,7 +36,7 @@ LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropp
 MESSAGES = [] # internal messages to data stewards
 EMAILS = [] # messages to submitters
 # AGOL IDs of submissions that caused errors and data stewards have been warned about. Errors are dict of ID: date so that old
-ERRORS = {}
+ERRORS = []
 LANDINGS_FLIGHT_COLUMNS = {'landing_operator':      'operator_code',
                            'landing_tail_number':   'registration',
                            'landing_datetime':      'departure_datetime',
@@ -89,15 +89,31 @@ def read_json_params(params_json):
     :param params_json: path to JSON file
     :return: dictionary of params
     '''
-
+    required = pd.Series(['agol_credentials',
+                          'db_credentials',
+                          'track_data_stewards',
+                          'landing_data_stewards',
+                          'mail_sender',
+                          'track_editor_url',
+                          'delete_features_url',
+                          'mail_server_credentials',
+                          'log_dir',
+                          'web_data_dir',
+                          'ssl_cert',
+                          'landing_receipt'])
     with open(params_json) as j:
         params = json.load(j)
-    required = pd.Series(['agol_credentials', 'db_credentials', 'agol_users'])
     missing = required.loc[~required.isin(params.keys())]
     if len(missing):
-        raise ValueError('Invalid config JSON: {file}. It must contain all of "{required}" but "{missing}" are missing'
-                         .format(file=params_json, required='", "'.join(required), missing='", "'.join(missing)))
-    
+        if 'log_dir' in params.keys():
+            msg = 'Invalid config JSON: {file}. It must contain all of "{required}" but "{missing}" are missing'\
+                         .format(file=params_json, required='", "'.join(required), missing='", "'.join(missing))
+            write_log(params['log_dir'], 'unknown', datetime.now().strftime(TIMESTAMP_FORMAT), DATA_PROCESSED, error=msg)
+        raise ValueError(msg)
+
+    if 'download_dir' not in required:
+        required['download_dir'] = params['log_dir']
+
     return params
 
 
@@ -210,7 +226,6 @@ def get_html_table(data, column_widths={}):
                           tr_content.items()]) + '</tr>'
 
     for column_name, width in column_widths.items():
-        import pdb; pdb.set_trace()
         thead_html.replace('<th {cell_style}>{column}</th>'.format(cell_style=cell_style, column=column_name),
                            '<th {cell_style}>{column}</th>'.format(cell_style=cell_style.replace(';"', '; min-width:%s;"' % width), column=column_name))
 
@@ -313,7 +328,7 @@ def format_landing_excel_receipt(ticket, flights, landings, fees):
     receipt = flights.drop(columns='flight_id')\
         .merge(pivoted_passengers, left_on='id', right_index=True)\
         .merge(pivoted_locations, left_on='id', right_index=True)\
-        .merge(fees, left_on='id', right_on='flight_id')
+        .merge(fees.fillna(0), left_on='id', right_on='flight_id', how='left') #left join in case there aren't any fees
     receipt['departure_date'] = receipt.departure_datetime.dt.strftime('%m/%d/%Y')
     receipt['departure_time'] = receipt.departure_datetime.dt.strftime('%I:%M %p')
 
@@ -573,9 +588,6 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
         basename, _ = os.path.splitext(track_path)
         for path in glob(basename + '*'):
             os.remove(path)
-        # Remove from the ERRORS dict since the AGOL record doesn't exist anymore
-        if this_agol_id in ERRORS:
-            del ERRORS[this_agol_id]
         return
 
     for k, v in this_submission.iteritems():
@@ -595,6 +607,7 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
             .format(track_path=track_path, lineno=tb_frame.lineno, script=os.path.basename(tb_frame.filename), error=e, agol_id=attachment_info['objectid'])#, submitter_clause=submitter_error_clause)
         # Add a message per recipient so messages can be easily parsed per recipient later
         MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
+        ERRORS.append(traceback.format_exc())
         return
 
     if not len(gdf):
@@ -666,6 +679,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                 except Exception as e:
                     html_li = ('<li>An error occurred while trying to extract {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(file=fname, zip=zip_path, error=e, agol_id=attachment_info['objectid'])
                     MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'severity': 'error'})
+                    ERRORS.append(traceback.format_exc())
 
                 basename, ext = os.path.splitext(fname)
                 if ext not in import_track.READ_FUNCTIONS:
@@ -704,7 +718,7 @@ def get_track_receipt_email(submission, ticket, sender, agol_users):
     if not recipient.endswith('@nps.gov'):#len(null_nps_columns):
         submission.drop(columns=nps_columns, inplace=True)
     
-    html = get_email_html(submission.fillna(''), start_time, end_time, column_widths={'Notes': '100px'})
+    html = get_email_html(submission.fillna(''), start_time, end_time, column_widths={'Notes': '50px; max-width: 100px'})
 
     message = {'subject': 'Flight track submission receipt - ticket #%s' % ticket,
                'message_body': html,
@@ -715,7 +729,7 @@ def get_track_receipt_email(submission, ticket, sender, agol_users):
     return message
 
 
-def compose_data_steward_emails(tickets, param_dict):
+def compose_error_notifications(tickets, param_dict):
 
     messages = pd.DataFrame(MESSAGES)
     messages['recipient_str'] = messages.recipients.apply(str)
@@ -875,8 +889,20 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         all_flights.to_sql(main_table_name, conn, if_exists='replace')
         all_landings = pd.read_sql_table('landing_repeat', conn)
 
+    # Get operator emails from landings DB
+    operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email', conn=landings_conn)
+    operator_codes = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='code', conn=landings_conn)
+    operator_emails['smhooper'] = "samuel_hooper@nps.gov" ############## delete this after finished testing #############
+    param_dict['agol_users'] = operator_emails
     submitter_emails = submissions.groupby(['ticket', 'submission_type']).first()\
         .apply(lambda r: get_submitter_email(r.submitter, param_dict['agol_users']), axis=1)
+
+    # Get operator codes from usernames
+    submissions = submissions.merge(pd.Series(operator_codes, name='operator'), left_on='submitter', right_index=True)
+    merged = all_flights.merge(submissions, on='globalid', suffixes=('', '_y'))
+    all_flights = merged.loc[:, all_flights.columns.tolist() + ['operator']]
+    all_flights['tracks_operator'] = all_flights.loc[all_flights.submission_type == 'tracks', 'operator']
+    all_flights['landing_operator'] = all_flights.loc[all_flights.submission_type == 'landings', 'operator']
 
     # If there were any landings submitted, import them into the database
     receipt_dir = os.path.join(log_dir, 'receipts')
@@ -901,6 +927,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                 html_li = ('<li>An unexpected error, "{error}", occurred on line {lineno} of {script} while processing the following flights:<br>{table}<br></li>')\
                         .format(error=e, lineno=tb_frame.lineno, script=os.path.basename(tb_frame.filename), table=html_table)
                 MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['landing_data_stewards'], 'type': 'landings', 'level': 'error'})
+                ERRORS.append(traceback.format_exc())
                 continue#'''
 
             if not excel_path: # There weren't any new landings
@@ -938,13 +965,12 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         EMAILS.extend([get_track_receipt_email(s, ticket, param_dict['mail_sender'], param_dict['agol_users']) for ticket, s in track_submissions.groupby('ticket')])
     
     # Reduce submissions df to one per ticket
-    tickets = submissions.sort_values('submission_time')\
-        .groupby(['ticket', 'submission_type'])\
-        .first()\
-        .reset_index()
-    notifications = compose_data_steward_emails(tickets, param_dict)
-
-    return notifications
+    if len(MESSAGES):
+        tickets = submissions.sort_values('submission_time')\
+            .groupby(['ticket', 'submission_type'])\
+            .first()\
+            .reset_index()
+        EMAILS.extend(compose_error_notifications(tickets, param_dict))
 
 
 def send_email_per_recipient(message_params):
@@ -992,8 +1018,8 @@ def main(config_json):
         tracks_engine = create_engine(connection_template.format(**connection_info['tracks']))
 
         with landings_engine.connect() as l_conn, tracks_engine.connect() as t_conn, l_conn.begin(), t_conn.begin():
-            steward_notifications = poll_feature_service(params['log_dir'], params['download_dir'], params, params['ssl_cert'], l_conn, t_conn)
-            EMAILS.extend(steward_notifications) #+= steward_notifications
+            poll_feature_service(params['log_dir'], params['download_dir'], params, params['ssl_cert'], l_conn, t_conn)
+            #EMAILS.extend(error_notifications) #+= steward_notifications
 
     except Exception as error:
         tb_frame = get_traceback_frame()
@@ -1019,7 +1045,7 @@ def main(config_json):
     # Start the mail server
     server = smtplib.SMTP(params['mail_server_credentials']['server_name'], params['mail_server_credentials']['port'])
     server.starttls()
-    server.ehlo()
+    server.ehlo()#'''
 
     script_name = os.path.basename(__file__).rstrip('.py')
     log_info = read_logs(params['log_dir'], script_name)
@@ -1045,7 +1071,7 @@ def main(config_json):
         if not sent:
             msg_info['server'] = server
             failed = send_email_per_recipient(msg_info)
-            failed_emails.extend(failed)
+            failed_emails.extend(failed)#'''
 
     # Write the log file
     log_file, log = write_log(params['log_dir'], params['download_dir'], timestamp, DATA_PROCESSED)
@@ -1053,7 +1079,7 @@ def main(config_json):
     # If any failed, add them to the log file. The log file isn't actually created until write_log is called, so do this after
     if len(failed_emails):
         log['failed_emails'] = [{k: v for k, v in e.items() if k != 'server'} for e in failed_emails]
-        with open(log_file) as j:
+        with open(log_file, 'w') as j:
             json.dump(log, j, indent=4)
 
 
