@@ -181,7 +181,7 @@ def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=Tr
                 'queryOption': 'useFilter',
                 'where': "CreationDate > TIMESTAMP '%s'" % last_poll_time
             }
-        create_replica_params['layerQuereis'] = json.dumps(layer_queries)
+        create_replica_params['layerQueries'] = json.dumps(layer_queries)
     replica_response = requests.post('%s/createReplica' % service_url, params=create_replica_params, verify=ssl_cert)
     check_http_error('create replica', replica_response)
     status_url = replica_response.json()['statusUrl']
