@@ -27,8 +27,8 @@ import process_emails
 pd.set_option('display.max_columns', None)# useful for debugging
 pd.options.mode.chained_assignment = None
 
-SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
-LOG_CACHE_DAYS = 14 # amount of time to keep a log file
+SUBMISSION_TICKET_INTERVAL = 1#900 # seconds between submission of a particular user
+LOG_CACHE_DAYS = 30 # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 DATA_PROCESSED = False # keep track of whether any data were processed to be able to effectively log
 LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off
@@ -527,21 +527,21 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     fee_passengers['parentglobalid'] = fee_passengers.merge(landings.drop_duplicates(subset=['globalid']), on='globalid').set_index('index_x').parentglobalid
     fees = fee_passengers.groupby('parentglobalid').sum().reset_index()
     fees['fee'] = fees.n_passengers * LANDING_FEE
-    fees['flight_id'] = fees.merge(global_ids, left_on='parentglobalid', right_on='agol_global_id').id
+    fees = fees.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid', right_on='agol_global_id')
     fees = fees.loc[~fees.flight_id.isnull()] # drop flights without match
 
     # Get the flight ID for the landings table
-    landings['flight_id'] = landings.merge(global_ids, left_on='parentglobalid', right_on='agol_global_id').id
+    landings = landings.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid', right_on='agol_global_id')
 
     landings = passengers.merge(landings.drop(columns='landing_type'), on='globalid')\
         .drop_duplicates(subset=['globalid', 'landing_type'])\
         .rename(columns=LANDINGS_COLUMNS)\
-        .reindex(columns=LANDINGS_COLUMNS.values())\
+        .reindex(columns=LANDINGS_COLUMNS.values()) \
         .dropna(subset=['flight_id'])\
         .sort_values('sort_order')
 
     # INSERT into backend
-    fees.drop(columns=['parentglobalid', 'index'])\
+    fees.drop(columns=['parentglobalid', 'index', 'agol_global_id'])\
         .to_sql('concession_fees', landings_conn, if_exists='append', index=False)
     landings.drop(columns='sort_order')\
         .to_sql('landings', landings_conn, if_exists='append', index=False)#'''
