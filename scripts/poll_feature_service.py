@@ -27,7 +27,7 @@ import process_emails
 pd.set_option('display.max_columns', None)# useful for debugging
 pd.options.mode.chained_assignment = None
 
-SUBMISSION_TICKET_INTERVAL = 1#900 # seconds between submission of a particular user
+SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
 LOG_CACHE_DAYS = 14 # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 DATA_PROCESSED = False # keep track of whether any data were processed to be able to effectively log
@@ -348,6 +348,11 @@ def format_landing_excel_receipt(ticket, flights, landings, fees):
     receipt.n_passengers = receipt[[c for c in receipt if c.endswith('_passengers') and c != 'n_passengers']].sum(axis=1)
     receipt['n_fee_passengers'] = receipt.n_fee_pax
 
+    # Fill any numeric columns with 0. All of the columns that don't yet exist in the receipt (e.g., n_pickup_3)
+    #   will still be blank in the final receipt
+    numeric_columns = [c for c in receipt if c.startswith('n_')] + ['fee']
+    receipt[numeric_columns] = receipt[numeric_columns].fillna(0)
+
     receipt_info = pd.DataFrame([{'operator': receipt.operator_code.iloc[0],
                                  'ticket': ticket,
                                  'date': datetime.now().strftime('%m/%d/%Y'),
@@ -372,10 +377,9 @@ def format_landing_html_receipt(receipt):
     # If no scenic routes were given, this is probably not an operator that uses them so drop the column
     if receipt.scenic_route.any():
         receipt['Scenic Route'] = receipt.scenic_route
-
     receipt['Date'] = receipt.departure_datetime.dt.strftime('%m/%d/%Y')
     receipt['Time'] = receipt.departure_datetime.dt.strftime('%I:%M %p')
-    receipt['Fee'] = '$' + receipt.fee.astype(str)
+    receipt['Fee'] = receipt.fee.apply('${:.2f}'.format)
     receipt['Total Pax'] = receipt.n_passengers.astype(int)
     receipt = receipt\
         .rename({'registration': 'Tail Number', 'aircraft_type': 'Aircraft Type'})\
