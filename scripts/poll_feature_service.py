@@ -302,16 +302,16 @@ def get_traceback_frame():
     ''' Traverse the traceback and get the frame of the actual script that caused the last error'''
     traceback_exc = traceback.TracebackException(*sys.exc_info())
     current_script_dir = os.path.dirname(os.path.realpath(__file__))
-    for frame in traceback_exc.stack[::-1]: #traverse from the most recent
+    for frame in traceback_exc.stack:
         # this only works for errors caused by scripts in the same dir
-        if os.path.dirname(frame.filename) == current_script_dir:
+        if os.path.realpath(os.path.dirname(frame.filename)) == current_script_dir:
             return frame
 
     # No match so return the topmost frame
     return frame
 
 
-def format_landing_excel_receipt(ticket, flights, landings, fees):
+def format_landing_excel_receipt(ticket, flights, landings, fees, contract_number):
 
     # For each flight, get the ordinal for each landing type (e.g., dropoff 1, dropoff 2, pickup 1, pickup 2)
     these_landings = landings.loc[landings.flight_id.isin(flights.id)]
@@ -356,7 +356,8 @@ def format_landing_excel_receipt(ticket, flights, landings, fees):
     receipt_info = pd.DataFrame([{'operator': receipt.operator_code.iloc[0],
                                  'ticket': ticket,
                                  'date': datetime.now().strftime('%m/%d/%Y'),
-                                 'pax_fee': LANDING_FEE}])\
+                                 'pax_fee': LANDING_FEE,
+                                 'contract': contract_number}])\
         .reindex(columns=['ticket', 'date', 'operator', 'contract', 'pax_fee'])
 
     return receipt.reindex(columns=LANDING_RECEIPT_COLUMNS), receipt_info
@@ -471,8 +472,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
 
     # Check if there are any new flights. If not, warn the submitter(s) that no new flights were found
     if len(new_flights) == 0:
-        html_li = '<li>All landings submitted with this ticket were already reported (according to the tail number' \
-                  ' and departure time)</li>'
+        html_li = ('<li>All landings submitted with this ticket were already reported (according to the tail number and departure time). Flights submitted with this ticket:<br>{table}<br></li>').format(table=get_html_table(landing_flights.reindex(columns=_html_receipt_columns + ['objectid'])))
         MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
         return None, None
 
@@ -549,6 +549,9 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     global DATA_PROCESSED
     DATA_PROCESSED = True
 
+    contracts = db_utils.get_lookup_table(table='operators', index_col='code', value_col='contract_number', conn=landings_conn)
+    this_contract = contracts[new_flights.operator_code.iloc[0]]
+
     # Format the table for the receipt(s)
     # Replace codes with names
     new_flights.reset_index(inplace=True)
@@ -558,7 +561,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
 
     ticket = new_flights.ticket.iloc[0]
     #for ticket, flights in new_flights.groupby('ticket'):
-    receipt, info = format_landing_excel_receipt(ticket, new_flights, landings, fees)
+    receipt, info = format_landing_excel_receipt(ticket, new_flights, landings, fees, this_contract)
     receipt_path = save_excel_receipt(receipt_template, receipt_dir, ticket, 'landing_data', receipt, receipt_header, sheet_password, info)
     html_receipt = format_landing_html_receipt(receipt)
 
@@ -752,7 +755,7 @@ def compose_error_notifications(tickets, param_dict):
         warning_html = ul_template.format(type='Warnings', li_elements=''.join(warnings))
         error_html = ul_template.format(type='Errors', li_elements=''.join(errors))
 
-        submission_info['email_address'] = get_submitter_email(submission_info.submitter, param_dict['agol_users'])
+        email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[-1].strip('>')
         #if submission_type == 'tracks':
         concluding_message = r'<span>If you cannot resolve the issue(s), try contacting the submitter directly if they are an NPS employee. If the submitter is a commercial flight operator, notify Commercial Services of the problem and they will contact the submitter. </span>'
         #else:
@@ -765,7 +768,7 @@ def compose_error_notifications(tickets, param_dict):
                     <br>
                     {warnings}
                     {errors}
-                    <span><strong>Submitter email:</strong> {submission_info.email_address}</span>
+                    <span><strong>Submitter email:</strong> {email_address}</span>
                     <br>
                     <span><strong>Submission time:</strong> {submission_info.submission_time}</span>
                     <br>
@@ -775,7 +778,7 @@ def compose_error_notifications(tickets, param_dict):
                 </p>
             </body>
         </html>
-        '''.format(submission_info=submission_info,
+        '''.format(submission_info=submission_info, email_address=email_address,
                    warnings=warning_html if len(warnings) else '',
                    errors=error_html if len(errors) else '',
                    concluding_message=concluding_message if submission_type == 'tracks' else '',
