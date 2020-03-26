@@ -31,7 +31,7 @@ SUBMISSION_TICKET_INTERVAL = 1#900 # seconds between submission of a particular 
 LOG_CACHE_DAYS = 30 # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 DATA_PROCESSED = False # keep track of whether any data were processed to be able to effectively log
-LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off
+#LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off. ### now reteived from DB
 # Collect messages to warn either the user, the landings data steward, or the track editors. Also log all of them
 MESSAGES = [] # internal messages to data stewards
 EMAILS = [] # messages to submitters
@@ -48,7 +48,8 @@ LANDINGS_FLIGHT_COLUMNS = {'landing_operator':      'operator_code',
                            'submission_time':       'submission_time',
                            'flight_id':             'flight_id',
                            'source_file':           'source_file',
-                           'landing_flight_notes': 'notes'
+                           'landing_flight_notes':  'notes',
+                           'fee_per_passenger':     'fee_per_passenger'
                           }
 LANDINGS_COLUMNS = {'flight_id':            'flight_id',
                     'landing_location':     'location',
@@ -302,7 +303,7 @@ def get_traceback_frame():
     ''' Traverse the traceback and get the frame of the actual script that caused the last error'''
     traceback_exc = traceback.TracebackException(*sys.exc_info())
     current_script_dir = os.path.dirname(os.path.realpath(__file__))
-    for frame in traceback_exc.stack:
+    for frame in traceback_exc.stack[::-1]:# traverse in reverse order to get topmost first
         # this only works for errors caused by scripts in the same dir
         if os.path.realpath(os.path.dirname(frame.filename)) == current_script_dir:
             return frame
@@ -311,7 +312,7 @@ def get_traceback_frame():
     return frame
 
 
-def format_landing_excel_receipt(ticket, flights, landings, fees, contract_number):
+def format_landing_excel_receipt(ticket, flights, landings, fees, contract_number, landing_fee):
 
     # For each flight, get the ordinal for each landing type (e.g., dropoff 1, dropoff 2, pickup 1, pickup 2)
     these_landings = landings.loc[landings.flight_id.isin(flights.id)]
@@ -344,9 +345,9 @@ def format_landing_excel_receipt(ticket, flights, landings, fees, contract_numbe
     receipt['all_notes'] = receipt.loc[:, [c for c in ['landing_notes', 'notes'] if c in receipt]]\
         .apply(lambda x: ('; '.join(x.fillna('').astype(str)).strip('; ')), axis=1)\
         .fillna('')
-    receipt['n_fee_pax'] = receipt.n_passengers
-    receipt.n_passengers = receipt[[c for c in receipt if c.endswith('_passengers') and c != 'n_passengers']].sum(axis=1)
-    receipt['n_fee_passengers'] = receipt.n_fee_pax
+    #receipt['n_fee_pax'] = receipt.n_passengers
+    receipt['n_passengers'] = receipt[[c for c in receipt if c.endswith('_passengers') and c != 'n_passengers']].sum(axis=1)
+    #receipt['n_fee_passengers'] = receipt.n_fee_pax
 
     # Fill any numeric columns with 0. All of the columns that don't yet exist in the receipt (e.g., n_pickup_3)
     #   will still be blank in the final receipt
@@ -356,7 +357,7 @@ def format_landing_excel_receipt(ticket, flights, landings, fees, contract_numbe
     receipt_info = pd.DataFrame([{'operator': receipt.operator_code.iloc[0],
                                  'ticket': ticket,
                                  'date': datetime.now().strftime('%m/%d/%Y'),
-                                 'pax_fee': LANDING_FEE,
+                                 'pax_fee': landing_fee,
                                  'contract': contract_number}])\
         .reindex(columns=['ticket', 'date', 'operator', 'contract', 'pax_fee'])
 
@@ -383,7 +384,7 @@ def format_landing_html_receipt(receipt):
     receipt['Fee'] = receipt.fee.apply('${:.2f}'.format)
     receipt['Total Pax'] = receipt.n_passengers.astype(int)
     receipt = receipt\
-        .rename({'registration': 'Tail Number', 'aircraft_type': 'Aircraft Type'})\
+        .rename(columns={'registration': 'Tail Number', 'aircraft_type': 'Aircraft Type'})\
         .reindex(columns=_html_receipt_columns).fillna('')
 
     return receipt
@@ -479,6 +480,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     aircraft_types = db_utils.get_lookup_table(table='aircraft_types', conn=landings_conn)
     operators = db_utils.get_lookup_table(table='operators', conn=landings_conn)
     landing_locations = db_utils.get_lookup_table(table='landing_locations', conn=landings_conn)
+    constants = db_utils.get_lookup_table(table='numeric_constants', index_col='name', value_col='value', conn=landings_conn)
 
     if len(new_flights) != len(landing_flights):
         # If some flights were duplicates, warn the landing data steward(s)
@@ -492,6 +494,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
 
     new_flights['submission_method'] = 'survey123'
     new_flights['source_file'] = sqlite_path
+    new_flights['fee_per_passenger'] = constants['fee_per_passenger']
     new_flights.reindex(columns=LANDINGS_FLIGHT_COLUMNS.values())\
         .to_sql('flights', landings_conn, if_exists='append', index=False)
     global_ids = pd.read_sql("SELECT id, agol_global_id FROM flights WHERE flight_id IN ('%s')"
@@ -520,15 +523,16 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
           var_name='landing_type')\
     .dropna(subset=['n_passengers'])#'''
     passengers['landing_type'] = passengers.landing_type.apply(lambda x: x.split('_')[-1])
-    fee_passengers = passengers.loc[passengers.landing_type.isin(landings_with_fees)]
+    '''fee_passengers = passengers.loc[passengers.landing_type.isin(landings_with_fees)]
 
-    # Get the parentglobalid (from AGOL) so fees can be calculated per flight
+    # Get the parentglobalid (from AGOL) so fees can be calculated per flight. Fees are actually calulated on the fly in a view of the DB, but they
+
     fee_passengers['index'] = fee_passengers.index
     fee_passengers['parentglobalid'] = fee_passengers.merge(landings.drop_duplicates(subset=['globalid']), on='globalid').set_index('index_x').parentglobalid
     fees = fee_passengers.groupby('parentglobalid').sum().reset_index()
-    fees['fee'] = fees.n_passengers * LANDING_FEE
+    fees['fee'] = fees.n_passengers * constants['fee_per_passenger']
     fees = fees.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid', right_on='agol_global_id')
-    fees = fees.loc[~fees.flight_id.isnull()] # drop flights without match
+    fees = fees.loc[~fees.flight_id.isnull()] # drop flights without match'''
 
     # Get the flight ID for the landings table
     landings = landings.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid', right_on='agol_global_id')
@@ -541,8 +545,8 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
         .sort_values('sort_order')
 
     # INSERT into backend
-    fees.drop(columns=['parentglobalid', 'index', 'agol_global_id'])\
-        .to_sql('concession_fees', landings_conn, if_exists='append', index=False)
+    '''fees.drop(columns=['parentglobalid', 'index', 'agol_global_id'])\
+        .to_sql('concession_fees', landings_conn, if_exists='append', index=False)'''
     landings.drop(columns='sort_order')\
         .to_sql('landings', landings_conn, if_exists='append', index=False)#'''
 
@@ -552,6 +556,9 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     contracts = db_utils.get_lookup_table(table='operators', index_col='code', value_col='contract_number', conn=landings_conn)
     this_contract = contracts[new_flights.operator_code.iloc[0]]
 
+    # Read from view that calculates fees automatically
+    fees = pd.read_sql("SELECT * FROM concession_fees_view WHERE flight_id IN (%s)" % ','.join(global_ids.id.astype(str)), landings_conn)
+    
     # Format the table for the receipt(s)
     # Replace codes with names
     new_flights.reset_index(inplace=True)
@@ -561,7 +568,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
 
     ticket = new_flights.ticket.iloc[0]
     #for ticket, flights in new_flights.groupby('ticket'):
-    receipt, info = format_landing_excel_receipt(ticket, new_flights, landings, fees, this_contract)
+    receipt, info = format_landing_excel_receipt(ticket, new_flights, landings, fees, this_contract, constants['fee_per_passenger'])
     receipt_path = save_excel_receipt(receipt_template, receipt_dir, ticket, 'landing_data', receipt, receipt_header, sheet_password, info)
     html_receipt = format_landing_html_receipt(receipt)
 
