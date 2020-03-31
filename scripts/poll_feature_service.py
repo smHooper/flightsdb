@@ -30,6 +30,7 @@ pd.options.mode.chained_assignment = None
 SUBMISSION_TICKET_INTERVAL = 1#900 # seconds between submission of a particular user
 LOG_CACHE_DAYS = 30 # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
+TIMEZONE = pytz.timezone('US/Alaska')
 DATA_PROCESSED = False # keep track of whether any data were processed to be able to effectively log
 #LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off. ### now reteived from DB
 # Collect messages to warn either the user, the landings data steward, or the track editors. Also log all of them
@@ -547,7 +548,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     # INSERT into backend
     '''fees.drop(columns=['parentglobalid', 'index', 'agol_global_id'])\
         .to_sql('concession_fees', landings_conn, if_exists='append', index=False)'''
-    landings.drop(columns='sort_order')\
+    '''landings.drop(columns='sort_order')\
         .to_sql('landings', landings_conn, if_exists='append', index=False)#'''
 
     global DATA_PROCESSED
@@ -593,15 +594,21 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
 
     fname = os.path.basename(track_path)
 
+    def delete_attachment():
+        basename, _ = os.path.splitext(track_path)
+        for path in glob(basename + '*'):
+            try:
+                os.remove(path)
+            except:
+                pass
+
     # Get submission info
     this_agol_id = attachment_info['REL_GLOBALID'].replace('{', '').replace('}', '')
     this_submission = submissions.loc[submissions.globalid == this_agol_id].squeeze()
     # This file should have been deleted when the AGOL record was
     if len(this_submission) == 0:
         # delete the track and attachment info json and return
-        basename, _ = os.path.splitext(track_path)
-        for path in glob(basename + '*'):
-            os.remove(path)
+        delete_attachment()
         return
 
     for k, v in this_submission.iteritems():
@@ -632,7 +639,7 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     # Set the operator code to the operator name, not the code (easier to read for editors). The web app
     #   will replace the name with the code on import
     if attachment_info['tracks_operator'] in operator_codes:
-        attachment_info['operator_code'] = operator_codes[attachment_info['tracks_operator']]
+        attachment_info['operator_code'] = operator_codes[this_submission.tracks_operator]
     else:
         attachment_info['operator_code'] = ''
 
@@ -647,7 +654,7 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     #   by the web app
     geojson_strs = track_to_json(gdf, attachment_info)
     basename, ext = os.path.splitext(fname)
-    basename = re.sub('\.|#', '_', basename) # strip chars for Javascript (i.e., escape and CSS selectors)
+    basename = re.sub('\W', '_', basename) # strip chars for Javascript (i.e., escape and CSS selectors)
     json_path = os.path.join(web_data_dir, basename) + '_geojsons.json'
     # make sure an existing file doesn't get overwritten if it has same name
     if os.path.isfile(json_path):
@@ -660,6 +667,9 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     global DATA_PROCESSED
     DATA_PROCESSED = True
 
+    # Delete the file and attachment info json since the data were processed successfully
+    delete_attachment()
+
     return json_path
 
 
@@ -671,21 +681,18 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
     mission_codes = db_utils.get_lookup_table(table='nps_mission_codes', conn=tracks_conn)
     data_steward = param_dict['track_data_stewards']
 
+    # If for some reason the dir got removed, create it
+    if not os.path.isdir(attachment_dir):
+        os.mkdir(attachment_dir)
+
     submitted_files = {}
-    # Find all the files that were downloaded without being zipped. This will only include files with valid extensions
-    #   because Survey123 will reject all others
     geojson_paths = []
-    for ext in import_track.READ_FUNCTIONS:
-        for path in glob(os.path.join(attachment_dir, '*%s' % ext)):
-            attachment_info = get_attachment_info(path, ext)
-            submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
-            geojson_paths.append(prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir']))
-            submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(path)
     # Unzip all zipped files and add the extracted files to the list of tracks to process
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
 
         attachment_info = get_attachment_info(zip_path)
         submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
+        unzipped_files = []
         with zipfile.ZipFile(zip_path) as z:
             for fname in z.namelist():
                 try:
@@ -694,26 +701,40 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                     html_li = ('<li>An error occurred while trying to extract {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(file=fname, zip=zip_path, error=e, agol_id=attachment_info['objectid'])
                     MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'severity': 'error'})
                     ERRORS.append(traceback.format_exc())
+                unzipped_files.append(fname)
 
-                basename, ext = os.path.splitext(fname)
-                if ext not in import_track.READ_FUNCTIONS:
-                    MESSAGES.append({'ticket': attachment_info['ticket'], 'message': '%s is not in an accepted file format' % fname, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
-                    continue
-                geojson_paths.append(prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir']))
+        for fname in unzipped_files:
+            basename, ext = os.path.splitext(fname)
+            if ext not in import_track.READ_FUNCTIONS:
+                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': '%s is not in an accepted file format' % fname, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
+                continue
+            path = os.path.join(attachment_dir, fname)
+            geojson_paths.append(prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir']))
 
         submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(zip_path)
+
+    # Find all the files that were downloaded without being zipped. This will only include files with valid extensions
+    #   because Survey123 will reject all others
+    for ext in import_track.READ_FUNCTIONS:
+        for path in glob(os.path.join(attachment_dir, '*%s' % ext)):
+            if os.path.basename(path) in submitted_files.values():
+                continue
+            attachment_info = get_attachment_info(path, ext)
+            submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
+            geojson_paths.append(prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir']))
+            submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(path)
 
     return geojson_paths, pd.Series(submitted_files)
 
 
 def get_track_receipt_email(submission, ticket, sender, agol_users):
 
-    _html_track_columns = ['Submission time',  'Tail Number', 'NPS Mission Code', 'NPS Work Group', 'Filename', 'Notes']
+    _html_track_columns = ['Submission Time',  'Tail Number', 'NPS Mission Code', 'NPS Work Group', 'Filename', 'Notes']
 
     recipient = get_submitter_email(submission.submitter.iloc[0], agol_users)
     start_time = submission.submission_time.min()
     end_time = submission.submission_time.max()
-
+    
     submission = submission\
         .rename(columns={
             'tracks_tail_number': 'Tail Number',
@@ -732,6 +753,8 @@ def get_track_receipt_email(submission, ticket, sender, agol_users):
     if not recipient.endswith('@nps.gov'):#len(null_nps_columns):
         submission.drop(columns=nps_columns, inplace=True)
     
+    
+
     html = get_email_html(submission.fillna(''), start_time, end_time, column_widths={'Notes': '50px; max-width: 100px'})
 
     message = {'subject': 'Flight track submission receipt - ticket #%s' % ticket,
@@ -764,7 +787,7 @@ def compose_error_notifications(tickets, param_dict):
 
         email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[-1].strip('>')
         #if submission_type == 'tracks':
-        concluding_message = r'<span>If you cannot resolve the issue(s), try contacting the submitter directly if they are an NPS employee. If the submitter is a commercial flight operator, notify Commercial Services of the problem and they will contact the submitter. </span>'
+        concluding_message = r'<br><br><span>If you cannot resolve the issue(s), try contacting the submitter directly if they are an NPS employee. If the submitter is a commercial flight operator, notify Commercial Services of the problem and they will contact the submitter. </span>'
         #else:
         #    concluding_message = ''
         message = '''
@@ -778,10 +801,7 @@ def compose_error_notifications(tickets, param_dict):
                     <span><strong>Submitter email:</strong> {email_address}</span>
                     <br>
                     <span><strong>Submission time:</strong> {submission_info.submission_time}</span>
-                    <br>
-                    <br>
                     {concluding_message}
-                    <span>If the submitter needs to resubmit these data, you should delete the problematic record(s) from the ArcGIS Online feature service. You can find directions for doing so at <a href={delete_url}>{delete_url}</a>
                 </p>
             </body>
         </html>
@@ -810,16 +830,14 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # Get the last time any data were downloaded
     script_name = os.path.basename(__file__).rstrip('.py')
     log_info = read_logs(log_dir, script_name)
+    
+    # Set default time. If this is never reset, there are no logs because this is the first time the script is being
+    #	run (or the logs got deleted), so set the last_download_time to something that will return all records
+    last_download_time = '1970-1-1 09:00:00'
     if len(log_info):
         download_info = log_info.loc[log_info.data_downloaded]
         if len(download_info): # there has been at least one download in the last LOG_CACHE_DAYS
             last_download_time = download_info.timestamp.max()
-        else:
-            last_download_time = '1970-1-1 00:00:00'
-    else:
-        # There are no logs because this is the first time the script is being run (or the logs got deleted), so set
-        #   the last_download_time to something that will return all records
-        last_download_time = '1970-1-1 00:00:00'
 
     # Get last submission time
     agol_credentials = param_dict['agol_credentials']
@@ -829,7 +847,11 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     layer_info = pd.DataFrame(service_info['layers'] + service_info['tables']).set_index('id')
     layers = layer_info.index.tolist()
 
-    result = download.query_after_timestamp(service_url, token, layers, last_download_time, ssl_cert)
+    # last_download_time is stored in local (AK) time but datetimes are stored in UTC in feature layer   
+    last_download_time_utc = TIMEZONE.localize(pd.to_datetime(last_download_time))
+    last_download_time_utc -= last_download_time_utc.utcoffset()
+    
+    result = download.query_after_timestamp(service_url, token, layers, last_download_time_utc, ssl_cert)
     submissions = pd.DataFrame([feature['attributes'] for feature in result['layers'][0]['features']]) # pretty sure the first layer is always the parent table for a survey123 survey with related tables
     if not len(submissions):
         log_and_exit(log_info, [log_dir, download_dir, timestamp, False, 'No new data to download'])
@@ -866,9 +888,13 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     shutil.copyfile(sqlite_path, working_sqlite_path)
     engine = create_engine('sqlite:///' + working_sqlite_path)
 
+    operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email', conn=landings_conn)
+    operator_codes = db_utils.get_lookup_table(table='operators', index_col='code', value_col='agol_username', conn=landings_conn)
+
     # Create separate tickets for each user for both landing and track data
     submissions['submission_time'] = [datetime.fromtimestamp(round(ts/1000)) for _, ts in submissions['CreationDate'].iteritems()]
     submissions.rename(columns={'Creator': 'submitter'}, inplace=True)
+    submissions.loc[submissions.submitter == '', 'submitter'] = [operator_codes[o] for _, o in submissions.loc[submissions.submitter == '', 'operator'].iteritems()]
 
     connection_dict = {'tracks': tracks_conn, 'landings':landings_conn}
     submissions = pd.concat([get_ticket(g, connection_dict)
@@ -881,12 +907,13 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         # Convert datetimes in place and get rid of the braces around IDs
         for table_name, data_types in field_types.items():
             df = pd.read_sql_table(table_name, conn)
-
-            timezone = pytz.timezone('US/Alaska')
+            
             for field, _ in data_types.loc[data_types == 'esriFieldTypeDate'].iteritems():
                 utc_datetime = pd.to_datetime(pd.read_sql("SELECT datetime({0}) FROM {1}".format(field, table_name), conn)
                                                           .squeeze(axis=1))
-                df[field] = pd.Series({i: (d.replace(tzinfo=pytz.UTC) + timezone.utcoffset(d))
+                if utc_datetime.isna().all():
+                    continue
+                df[field] = pd.Series({i: (d.replace(tzinfo=pytz.UTC) + TIMEZONE.utcoffset(d))
                              for i, d in utc_datetime.dropna().iteritems()}).dt.round('S')
 
             for field in df.columns[['globalid' in c.lower() for c in df.columns]]:
@@ -912,11 +939,15 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         .apply(lambda r: get_submitter_email(r.submitter, param_dict['agol_users']), axis=1)
 
     # Get operator codes from usernames
-    submissions = submissions.merge(pd.Series(operator_codes, name='operator'), left_on='submitter', right_index=True)
-    merged = all_flights.merge(submissions, on='globalid', suffixes=('', '_y'))
-    all_flights = merged.loc[:, all_flights.columns.tolist() + ['operator']]
+    #submissions = submissions.merge(pd.Series(operator_codes, name='operator'), left_on='submitter', right_index=True)
+    #merged = all_flights.merge(submissions, on='globalid', suffixes=('', '_y'))
+    #all_flights = merged.loc[:, all_flights.columns.tolist() + ['operator']]
+    submissions['tracks_operator'] = submissions.loc[submissions.submission_type == 'tracks', 'operator'].fillna('NPS')
     all_flights['tracks_operator'] = all_flights.loc[all_flights.submission_type == 'tracks', 'operator']
     all_flights['landing_operator'] = all_flights.loc[all_flights.submission_type == 'landings', 'operator']
+    # The submitter being logged in *and* the username ending in _nps is the only way any non-operator could submit
+    #   data. The operator field will be blank though, so fill it in
+    all_flights.operator.fillna('NPS', inplace=True)
 
     # If there were any landings submitted, import them into the database
     receipt_dir = os.path.join(log_dir, 'receipts')
@@ -977,7 +1008,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         track_submissions.set_index('globalid', inplace=True)
         track_submissions['Filename'] = submitted_files
         EMAILS.extend([get_track_receipt_email(s, ticket, param_dict['mail_sender'], param_dict['agol_users']) for ticket, s in track_submissions.groupby('ticket')])
-    
+
     # Reduce submissions df to one per ticket
     if len(MESSAGES):
         tickets = submissions.sort_values('submission_time')\
@@ -1024,16 +1055,15 @@ def main(config_json):
     timestamp = datetime.now().strftime(TIMESTAMP_FORMAT)
 
     try:
-        params = read_json_params(config_json)
-        # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
-        connection_info = params['db_credentials']
-        connection_template = 'postgresql://{username}:{password}@{ip_address}:{port}/{db_name}'
-        landings_engine = create_engine(connection_template.format(**connection_info['landings']))
-        tracks_engine = create_engine(connection_template.format(**connection_info['tracks']))
+	    params = read_json_params(config_json)
+	    # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
+	    connection_info = params['db_credentials']
+	    connection_template = 'postgresql://{username}:{password}@{ip_address}:{port}/{db_name}'
+	    landings_engine = create_engine(connection_template.format(**connection_info['landings']))
+	    tracks_engine = create_engine(connection_template.format(**connection_info['tracks']))
 
-        with landings_engine.connect() as l_conn, tracks_engine.connect() as t_conn, l_conn.begin(), t_conn.begin():
-            poll_feature_service(params['log_dir'], params['download_dir'], params, params['ssl_cert'], l_conn, t_conn)
-            #EMAILS.extend(error_notifications) #+= steward_notifications
+	    with landings_engine.connect() as l_conn, tracks_engine.connect() as t_conn, l_conn.begin(), t_conn.begin():
+	        poll_feature_service(params['log_dir'], params['download_dir'], params, params['ssl_cert'], l_conn, t_conn)
 
     except Exception as error:
         tb_frame = get_traceback_frame()
@@ -1086,6 +1116,7 @@ def main(config_json):
             msg_info['server'] = server
             failed = send_email_per_recipient(msg_info)
             failed_emails.extend(failed)#'''
+
 
     # Write the log file
     log_file, log = write_log(params['log_dir'], params['download_dir'], timestamp, DATA_PROCESSED)
