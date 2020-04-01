@@ -516,6 +516,8 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
         # Otherwise, use the one given
         gdf['registration'] = registration
 
+    gdf.registration = gdf.registration.str.upper()
+
     # Get unique flight_ids per line segment in place
     gdf = get_flight_id(gdf, seg_time_diff)\
         .drop(gdf.index[((gdf.diff_m < min_point_distance) & (gdf.utc_datetime.diff().dt.seconds == 0))])\
@@ -539,7 +541,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     return gdf
 
 
-def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None, engine=None):
+def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None, engine=None, force_registration=False):
 
 
     if type(data) == gpd.geodataframe.GeoDataFrame:
@@ -547,7 +549,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
     elif path:
         gdf = format_track(path, seg_time_diff=seg_time_diff, min_point_distance=min_point_distance,
                            registration=registration, submission_method=submission_method,
-                           operator_code=operator_code, aircraft_type=aircraft_type)
+                           operator_code=operator_code, aircraft_type=aircraft_type, force_registration=force_registration)
     else:
         raise ValueError('Either data (a geodataframe) or path (to a valid track file) must be given')
 
@@ -670,7 +672,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
                           'manually copy and paste this file to %s' % (e, ARCHIVE_DIR))
 
     if not silent:
-        sys.stdout.write('%s flight tracks imported:\n\t-%s' % (len(flights), '\n\t-'.join(flight_ids.flight_id)))
+        sys.stdout.write('%d flight %s imported:\n\t-%s' % (len(flights), 'tracks' if len(flights) > 1 else 'track', '\n\t-'.join(flight_ids.flight_id)))
         sys.stdout.flush()
 
 
