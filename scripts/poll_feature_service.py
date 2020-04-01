@@ -576,16 +576,18 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     return receipt_path, html_receipt
 
 
-def get_unique_filename(path):
+def get_unique_filename(path, filename_suffix=''):
+    
+    _, ext = os.path.splitext(path)
+    ext = filename_suffix + ext
+    c = 1
+    new_path = path
+    while os.path.isfile(new_path):
+        previous_count = c - 1 if c > 1 else c
+        new_path = path.replace(ext, '') + '_{c}{ext}'.format(c=c, ext=ext)
+        c += 1
 
-    if os.path.isfile(path):
-        _, ext = os.path.splitext(path)
-        c = 1
-        while not os.path.isfile(path):
-            path = path.rstrip(ext) + '_{c}{ext}'.format(c=c, ext=ext)
-            c += 1
-
-    return path
+    return new_path
 
 
 def prepare_track(track_path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, web_data_dir):
@@ -648,7 +650,7 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     else:
         attachment_info['nps_mission_code'] = ''
 
-    attachment_info['source_file'] = os.path.join(import_track.ARCHIVE_DIR, fname)
+    attachment_info['source_file'] = get_unique_filename(os.path.join(import_track.ARCHIVE_DIR, fname))
 
     # Dump each line segment to a geojson string. Write a list of these strings as a JSON file to be read
     #   by the web app
@@ -657,18 +659,26 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     basename = re.sub('\W', '_', basename) # strip chars for Javascript (i.e., escape and CSS selectors)
     json_path = os.path.join(web_data_dir, basename) + '_geojsons.json'
     # make sure an existing file doesn't get overwritten if it has same name
-    if os.path.isfile(json_path):
-        json_path = get_unique_filename(json_path)
+    #if os.path.isfile(json_path):
+    json_path = get_unique_filename(json_path, filename_suffix='_geojsons')
+    import pdb; pdb.set_trace()
 
     with open(json_path, 'w') as j:
         json.dump(geojson_strs, j, indent=4)
-        attachment_info['source_file'] = os.path.join(import_track.ARCHIVE_DIR, json_path.replace('_geojsons.json', ext))
+        #attachment_info['source_file'] = os.path.join(import_track.ARCHIVE_DIR, json_path.replace('_geojsons.json', ext))
 
     global DATA_PROCESSED
     DATA_PROCESSED = True
 
-    # Delete the file and attachment info json since the data were processed successfully
-    delete_attachment()
+    # Copy to archive dir
+    try:
+    	shutil.copy(track_path, attachment_info['source_file'])
+    	# Delete the file and attachment info json since the data were processed successfully
+    	# This won't throw an error, but it should only be executed if the above line succeeds
+    	delete_attachment()
+    except:
+    	html_li = ('<li>Unable to copy {track_path} to the track archive directory {archive_dir}. This file should be copied manually.</li>').format(track_path=track_path, archive_dir=import_track.ARCHIVE_DIR)
+    	MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'warning'})
 
     return json_path
 
@@ -878,7 +888,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                                 'Last submission was within %d minutes' % (SUBMISSION_TICKET_INTERVAL/60)])#'''
 
     # download the data
-    sqlite_path = download.download_data(download_dir, token, layers, service_info, service_url, ssl_cert, last_poll_time=last_download_time)
+    sqlite_path = download.download_data(download_dir, token, layers, service_info, service_url, ssl_cert, last_poll_time=last_download_time_utc)
 
     # Make edits to a working copy of the data
     working_dir = os.path.join(download_dir, 'working')
