@@ -64,6 +64,10 @@ body {
 	opacity: 0.35;
 }
 
+g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
+	cursor: url('../imgs/cut_cursor_icon.png'), auto;
+}
+
 /*.card-header {
 	background-color: rgb(60, 60, 60);
 	border-bottom:  
@@ -74,24 +78,24 @@ body {
 .card {
 	/*height: 60px;*/
 	/*border: 2px solid rgb(100, 100, 100);*/
-	color: rgb(125, 125, 125);
+	color: rgb(145, 145, 145);
 	background-color: rgb(75, 75, 75);
 
 }
 
 .card-header a{
 	transition: 0.3s;
-	color: rgb(125, 125, 125);
+	color: rgb(145, 145, 145);
 }
 
 .card-header a:hover {
 	/*font-weight: bold;*/
-	color: rgb(150, 150, 150);
+	color: rgb(180, 180, 180);
 	cursor: pointer;
 }
 
 .card-header-anchor-selected {
-	color: rgb(150, 150, 150);
+	color: rgb(180, 180, 180);
 }
 
 .card-header a.card-header-anchor-selected{
@@ -101,7 +105,7 @@ body {
 
 .show, .collapsing {
 	max-height: 20%;
-	color: rgb(125, 125, 125);
+	color: rgb(145, 145, 145);
 	background-color: rgb(60, 60, 60);
 	text-align: center;
 }
@@ -136,7 +140,7 @@ body {
 }
 
 .legend-cell {
-	color: rgb(110, 110, 110);
+	color: rgb(125, 125, 125);
 	text-align: center;
 	display: inline-block;
 	vertical-align: middle;
@@ -147,11 +151,11 @@ body {
 }
 
 .legend-cell:hover {
-	color: rgb(120, 120, 120);
+	color: rgb(145, 145, 145);
 }
 
 .legend-cell-selected {
-	color: rgb(130, 130, 130);
+	color: rgb(160, 160, 160);
 	text-align: center;
 	display: inline-block;
 	vertical-align: middle;
@@ -208,7 +212,7 @@ body {
 	position: relative;
 	/*padding: 14px 28px;*/
 	font-size: 16px;
-	background-color: rgb(125, 125, 125);
+	background-color: rgb(145, 145, 145);
 	color: rgb(200, 200, 200);
 	border: none;
 	display: inline-block;
@@ -362,12 +366,12 @@ input {
 
 
 .track-info-label {
-	color: rgb(125, 125, 125);
+	color: rgb(145, 145, 145);
 	display: block;
 	margin-bottom: 10px;
 }
 .track-info-textbox {
-	color: rgb(135, 135, 135);
+	color: rgb(150, 150, 150);
 	background-color: rgb(75, 75, 75);
 	border: none;
 	display: block;
@@ -408,7 +412,7 @@ select:focus {
 
 .track-info-option {
 	background-color: rgb(85, 85, 85) !important;
-	color: rgb(145, 145, 145) !important;
+	color: rgb(165, 165, 165) !important;
 	border: none !important;
 }
 
@@ -419,7 +423,7 @@ select option:selected {
 .track-info-textbox.locked {
 	border: solid 2px rgb(75, 75, 75);
 	background: none;
-	color: rgb(125, 125, 125);
+	color: rgb(145, 145, 145);
 }
 
 .select-disabled {

@@ -412,6 +412,10 @@ function showVertices(id, hideCurrent=true) {
 
 	selectedLines[fileName] = id;
 	$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
+
+	// Remove the cut cursor on hover for the previosu track and show the cut icon on hover for this
+	//$('.cut-cursor-eligible').removeClass('cut-cursor-enabled')
+	//geojsonPoints.setStyle({className: 'cut-cursor-eligible'})
 	
 }
 
@@ -472,7 +476,7 @@ function fillSelectOptions(selectElementID, queryString, dbname, optionClassName
             if (queryResult) {
                 queryResult.forEach(function(object) {
                     $('#' + selectElementID).append(
-                        `<option class="${optionClassName}" value="${object.value}">${object.name}</option>`
+                        `<option class="${optionClassName}" value="${object.value}">${object.name === undefined ? object.value : object.name}</option>`
                     );
                 })
             } else {
@@ -650,7 +654,7 @@ async function removeFile(fileName) {
 
     // send ajax to delete file
     var oldFilePath = `data/${fileName}_geojsons.json`;
-    /*$.ajax({
+    $.ajax({
         url: 'geojson_io.php',
         method: 'POST',
         data: {action: 'deleteFile', filePath: oldFilePath},
@@ -660,7 +664,7 @@ async function removeFile(fileName) {
                 alert(`problem deleting file ${oldFilePath}. This file will have to be manually deleted.`)
             }
         }
-    });*/
+    });//*/
 
     delete isEditing[fileName];
 
@@ -791,6 +795,13 @@ function toggleUndoButton() {
 	} else {
 		$('#img-undo').parent().addClass('leaflet-toolbar-icon-disabled');
 	}
+
+	if (redoBuffer.length > 0) {
+		$('#img-redo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', editingBufferIndex < redoBuffer.length ? 1 : 0.35)
+	} else {
+		$('#img-redo').parent().addClass('leaflet-toolbar-icon-disabled');
+	}
+
 }
 
 
@@ -926,7 +937,9 @@ function addFileToMenu(filePath) {
 
 	// Add event handlers that prevent propogation to the card
 	$(`#delete-${fileName}`).click((event) => {
-		removeFile(fileName);
+		if (confirm(`Are you sure you want to delete "${fileName}"?`)) {
+			removeFile(fileName);
+		}
 		event.stopPropagation();
 	})
 	$(`#import-${fileName}`).click((event) => {
@@ -1134,7 +1147,8 @@ function loadTracksFromJSON(filePath) {
 				colors[fileName][segmentID] = color;
 				pointGeojsonLayers[fileName][segmentID] = L.geoJSON(geojson, {
 					onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
-					pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color))
+					pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color)),
+					style: {className: 'cut-cursor-eligible'}
 				});
 
 			}
@@ -1267,33 +1281,6 @@ function onTrackInfoElementChange(target) {
 }
 
 
-function fillSelectOptions(selectElementID, queryString) {
-	
-    showLoadingIndicator();
-
-	var deferred = $.ajax({
-		url: 'geojson_io.php',
-		method: 'POST',
-		data: {action: 'query', dbname: 'overflights', queryString: queryString},
-		cache: false,
-		success: function(queryResultString){
-			var queryResult = queryResultString.startsWith('ERROR') ? false : $.parseJSON(queryResultString);
-			if (queryResult) {
-				queryResult.forEach(function(object) {
-					$('#' + selectElementID).append(
-						`<option class="track-info-option" value="${object.value}">${object.value}</option>`
-					);
-				})
-			} else {
-				console.log(`error filling in ${selectElementID}: ${queryResultString}`);
-			}
-		}
-	});
-
-	return deferred;
-}
-
-
 function onOperatorChange(selectedOperator){
 
 	//var selectedOperator = $(target).val();
@@ -1383,6 +1370,10 @@ function onSplitButtonClick() {
 	thisTool.hasClass('map-tool-selected') ? 
 		thisTool.removeClass('map-tool-selected') :
 		thisTool.addClass('map-tool-selected');
+
+	$('.cut-cursor-enabled').length ?
+		$('.cut-cursor-enabled').removeClass('cut-cursor-enabled') :
+		$('.cut-cursor-eligible').addClass('cut-cursor-enabled');
 }
 
 
@@ -1510,7 +1501,7 @@ function validateTrackInfo() {
         }
     }
 
-    if (!$('#textbox-registration').val().match(/N\d{2,5}[A-Z]{0,2}/)) {
+    if (!$('#textbox-registration').val().match(/N\d{2,5}[A-Z]{0,2}/gi)) {
         alert(`The "Tail number" field entry isn't valid.`);
         $('#textbox-registration').focus();
         return false;
@@ -1594,8 +1585,7 @@ function importData(fileName){
                             }
                         }
 
-                        alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this 
-                            issue yourself, please contact the overflight data steward at ${dataSteward}`);
+                        alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
 
                     } else {
                         alert(importResponse.replace(/\t/g, ''));
