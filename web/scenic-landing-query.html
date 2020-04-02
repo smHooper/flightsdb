@@ -6,9 +6,14 @@
 	<meta name="viewport" content="width=device-width,height=device-height, user-scalable=no" />
 	<title>Scenic landing query</title>
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+	
 	<link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css"/>
 	<script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+	
 	<link href="//netdna.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet">
+	
+	<link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet" />
+	<script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
 	
 	<link rel="stylesheet" href="css/scenic-landing-query.css"/>
 	<link rel="stylesheet" href="css/flights.css"/>
@@ -48,40 +53,58 @@
 				</div>
 
 				<div class="row query-form-row" style="align-items: center;">
-					<!-- checkboxes -->
+					<!-- checkboxes 
 					<div class="row" style="width: 100%">
 						<label class="query-input-label">Landing types</label>
-					</div>
-					<div class="query-input-container" style="display: flex; align-items: center; justify-content: space-between; background-color: hsl(218, 15%, 95%); height: 50px; padding-left: 10px; padding-right: 10px;">
-						<label class="checkmark-container">scenic
-							<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-scenic">
-							<span class="checkmark"></span>
-						</label>
-						<label class="checkmark-container">dropoff
-							<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-dropoff">
-							<span class="checkmark"></span>
-						</label>
-						<label class="checkmark-container">pickup
-							<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-pickup">
-							<span class="checkmark"></span>
-						</label>
+					</div>-->
+					<div class="query-input-container">
+						<label class="query-input-label">Landing types</label>
+						<div style="display: flex; align-items: center; justify-content: space-between; background-color: hsl(218, 15%, 95%); height: 50px; padding-left: 10px; padding-right: 10px;">
+							<label class="checkmark-container">scenic
+								<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-scenic">
+								<span class="checkmark"></span>
+							</label>
+							<label class="checkmark-container">dropoff
+								<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-dropoff">
+								<span class="checkmark"></span>
+							</label>
+							<label class="checkmark-container">pickup
+								<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-pickup">
+								<span class="checkmark"></span>
+							</label>
+						</div>
 					</div>
 
-					<!--submit button-->
-					<div class="query-input-container mx-0" style="padding-right: 0; float: right;">
-						<input class="query-input" type="submit" style="width: 85%; float: right; border:none;" value="Search flights" onclick="onRunClick(event)">
+
+					<div class="query-input-container">
+						<label class="query-input-label">Ticket numbers</label>
+						<select class="query-input select2-tag" multiple="multiple" id="select-tickets"></select>
+					</div>
+
+					<div class="query-input-container">
+						<label class="query-input-label">Landing locations</label>
+						<select class="query-input select2-tag" multiple="multiple" id="select-locations"></select>
+					</div>
+
+				</div>
+				
+				<!--submit button-->
+				<div class="row query-form-row" style="align-items: center;">
+					<div class="query-input-container" style="padding-right: 0; width: 100%;  display: flex; justify-content: center;">
+						<input class="query-input" type="submit" style="width: 250px; justify-content: center; border:none;" value="Search flights" onclick="onRunClick(event)">
 					</div>
 				</div>
-
 			</form>
 
-			<div id='result-table' style="width: 100%; display: flex; overflow-x: auto; margin-top: 50px; flex-wrap: wrap;">
-				<div class="row result-table-header" id="result-header-row" style="background-color: #894C4C;">
-					<div class="result-table-cell" style="width: 100%;"></div>
+			<div id='result-table' style="width: 100%; display: flex; overflow-x: hidden; margin-top: 50px; flex-wrap: wrap;">
+				<div class="row result-table-header">
+					<div class="result-header-cell-container" id="result-header-row">
+						<div class="result-table-cell" style="width: 100%;"></div>
+					</div>
 				</div>
 				<div style="overflow-y: auto; width:100%;">
 					<div id="place-holder" style="width: 100%; text-align: center; height: 40px; padding: 8px;">Select an operator and click 'Search flights' to show landing fees</div>
-					<div class='accordion' id='result-table-body'>
+					<div class='accordion' id='result-table-body' style="overflow-x: hidden">
 						<!--items added dynamically when query is run -->
 					</div>
 				</div>
@@ -109,8 +132,10 @@
 			$('#input-start_date').val(today.addDays(-14).getChromeFormattedString());
 
 			showLoadingIndicator();
-			fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators ORDER BY sort_order;", 'scenic_landings')
-				.done(hideLoadingIndicator());
+			$.when(
+				fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators ORDER BY sort_order;", 'scenic_landings'),
+				fillSelectOptions('select-locations', "SELECT name, code AS value FROM landing_locations ORDER BY name;", 'scenic_landings')
+			).then(hideLoadingIndicator());
 
 			$(window).resize(resizeColumns);
 
@@ -119,6 +144,18 @@
 			//$('#file-input').change(onFileInputChange);
 			$('#export-file-button').click(onExportDataClick);
 			$('.input-checkbox').click(onCheckboxClick);
+			$(".select2-tag").select2({
+				tokenSeparators: [',', ' ']
+			})
+			$('#input-start_date, #input-end_date, #select-operator')
+				.on('focusin focusout', function() {currentControlVal = $(this).val()})
+				.focusout(requerySecondarySelects);
+			/*$('#select-tickets, #select-locations').change(function() {
+				if (currentControlVal != $(this).val()) {
+					requerySecondarySelects()
+				}
+			});*/
+
 		})
 
 	</script>
