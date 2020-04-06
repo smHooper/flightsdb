@@ -7,6 +7,7 @@ const flightColumns = [
 	'ticket',
 	'departure date',
 	'departure time',
+	'registration',
 	'scenic route',
 	'fee/passenger',
 	'total fee',
@@ -23,7 +24,8 @@ const landingColumns = [
 var landingQueryResult = {}; //global var to store result for writing CSV  
 var currentControlVal; // used in .change() events to decide whether function should be fired
 var editedFlights = []; // global var to keep track of data that have been edited (stores flight IDs)
-
+var landingTypeOptions = ''; // Store results of query
+var landingLocationOptions = [];
 
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
@@ -157,10 +159,12 @@ function onRunClick(event) {
 		SELECT 
 			flights.id, 
 			flights.ticket,
+			flights.registration,
+			flights.flight_id,
 			flights.operator_code,
 			flights.fee_per_passenger AS "fee/passenger",
 			flights.departure_datetime::date AS "departure date", 
-			to_char(flights.departure_datetime, 'HH:MI AM') AS "departure time", 
+			to_char(flights.departure_datetime, 'HH24:MI:SS') AS "departure time", 
 			coalesce(flights.scenic_route, '') AS "scenic route",
 			coalesce(flights.notes, '') AS "flight notes", 
 			concession_fees_view.n_fee_passengers AS "fee_passengers", 
@@ -315,7 +319,7 @@ function showExpandedText(cellID) {
 		)
 		thisBackgroundColor = opaqueBgParents.length ? $(opaqueBgParents.get(0)).css('background-color') : '#894C4C'
 	} else {
- 		thisBackgroundColor = truncatable.css('background-color')
+ 		thisBackgroundColor = truncatable.parent().css('background-color')
 	}
 
 	// Add the modal div
@@ -330,6 +334,7 @@ function showExpandedText(cellID) {
 		<div class="modal-background"></div>
 		<div class="modal-content" style="${truncatableStyle}" data-parent="${truncatable.attr('id')}">
 			<div style="width: 100%; height: 24px;">
+
 				<span class="close-modal-text-button">&times;</span>
 			</div>
 			<div class="row mx-0 px-0" style="display: flex; justify-content: center; width: 100%; height: ${modalHeight}px;">
@@ -342,6 +347,7 @@ function showExpandedText(cellID) {
 				<div class="save-modal-text-button-container">
 					<i class="fa fa-save"></i>
 				</div>
+				<span class="save-modal-text-button-container" data-text-source="${truncatable.attr('id')}"><img class="save-modal-text-button"></span>
 	*/
 
 	$('.modal-background, .close-modal-text-button').click(removeModalExpandedText);
@@ -425,10 +431,51 @@ function saveEdits(flightID) {
     	}
     }
 
+    let thisCardHeader = $(`#cardHeader-${flightID}`);
+    let dataSaved = false;
+
+	// Check to make sure this doesn't violate the UNIQUE constraint on flight ID
+	let departure_datetime = 
+		thisCardHeader.find('.cell-departure_date > .flight-result-input').val() + 
+		" " + 
+		thisCardHeader.find('.cell-departure_time > .flight-result-input').val();
+	let dt = new Date(departure_datetime);
+	let flightIDString = 
+		landingQueryResult.data[flightID].registration + 
+		'_' + 
+		dt.getUTCFullYear() +
+		("0" + (dt.getUTCMonth()+1)).slice(-2) +
+	    ("0" + dt.getUTCDate()).slice(-2) +
+	    ("0" + dt.getUTCHours()).slice(-2) +
+	    ("0" + dt.getUTCMinutes()).slice(-2);
+
+	/*if (flightIDString !== landingQueryResult.data[flightID].flight_id) {
+		var duplicated = false;
+		var deferred = $.ajax({
+	        url: 'geojson_io.php',
+	        method: 'POST',
+	        data: {action: 'query', dbname: dbname, queryString: `SELECT * FROM flights WHERE flight_id='${flightIDString}';`},
+	        cache: false,
+	        success: function(queryResultString){
+	            if (queryResultString !== '["query returned an empty result"]') {
+	            	duplicated = true;
+	            } else if (!queryResultString.startsWith('ERROR')) {
+
+	            }
+	        }
+        });
+
+	    if (duplicated) {
+	    	alert('ERROR: There is already a flight with that registration and departure date and time.');
+	    	return false;
+	    }
+
+	}*/
+
+
 	// collect values from inputs and landings table
-	let flightEdits = {};
+	let edits = {};
 	var flightUpdates = [];
-	let thisCardHeader = $(`#cardHeader-${flightID}`);
 	let sqlValues = []; //gets overwritten with each landing statement
 	var sqlStatements = []; // array of SQL statement strings for parametizing
 	let sqlParameters = []; // array of arrays containing parameters for corresponding sqlStatements
@@ -457,6 +504,13 @@ function saveEdits(flightID) {
 			sqlValues.push(thisSQLVal);
 			paramCount ++;
 		});
+	
+	// Add departure_datetime and update flight ID
+	sqlValues.push(departure_datetime);
+	flightUpdates.push(`departure_datetime=$${paramCount}`);
+	sqlValues.push(flightIDString);
+	flightUpdates.push(`flight_id=$${paramCount + 1}`);
+
 	sqlParameters.push(sqlValues);
 	sqlStatements.push(`UPDATE flights SET ${flightUpdates.join(', ')} WHERE id=${flightID};`);
 	
@@ -468,9 +522,9 @@ function saveEdits(flightID) {
 			let landingUpdates = [];
 			let sqlValues = [];
 			let paramCount = 1;
-			$(this).find('.landing-table-cell').each(function() {
+			$(this).find('.landing-result-input').each(function() {
 				let thisColumnID = $(this).attr('data-column-id');
-				let newVal = $(this).text();
+				let newVal = $(this).val();
 
 				// Update in-memory query result object
 				landingQueryResult.data[flightID].landings[thisLandingID][thisColumnID] = newVal;
@@ -498,12 +552,24 @@ function saveEdits(flightID) {
         	let resultString = queryResultString.trim();
         	if (resultString.startsWith('ERROR') || resultString === "false") {
         		alert('Unabled to save changes to the database. ' + resultString);
-
         	}
-
-        	
         }
     })
+
+}
+
+
+function discardEdits(cardElement) {
+
+	let flightID = cardElement.attr('id').replace('flight-card-', '');
+	cardElement.find('.flight-result-input, .landing-result-input').each(function(){
+		if ($(this).hasClass('flight-result-input-disabled') || $(this).hasClass('landing-result-input-disabled')) {
+			return;
+		}
+		let columnID = $(this).attr('data-column-id');
+		let thisValue = landingQueryResult.data[flightID][columnID];
+		$(this).val(thisValue);
+	})
 
 }
 
@@ -514,32 +580,37 @@ function onEditButtonClick() {
 	if (thisCardHeader.find('.flight-result-input-disabled').length > 2) {
 		// Check to see if the user is currently editing another flight. Ask if they want to
 		//	abondon those edits or save them
-		let enabledInputs = $('#result-table').find('.flight-result-input').filter(function(){
+		let enabledFlightInputs = $('#result-table').find('.flight-result-input').filter(function(){
 			return !$(this).hasClass('flight-result-input-disabled')
 		})
-		if (enabledInputs.length) {
+		let enabledLandingInputs = $('#result-table').find('.landing-result-input').filter(function(){
+			return !$(this).hasClass('landing-result-input-disabled')
+		})
+		if (enabledFlightInputs.length) {
 			// If there are unsaved edits, ask the user if they want to save them
-			let previousCardHeader = enabledInputs.closest('.card-header')
+			let previousCardHeader = enabledFlightInputs.closest('.card-header')
 			if (previousCardHeader.hasClass('flight-data-dirty')) {
-				let response = confirm(`You are currently editing another flight. Click 'OK' to save them or 'Cancel' to discard them.`)
+				let response = confirm(`You are currently editing another flight. Click 'OK' to save them or 'Cancel' to discard them.`);
 				if (response) {
-					saveEdits(previousCardHeader.attr('id').replace('cardHeader-', ''))
+					saveEdits(previousCardHeader.attr('id').replace('cardHeader-', ''));
 				} else {
-					// revert all changes
+					discardEdits(enabledFlightInputs.closest('.card'));
 				}
-				enabledInputs.closest('.card-header').removeClass('flight-data-dirty')
+				enabledFlightInputs.closest('.card-header').removeClass('flight-data-dirty');
 			}
-			enabledInputs.addClass('flight-result-input-disabled');
+			enabledFlightInputs.addClass('flight-result-input-disabled');
+			enabledLandingInputs.addClass('landing-result-input-disabled');
 			$('.edit-button').removeClass('white-haloed'); //remove halo from all (the only) active edit button
 			$('.delete-flight-button').addClass('hidden');
 		}
 
 		// Add/remove appropriate classes to enable these inputs
 		thisCardHeader.find('.flight-result-input')
-			.filter(function() { return !($(this).parent().hasClass('cell-ticket') || $(this).parent().hasClass('cell-total_fee')) })//don't enabled the ticket column
+			.filter(function() { return !($(this).parent().hasClass('cell-ticket') || $(this).parent().hasClass('cell-total_fee')) })//don't enable the ticket column
 			.removeClass('flight-result-input-disabled')
-		thisCardHeader.find('.delete-flight-button').removeClass('hidden') // Show delete button
-		thisCardHeader.find('.edit-button').addClass('white-haloed')
+		thisCardHeader.siblings().find('.landing-result-input').removeClass('landing-result-input-disabled');
+		thisCardHeader.find('.delete-flight-button').removeClass('hidden'); // Show delete button
+		thisCardHeader.find('.edit-button').addClass('white-haloed');
 
 		let thisCardLink = thisCardHeader.find('.card-link');
 		if (thisCardLink.hasClass('collapsed')) thisCardLink.click();
@@ -547,13 +618,14 @@ function onEditButtonClick() {
 		// The user is already editing this flight and wants to stop 
 		if (thisCardHeader.hasClass('flight-data-dirty')) {
 			if (confirm(`You have unsaved edits. Click 'OK' to save them or 'Cancel' to discard them`)) {
-				saveEdits(thisCardHeader.attr('id').replace('cardHeader-', ''))
+				saveEdits(thisCardHeader.attr('id').replace('cardHeader-', ''));
 			} else {
-				// revert all changes
+				discardEdits($(this).closest('.card'));
 			}
 			thisCardHeader.removeClass('flight-data-dirty');
 		}
 		thisCardHeader.find('.flight-result-input').addClass('flight-result-input-disabled')
+		thisCardHeader.siblings().find('.landing-result-input').addClass('landing-result-input-disabled');
 		thisCardHeader.find('.delete-flight-button').addClass('hidden');
 		thisCardHeader.find('.edit-button').removeClass('white-haloed');
 	}
@@ -598,30 +670,6 @@ async function showQueryResult(selectedAnchor=false) {
 	$('#result-header-row').empty();
 	$('#place-holder').css('display', 'none');
 	$('#result-table-body').empty();
-	//$('#sum-row')
-
-	// Organize the flights into an object with flight attributes and a landing (array) 
-	//	property that contains info about each landing
-	/*var flights = {};
-	for (i in landingQueryResult.data) {
-		let row = landingQueryResult.data[i];
-		let thisFlightID = row.id;
-		if (flights[thisFlightID] === undefined) {
-			flights[thisFlightID] = {};
-			for (i in flightColumns) {
-				let columnID = flightColumns[i];
-				flights[thisFlightID][columnID] = row[columnID];
-			}
-			flights[thisFlightID].landings = [];
-		}
-
-		let thisLanding = {};
-		for (i in landingColumns) {
-			let columnID = landingColumns[i];
-			thisLanding[columnID] = row[columnID];
-		}
-		flights[thisFlightID].landings[row.landing_id] = thisLanding;
-	}*/
 
 	var landingColumnRow = '';
 	for (columnID in landingQueryResult.fields.landings) {
@@ -635,6 +683,9 @@ async function showQueryResult(selectedAnchor=false) {
 		//// need to add function to change the checked vs not check prop
 		displayLandingTypes[landingType] = $(this).get(0).checked;
 	})
+
+	let locationOptions = '';
+	//for 
 
 	var sums = {};
 	for (id in landingQueryResult.data) {
@@ -652,9 +703,13 @@ async function showQueryResult(selectedAnchor=false) {
 			//input class="query-input" type="date" id="input-end_date" value="2019-01-01"
 			var thisValue = thisFlight[columnID];
 			let cellValue = ['total fee', 'fee/passenger'].includes(fieldName) ? '$' + parseFloat(thisValue).toFixed(2) : thisValue;
+			let inputType = 'text';
+			if (fieldName.endsWith(' date')) inputType = 'date';
+			if (fieldName.endsWith(' time')) inputType = 'time'; 
+
 			tableCells += 
 				`<div class="result-table-cell cell-${columnID}" id="result-table-${id}-${columnID}">
-					<input class="truncatable flight-result-input flight-result-input-disabled" type="text" id="result-input-${id}-${columnID}" data-column-id="${columnID}" value="${cellValue}">
+					<input class="truncatable flight-result-input flight-result-input-disabled" type="${inputType}" id="result-input-${id}-${columnID}" data-column-id="${columnID}" value="${cellValue}">
 				</div>
 				`;
 
@@ -672,8 +727,19 @@ async function showQueryResult(selectedAnchor=false) {
 				let fieldName = landingColumns[i];
 				let columnID = getSanitizedFieldName(fieldName);
 				//let columnID = column.replace(/[\W]+/g, '_');
+				let inputHTML;
+				if (columnID === 'landing_location' || columnID === 'landing_type') {
+					inputHTML = 
+					`<select class="landing-result-input landing-result-input-disabled" id="landing-input-${landingID}-${columnID}" data-column-id="${columnID}" value="${thisLanding[columnID]}">
+					</select>`
+				} else {
+					inputHTML = `<input class="truncatable landing-result-input landing-result-input-disabled" type="text" id="landing-input-${landingID}-${columnID}" data-column-id="${columnID}" value="${thisLanding[columnID]}">`
+				}
+
 				thisRow += 
-					`<td class="landing-table-cell cell-${columnID} landing-type-${landingType}" data-column-id="${columnID}">${thisLanding[columnID]}</td>`;
+					`<td class="landing-table-cell cell-${columnID} landing-type-${landingType}" id="landing-cell-${landingID}-${columnID}" data-column-id="${columnID}">
+						${inputHTML}
+					</td>`;
 					/*`<td class="landing-table-cell cell-${columnID}"> 
 						<span class="truncatable" style="width: 100%">${thisLanding[column]}</span> 
 					</td>`*/
@@ -701,7 +767,7 @@ async function showQueryResult(selectedAnchor=false) {
 					</a>
 				</div>
 				<div class="collapse" id="cardContent-${id}" aria-labeledby="cardHeader-${id}" data-parent="result-table-body" style="width: 100%; padding-left: 5%;">
-					<table style="width: 97%; float: right; margin-right: 2.5%; margin-top: 10px; margin-bottom: 30px;">
+					<table class="landings-table">
 						<thead>
 							<tr>${landingColumnRow}</tr>
 						</thead>
@@ -713,6 +779,10 @@ async function showQueryResult(selectedAnchor=false) {
 			</div>`
 		).appendTo('#result-table-body')
 	}
+
+	// Add options to selects in landings tables
+	landingLocationOptions.appendTo($('.cell-landing_location > .landing-result-input'));
+	$(landingTypeOptions).appendTo($('.cell-landing_type > .landing-result-input'));
 
 	$('.card-header').click(function(e) {
 
@@ -743,8 +813,9 @@ async function showQueryResult(selectedAnchor=false) {
 				showExpandedText($(this).parent().attr('id'));
 			}
 		})
+	$('.flight-result-input, .landing-result-input')
 		.change( function() {
-			let thisCardHeader = $(this).closest('.card-header')
+			let thisCardHeader = $(this).closest('.card').find('.card-header');
 			let thisFlightID = thisCardHeader.attr('id').replace('cardHeader-', '')
 			if (!editedFlights.includes(thisFlightID)) {
 				editedFlights.push(thisFlightID);
@@ -753,19 +824,20 @@ async function showQueryResult(selectedAnchor=false) {
 			thisCardHeader.addClass('flight-data-dirty')
 			
 			// Add the expandText button for any textboxes that are truncated
-			thisCardHeader.find('.truncatable:truncated').each(function(){
+			thisCardHeader.closest('.card').find('.truncatable:truncated').each(function(){
 				addExpandTruncatedButton($(this).parent(), $(this));
 			})
 
 			// If this is the fee/pax field, update the total fee
 			let parentCell = $(this).parent();
-			if (parentCell.hasClass('cell-fee_passenger')) {
-				let totalInput = parentCell.parent().find('.cell-total_fee > .flight-result-input')
+			if (parentCell.hasClass('cell-fee_passenger') || parentCell.hasClass('cell-landing_passengers')) {
+				let totalInput = thisCardHeader.find('.cell-total_fee > .flight-result-input')
 				let paxCount = 0;
 				thisCardHeader.siblings()//the card body with the table is the only sibling
-					.find('.cell-landing_passengers.landing-type-scenic, .cell-landing_passengers.landing-type-dropoff')
-					.each(function() {paxCount += $(this).text()})
-				let newTotal = $(this).val().replace('$', '') * paxCount;
+					.find('.cell-landing_passengers.landing-type-scenic > .landing-result-input, .cell-landing_passengers.landing-type-dropoff > .landing-result-input')
+					.each(function() {paxCount += stringToNumber($(this).val())})
+				let newTotal = (thisCardHeader.find('.cell-fee_passenger > .flight-result-input')//can't use $(this) since 'this' might be n_passengers cell
+					.val().replace('$', '') * paxCount).toFixed(2);
 				totalInput.val('$' + newTotal);
 			}
 		})
