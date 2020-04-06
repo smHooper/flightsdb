@@ -536,6 +536,7 @@ th {
 
 .modal-expanded-text {
 	padding: 0px 16px 16px 24px;
+	margin-top: 15px;
 	position: absolute;
 	left: 0;
 	top: 30px;
@@ -547,11 +548,18 @@ th {
 	border: none;
 }
 
-/* close button*/
-.close-modal-text-button {
-	color: white;
+/* close and save buttons*/
+.modal-button-container {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	width: 100%; 
+	height: 50px;
+}
+
+.close-modal-text-button, .save-modal-text-button {
 	float: right;
-	font-size: 24px;
+	font-size: 30px;
 	font-weight: bold;
 	margin-right: 10px;
 	-webkit-transition: all 0.3s ease;
@@ -560,24 +568,21 @@ th {
 
 .save-modal-text-button-container {
 	width: 40px;
-	height: 100%;
-	padding-right: 10px;
+	height: 20px;
 }
 
 .save-modal-text-button {
 	color: white;
 	width: 100%;
 	height: 100%;
-	background: url('imgs/save_icon_30px.svg');
+	cursor: pointer;
 }
 
-.close-modal-text-button:hover, .close-modal-text-button:focus {
+.close-modal-text-button:hover, .close-modal-text-button:focus, .save-modal-text-button:hover, .save-modal-text-button:focus {
 	transform: translate(0px, -5px);
 	text-decoration: none;
 	cursor: pointer;
 }
-
-
 
 /* animations */
 @-webkit-keyframes slideIn {
