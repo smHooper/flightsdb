@@ -96,13 +96,13 @@
 				</div>
 			</form>
 
-			<div id='result-table' style="width: 100%; display: flex; overflow-x: hidden; margin-top: 50px; flex-wrap: wrap;">
+			<div id='result-table'>
 				<div class="row result-table-header">
 					<div class="result-header-cell-container" id="result-header-row">
 						<div class="result-table-cell" style="width: 100%;"></div>
 					</div>
 				</div>
-				<div style="overflow-y: auto; width:100%;">
+				<div id="flight-result-container" style="overflow-y: auto; width:100%;">
 					<div id="place-holder" style="width: 100%; text-align: center; height: 40px; padding: 8px;">Select an operator and click 'Search flights' to show landing fees</div>
 					<div class='accordion' id='result-table-body' style="overflow-x: hidden">
 						<!--items added dynamically when query is run -->
@@ -138,7 +138,7 @@
 				fillSelectOptions('select-locations', "SELECT name, code AS value FROM landing_locations ORDER BY name;", 'scenic_landings')
 			).then(function() {
 				hideLoadingIndicator();
-				landingLocationOptions = $('#select-locations').children();
+				landingLocationOptions = $('#select-locations').html();
 			});
 
 			$(window).resize(resizeColumns);
@@ -174,6 +174,8 @@
 		            };
 		        }
 		    });
+
+		    
 
 		})
 

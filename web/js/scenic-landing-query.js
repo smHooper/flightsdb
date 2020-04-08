@@ -27,7 +27,11 @@ var currentControlVal; // used in .change() events to decide whether function sh
 var editedFlights = []; // global var to keep track of data that have been edited (stores flight IDs)
 var landingTypeOptions = ''; // Store results of query
 var landingLocationOptions = [];
+var cloneableLanding;
+var cloneableFlight;
+var username;
 
+/* Extentions */
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
     date.setDate(date.getDate() + days);
@@ -51,6 +55,48 @@ $.expr[':'].truncated = function(jqObject) {
 $.expr[':'].extended = function(jqObject) {
 	return (Math.ceil($(jqObject).outerWidth()) >= $(jqObject)[0].scrollWidth);
 }
+
+// JQuery plugin to move cursor to end of text/textare inputs on focus
+//	from: https://css-tricks.com/snippets/jquery/move-cursor-to-end-of-textarea-or-input/
+jQuery.fn.setCursorToEnd = function() {
+
+  return this.each(function() {
+    
+    // Cache references
+    var $el = $(this),
+        el = this;
+
+    // Only focus if input isn't already
+    if (!$el.is(":focus")) {
+     $el.focus();
+    }
+
+    // If this function exists... (IE 9+)
+    if (el.setSelectionRange) {
+
+      // Double the length because Opera is inconsistent about whether a carriage return is one character or two.
+      var len = $el.val().length * 2;
+      
+      // Timeout seems to be required for Blink
+      setTimeout(function() {
+        el.setSelectionRange(len, len);
+      }, 1);
+    
+    } else {
+      
+      // As a fallback, replace the contents with itself
+      // Doesn't work in Chrome, but Chrome supports setSelectionRange
+      $el.val($el.val());
+      
+    }
+
+    // Scroll to the bottom, in case we're in a tall textarea
+    // (Necessary for Firefox and Chrome)
+    this.scrollTop = 999999;
+
+  });
+
+};
 
 
 function fillSelectOptions(selectElementID, queryString, dbname, optionClassName='track-info-option') {
@@ -129,17 +175,7 @@ function getSanitizedFieldName(fieldName) {
 }
 
 
-function onRunClick(event) {
-
-	// prevent the form from resetting
-	event.returnValue = false;
-
-	// If there are unsaved edits, ask if the user wants to save them
-	if ($('.flight-data-dirty').length) {
-		if (confirm(`You have unsaved edits. Click 'OK' to save them or 'Cancel' to discard them`)) {
-			saveEdits($('.flight-data-dirty').attr('id').replace('cardHeader-', ''))
-		} 
-	}
+function queryFlights() {
 
 	const operator_code = $('#select-operator').val();
 	if (!operator_code.length) {
@@ -263,7 +299,7 @@ function onRunClick(event) {
 					}*/
 
 					showQueryResult().then(() => {
-						hideLoadingIndicator('onRunClick');
+						hideLoadingIndicator();//'queryFlights');
 						// Show the first flight's landings after a brief delay
 						setTimeout(() => {$('.card-header > a').get(0).click()}, 300);
 					})
@@ -275,6 +311,24 @@ function onRunClick(event) {
 	}).fail((xhr, status, error) => {
 		console.log(`query failed with status ${status} because ${error} from query:\n${sql}`)
 	});
+}
+
+
+function onRunClick(event) {
+
+	// prevent the form from resetting
+	event.returnValue = false;
+
+	// If there are unsaved edits, ask if the user wants to save them
+	let deferred = $.when(function() {return true});
+	if ($('.flight-data-dirty').length) {
+		if (confirm(`You have unsaved edits. Click 'OK' to save them or 'Cancel' to discard them`)) {
+			deferred = saveEdits($('.flight-data-dirty').attr('id').replace('flight-card-', ''))
+		} 
+	}
+
+	deferred.then(queryFlights);
+
 }
 
 
@@ -343,9 +397,9 @@ function showExpandedText(cellID) {
 		<div class="modal-content" style="${truncatableStyle}" data-parent="${truncatable.attr('id')}">
 			<div class="modal-button-container">
 				<span class="save-modal-text-button-container">
-					<img class="save-modal-text-button" src="imgs/save_icon_30px.svg" data-text-source="${truncatable.attr('id')}" style="${filterString}">
+					<img class="save-modal-text-button slide-up-on-hover" src="imgs/save_icon_30px.svg" data-text-source="${truncatable.attr('id')}" style="${filterString}">
 				</span>
-				<span class="close-modal-text-button" style="color: ${foreColor}">&times;</span>
+				<span class="close-modal-text-button slide-up-on-hover" style="color: ${foreColor}">&times;</span>
 			</div>
 			<div class="row mx-0 px-0" style="display: flex; justify-content: center; width: 100%; height: ${modalHeight}px;">
 				<textarea class="modal-expanded-text" style="width: 100%; height: ${modalHeight}px;">${text}</textarea>
@@ -361,6 +415,10 @@ function showExpandedText(cellID) {
 		removeModalExpandedText();
 		removeExpandTruncatedButtons();
 	})
+
+	$('.modal-expanded-text')
+		.focus( function() {$(this).setCursorToEnd()}) // set the listener
+		.focus(); // trigger the event
 
 }	
 
@@ -388,6 +446,7 @@ function removeExpandTruncatedButtons() {
 	$('.result-table-cell > .truncatable:extended, .landing-table-cell > .truncatable:extended').each(function(){
 		let thisCell = $(this).parent();
 		thisCell.find('.expand-truncated-button').remove();
+		thisCell.find('.truncated').removeClass('truncated');
 	})
 }
 
@@ -399,7 +458,7 @@ function resizeColumns() {
 		try {
 			//let padding = parseInt($(`#column-${columnID}`).css('padding-left').replace('px', '')) * 2;
 			let columnWidth = $(`#column-${columnID}`).outerWidth() //+ padding;
-			$('#result-table-body').find(`.result-table-cell.cell-${columnID}`).css('width', columnWidth);
+			$('#flight-result-container').find(`.result-table-cell.cell-${columnID}`).css('width', columnWidth);
 		} catch {
 			continue;
 		}
@@ -425,67 +484,142 @@ function stringToNumber(str) {
 	}
 }
 
-function saveEdits(flightID) {
 
-    const _dbColumns = {
-    	'flights': {
-			'scenic_route':  'scenic_route',
-			'flight_notes':  'notes',
-			'fee_passenger': 'fee_per_passenger'
-    	},
-    	'landings': {
-    		'landing_location': 	'location', 
-			'landing_passengers': 	'n_passengers', 
-			'landing_type': 		'landing_type', 
-			'landing_notes': 		'notes', 
-			'justification': 		'justification'
-    	}
-    }
+function insertLanding(landingRow, flightID, landingColumns, commit=true) {
 
-    let thisCardHeader = $(`#cardHeader-${flightID}`);
-    let dataSaved = false;
+	let sqlColumns = [];
+	let sqlValues = [];
+	let sqlParameters = [];
+	let paramCount = 1;
+	let landingObject = {}
+	landingRow.find('.landing-result-input').each(
+		function() {
+			let columnID = $(this).attr('data-column-id');
+			let newVal = $(this).val();
 
-	// Check to make sure this doesn't violate the UNIQUE constraint on flight ID
-	let departure_datetime = 
-		thisCardHeader.find('.cell-departure_date > .flight-result-input').val() + 
-		" " + 
-		thisCardHeader.find('.cell-departure_time > .flight-result-input').val();
-	let dt = new Date(departure_datetime);
-	let flightIDString = 
-		landingQueryResult.data[flightID].registration + 
-		'_' + 
-		dt.getUTCFullYear() +
-		("0" + (dt.getUTCMonth()+1)).slice(-2) +
-	    ("0" + dt.getUTCDate()).slice(-2) +
-	    ("0" + dt.getUTCHours()).slice(-2) +
-	    ("0" + dt.getUTCMinutes()).slice(-2);
+			landingObject[columnID] = newVal;
+			
+			// Add set clause to update DB
+			sqlColumns.push(landingColumns[columnID]);
+			sqlValues.push(newVal);
+			sqlParameters.push(`$${paramCount}`);
+			
+			paramCount ++;
+		})
 
-	/*if (flightIDString !== landingQueryResult.data[flightID].flight_id) {
-		var duplicated = false;
-		var deferred = $.ajax({
+	sqlColumns.push('flight_id');
+	sqlValues.push(flightID);
+	sqlParameters.push(`$${paramCount}`);
+	
+	let sqlString = `INSERT INTO landings (${sqlColumns.join(', ')}) VALUES(${sqlParameters.join(', ')}) RETURNING id;`;	
+
+	if (commit) {
+		let deferred = $.ajax({
 	        url: 'geojson_io.php',
 	        method: 'POST',
-	        data: {action: 'query', dbname: dbname, queryString: `SELECT * FROM flights WHERE flight_id='${flightIDString}';`},
+	        data: {action: 'landingsParamQuery', dbname: 'scenic_landings', queryString: sqlString, params: sqlValues},
 	        cache: false,
 	        success: function(queryResultString){
-	            if (queryResultString !== '["query returned an empty result"]') {
-	            	duplicated = true;
-	            } else if (!queryResultString.startsWith('ERROR')) {
-
-	            }
+	        	let resultString = queryResultString.trim();
+	        	if (resultString.startsWith('ERROR') || resultString === "false") {
+	        		alert('Unable to add a new landing to the database. ' + resultString);
+	        	} else {
+	        		let result = $.parseJSON(resultString);
+	        		if (result.length) {
+	        			let landingID = result[0].id;
+	 					// Add to the in-memory query result object
+	        			landingQueryResult.data[flightID].landings[landingID] = {...landingObject};
+	        			// Remove temp class and set the landingID for the <tr> element
+	        		    landingRow.removeClass('provisional')
+	        				.attr('data-landing-id', landingID)
+	        		}
+	        	}
 	        }
-        });
+	    })
+	}
 
-	    if (duplicated) {
-	    	alert('ERROR: There is already a flight with that registration and departure date and time.');
-	    	return false;
-	    }
+	return {sqlString: sqlString, params: sqlValues};
+}
 
-	}*/
+
+function deleteLanding(landingRow, flightID) {
+
+	let landingID = landingRow.attr('data-landing-id')
+	let sqlString = `DELETE FROM landings WHERE id=${landingID};`;
+	$.ajax({
+		url: 'geojson_io.php',
+        method: 'POST',
+        data: {action: 'landingsAdminQuery', dbname: 'scenic_landings', queryString: sqlString},
+        cache: false,
+        success: function(queryResultString){
+        	let resultString = queryResultString.trim();
+        	if (resultString.startsWith('ERROR') || resultString === "false") {
+        		alert(`Unable to delete landing ${landingID} from the database. ${resultString}`);
+        		// Show the user which landing failed
+        		landingRow.show(300).removeClass('to-delete');
+        	} else {
+        		delete landingQueryResult.data[flightID].landings[landingID];
+        		landingRow.remove(); //permanently remove from DOM
+        	}
+        }
+	})
+}
+
+
+function isFlightIDStringDuplicated(flightIDString) {
+
+	return $.ajax({
+        url: 'geojson_io.php',
+        method: 'POST',
+        data: {action: 'query', dbname: 'scenic_landings', queryString: `SELECT * FROM flights WHERE flight_id='${flightIDString}';`},
+        cache: false
+    }).then(
+    	function(queryResultString){
+    		queryResultString = queryResultString.trim();
+            if (queryResultString !== '["query returned an empty result"]') {
+            	alert('The data for this flight could not be saved because there ' + 
+            		'is already a flight with this departure date/time and registraton number. ' + 
+            		'Please check to make sure you have entered these correctly.')
+            	return true;
+            } else if (!queryResultString.startsWith('ERROR')) {
+            	alert('An error occurred while validating the flight data: ' + queryResultString)
+            	return true;
+            } else {
+            	return false;
+            }
+    	}
+    );
+}
+
+
+function insertFlight(flightID, departureDatetime, flightIDString) {
+	if (isFlightIDStringDuplicated(flightIDString)) return;
+
+	let thisCard = $('.card.provisional') // should only be one with .provisional class
+
+
+}
+
+
+function updateFlight(dbColumns, flightID, departureDatetime, flightIDString) {
+
+    let thisCardHeader = $(`#cardHeader-${flightID}`);
+
+    // Premanently remove any provisional landings that the user deleted
+    $('.provisional.to-delete').remove();
+
+    // Check if there's a new landing that has yet to be saved. If so, insert it
+    let unsavedLanding = $(`#flight-card-${flightID}`).find('.landing-table-row.provisional')
+    if (unsavedLanding.length) {
+		insertLanding(unsavedLanding, flightID, dbColumns.landings);
+    }
+
+    $(`#flight-card-${flightID}`).find('.landing-table-row.to-delete').each(function() {
+    	deleteLanding($(this), flightID);
+    });
 
 
 	// collect values from inputs and landings table
-	let edits = {};
 	var flightUpdates = [];
 	let sqlValues = []; //gets overwritten with each landing statement
 	var sqlStatements = []; // array of SQL statement strings for parametizing
@@ -510,14 +644,14 @@ function saveEdits(flightID) {
 			// Add set clause to update DB
 			let cleanedNewVal = newVal.replace('$', '')
 			let thisSQLVal = cleanedNewVal;//newVal.length ? cleanedNewVal : undefined;//undefined -> php null -> SQL NULL
-			let thisDBColumn = _dbColumns.flights[columnID];
+			let thisDBColumn = dbColumns.flights[columnID];
 			flightUpdates.push(`${thisDBColumn}=$${paramCount}`);
 			sqlValues.push(thisSQLVal);
 			paramCount ++;
 		});
 	
 	// Add departure_datetime and update flight ID
-	sqlValues.push(departure_datetime);
+	sqlValues.push(departureDatetime);
 	flightUpdates.push(`departure_datetime=$${paramCount}`);
 	sqlValues.push(flightIDString);
 	flightUpdates.push(`flight_id=$${paramCount + 1}`);
@@ -528,6 +662,11 @@ function saveEdits(flightID) {
 	thisCardHeader.siblings() // the landing table is in the collapse
 		.find('.landing-table-row')
 		.each(function() {
+			// If this is an unsaved landing or one to delete, it's getting inserted/deleted already, so skip it
+			if ($(this).hasClass('provisional') || $(this).hasClass('to-delete')) {
+				return;
+			}
+
 			let thisLandingID = $(this).attr('data-landing-id');
 			// Loop through each <td> element
 			let landingUpdates = [];
@@ -541,7 +680,7 @@ function saveEdits(flightID) {
 				landingQueryResult.data[flightID].landings[thisLandingID][thisColumnID] = newVal;
 				
 				// Add set clause to update DB
-				let thisDBColumn = _dbColumns.landings[thisColumnID];
+				let thisDBColumn = dbColumns.landings[thisColumnID];
 				let thisSQLVal = newVal//.length ? newVal : undefined;
 				landingUpdates.push(`${thisDBColumn}=$${paramCount}`);
 				sqlValues.push(thisSQLVal);
@@ -554,23 +693,115 @@ function saveEdits(flightID) {
 
 	
 	// Update DB
-	$.ajax({
-        url: 'geojson_io.php',
-        method: 'POST',
-        data: {action: 'landingsParamQuery', dbname: 'scenic_landings', queryString: sqlStatements, params: sqlParameters},
-        cache: false,
-        success: function(queryResultString){
+	return $.when(
+		$.ajax({
+	        url: 'geojson_io.php',
+	        method: 'POST',
+	        data: {action: 'landingsParamQuery', dbname: 'scenic_landings', queryString: sqlStatements, params: sqlParameters},
+	        cache: false
+    	})
+    ).then(
+    	function(queryResultString){
         	let resultString = queryResultString.trim();
         	if (resultString.startsWith('ERROR') || resultString === "false") {
         		alert('Unabled to save changes to the database. ' + resultString);
+        		return false; // Save was unsuccessful
+        	} else {
+        		return true; // Save was successful
         	}
+        	hideLoadingIndicator();
         }
-    })
+    )
+
+}
+
+
+function saveEdits(flightID) {
+
+    const _dbColumns = {
+    	'flights': {
+			'scenic_route':  'scenic_route',
+			'flight_notes':  'notes',
+			'fee_passenger': 'fee_per_passenger',
+			'registration':  'registration'
+    	},
+    	'landings': {
+    		'landing_location': 	'location', 
+			'landing_passengers': 	'n_passengers', 
+			'landing_type': 		'landing_type', 
+			'landing_notes': 		'notes', 
+			'justification': 		'justification'
+    	}
+    }
+
+    let thisCard = $(`#flight-card-${flightID}`)
+    let thisCardHeader = $(`#cardHeader-${flightID}`);
+    let dataSaved = false;
+
+    showLoadingIndicator();
+
+	// Check to make sure this doesn't violate the UNIQUE constraint on flight ID
+	let departureDatetime = 
+		thisCardHeader.find('.cell-departure_date > .flight-result-input').val() + 
+		" " + 
+		thisCardHeader.find('.cell-departure_time > .flight-result-input').val();
+	let dt = new Date(departureDatetime);
+	let registration = thisCardHeader.find('.cell-registration > .flight-result-input').val();
+	let flightIDString = 
+		registration + 
+		'_' + 
+		dt.getUTCFullYear() +
+		("0" + (dt.getMonth()+1)).slice(-2) +
+	    ("0" + dt.getDate()).slice(-2) +
+	    ("0" + dt.getHours()).slice(-2) +
+	    ("0" + dt.getMinutes()).slice(-2);
+
+	// If this is a newly added flight, first check if the departure datetime/registration 
+	//	combination already exist. If it does, don't INSERT intot the db
+	if (thisCard.hasClass('provisional')) {
+		$.when(
+			isFlightIDStringDuplicated(flightIDString)
+		).then(function(duplicated) {
+			if (!duplicated) {
+				return insertFlight(flightID, departureDatetime, flightIDString);
+			} else {
+				return false;
+			}
+		});
+	// If the flight already exists, try to update the existing DB records
+	} else {
+		// If the departure datetime and/or the registration have changed, first check to see if 
+		//	this flight already exists according to those values. Update the flight only if it 
+		//	doesn't already exist
+		if (flightIDString !== landingQueryResult.data[flightID].flight_id) {
+			$.when(
+				isFlightIDStringDuplicated(flightIDString)
+			).then(function(duplicated) {
+				if (!duplicated) {
+					return updateFlight(_dbColumns, flightID, departureDatetime, flightIDString);
+				} else {
+					return false; // data were not saved
+				}
+			});
+		// Otherwise, just update the flight
+		} else {
+			return updateFlight(_dbColumns, flightID, departureDatetime, flightIDString);
+		}
+	}
 
 }
 
 
 function discardEdits(cardElement) {
+
+	// If this card is a new one that hasn't been saved, just remove it
+	if (cardElement.hasClass('provisional')) {
+		cardElement.remove();
+		return;
+	}
+
+	// Remove unsaved landing row if there is one
+	cardElement.find('.provisional').remove();
 
 	let flightID = cardElement.attr('id').replace('flight-card-', '');
 	cardElement.find('.flight-result-input, .landing-result-input').each(function(){
@@ -578,69 +809,121 @@ function discardEdits(cardElement) {
 			return;
 		}
 		let columnID = $(this).attr('data-column-id');
-		let thisValue = landingQueryResult.data[flightID][columnID];
-		$(this).val(thisValue);
+
+		let thisValue;
+		if (Object.keys(landingQueryResult.fields.landings).includes(columnID)) {
+			const landingID = $(this).closest('tr').attr('data-landing-id');
+			thisValue = landingQueryResult.data[flightID].landings[landingID][columnID]
+		} else {
+			thisValue = landingQueryResult.data[flightID][columnID];
+		}
+		$(this).val(columnID === 'fee_passenger' ? '$' + thisValue : thisValue);
 	})
 
 	removeExpandTruncatedButtons();
 
+	// Remove the "to-delete" class indicating that those rows should be deleted
+	$('.to-delete').show(400, function() {
+		$(this).removeClass('to-delete')
+	})
+
+	// Call the change event on each input to see if anything that's not directly editabled needs to be reverted back
+	$('.flight-result-input, .landing-result-input').each(function() {
+		if ($(this).hasClass('flight-result-input-disabled') || $(this).hasClass('landing-result-input-disabled')) return;
+		$(this).change();
+	})
+
+	cardElement.removeClass('flight-data-dirty');
+
+	return true;
+
 }
 
 
+function confirmCurrentEdits() {
+	
+	let enabledFlightInputs = $('#result-table').find('.flight-result-input').filter(function(){
+		return !$(this).hasClass('flight-result-input-disabled')
+	})
+	let enabledLandingInputs = $('#result-table').find('.landing-result-input').filter(function(){
+		return !$(this).hasClass('landing-result-input-disabled')
+	})
+	if (enabledFlightInputs.length) {
+		// If there are unsaved edits, ask the user if they want to save them
+		let previousCard = enabledFlightInputs.closest('.card')
+		let deferred;
+		if (previousCard.hasClass('flight-data-dirty')) {
+			let response = confirm(`You are currently editing another flight. Click 'OK' to save these edits or 'Cancel' to discard them.`);
+			if (response) {
+				deferred = saveEdits(previousCard.attr('id').replace('flight-card-', ''));
+			} else {
+				deferred = $.when(discardEdits(previousCard));
+			}
+			previousCard.removeClass('flight-data-dirty');
+		} else {
+			deferred = $.when(function() {return true});
+		}
+		deferred.then(function(success) {
+			if (success) {
+				enabledFlightInputs.addClass('flight-result-input-disabled');
+				enabledLandingInputs.addClass('landing-result-input-disabled');
+				$('.edit-button').removeClass('white-haloed'); //remove halo from all (the only) active edit button
+				$('.delete-flight-button').addClass('hidden');
+			}
+		});
+		return deferred;
+	} else {
+		// return a deferred that resolves to true so other calling functions 
+		//	know they can assume any data were sucessfully saved
+		return $.when(function() {return true});
+	}
+}
+
 function onEditButtonClick() {
-	let thisCardHeader = $(this).closest('.card-header');
+	let thisCard = $(this).closest('.card')
+	let thisCardHeader = thisCard.find('.card-header');
 	// If there are any disabled inputs, they're all disabled and this row is not currently editable
 	if (thisCardHeader.find('.flight-result-input-disabled').length > 2) {
 		// Check to see if the user is currently editing another flight. Ask if they want to
 		//	abondon those edits or save them
-		let enabledFlightInputs = $('#result-table').find('.flight-result-input').filter(function(){
-			return !$(this).hasClass('flight-result-input-disabled')
-		})
-		let enabledLandingInputs = $('#result-table').find('.landing-result-input').filter(function(){
-			return !$(this).hasClass('landing-result-input-disabled')
-		})
-		if (enabledFlightInputs.length) {
-			// If there are unsaved edits, ask the user if they want to save them
-			let previousCardHeader = enabledFlightInputs.closest('.card-header')
-			if (previousCardHeader.hasClass('flight-data-dirty')) {
-				let response = confirm(`You are currently editing another flight. Click 'OK' to save them or 'Cancel' to discard them.`);
-				if (response) {
-					saveEdits(previousCardHeader.attr('id').replace('cardHeader-', ''));
-				} else {
-					discardEdits(enabledFlightInputs.closest('.card'));
-				}
-				enabledFlightInputs.closest('.card-header').removeClass('flight-data-dirty');
+		$.when(confirmCurrentEdits())
+		.then(function(saveSucessful) {
+			if (saveSucessful) {
+				// Add/remove appropriate classes to enable these inputs
+				thisCardHeader.find('.flight-result-input')
+					.filter(function() { return !($(this).parent().hasClass('cell-ticket') || $(this).parent().hasClass('cell-total_fee')) })//don't enable the ticket column
+					.removeClass('flight-result-input-disabled')
+				thisCardHeader.siblings().find('.landing-result-input').removeClass('landing-result-input-disabled');
+				thisCardHeader.siblings().find('.delete-landing-button, .add-landing-button').removeClass('hidden');
+				thisCardHeader.find('.delete-flight-button').removeClass('hidden'); // Show delete buttons
+				thisCardHeader.find('.edit-button').addClass('white-haloed');
+
+				let thisCardLink = thisCardHeader.find('.card-link');
+				if (thisCardLink.hasClass('collapsed')) thisCardLink.click();
 			}
-			enabledFlightInputs.addClass('flight-result-input-disabled');
-			enabledLandingInputs.addClass('landing-result-input-disabled');
-			$('.edit-button').removeClass('white-haloed'); //remove halo from all (the only) active edit button
-			$('.delete-flight-button').addClass('hidden');
-		}
-
-		// Add/remove appropriate classes to enable these inputs
-		thisCardHeader.find('.flight-result-input')
-			.filter(function() { return !($(this).parent().hasClass('cell-ticket') || $(this).parent().hasClass('cell-total_fee')) })//don't enable the ticket column
-			.removeClass('flight-result-input-disabled')
-		thisCardHeader.siblings().find('.landing-result-input').removeClass('landing-result-input-disabled');
-		thisCardHeader.find('.delete-flight-button').removeClass('hidden'); // Show delete button
-		thisCardHeader.find('.edit-button').addClass('white-haloed');
-
-		let thisCardLink = thisCardHeader.find('.card-link');
-		if (thisCardLink.hasClass('collapsed')) thisCardLink.click();
+		})
 	} else {
 		// The user is already editing this flight and wants to stop 
-		if (thisCardHeader.hasClass('flight-data-dirty')) {
+		let deferred;
+		if (thisCard.hasClass('flight-data-dirty')) {
 			if (confirm(`You have unsaved edits. Click 'OK' to save them or 'Cancel' to discard them`)) {
-				saveEdits(thisCardHeader.attr('id').replace('cardHeader-', ''));
+				deferred = saveEdits(thisCard.attr('id').replace('flight-card-', ''));
 			} else {
-				discardEdits($(this).closest('.card'));
+				deferred = $.when(discardEdits($(this).closest('.card')));
 			}
-			thisCardHeader.removeClass('flight-data-dirty');
+		} else {
+			deferred = $.when(function() {return true});
 		}
-		thisCardHeader.find('.flight-result-input').addClass('flight-result-input-disabled')
-		thisCardHeader.siblings().find('.landing-result-input').addClass('landing-result-input-disabled');
-		thisCardHeader.find('.delete-flight-button').addClass('hidden');
-		thisCardHeader.find('.edit-button').removeClass('white-haloed');
+		deferred.then(function(saveSucessful) {
+			if (saveSucessful) {
+				thisCard.removeClass('flight-data-dirty');
+				thisCardHeader.find('.flight-result-input').addClass('flight-result-input-disabled')
+				thisCardHeader.siblings().find('.landing-result-input').addClass('landing-result-input-disabled');
+				thisCardHeader.siblings().find('.delete-landing-button, .add-landing-button').addClass('hidden');
+				thisCardHeader.find('.delete-flight-button, .delete-landing-button').addClass('hidden');
+				thisCardHeader.find('.edit-button').removeClass('white-haloed');
+			}
+		})
 	}
 }
 
@@ -656,25 +939,140 @@ function deleteFlight(flightCard) {
 		const flightID = flightCard.attr('id').replace('flight-card-', '');
 
 		// Delete the flight from the DB
-		$.ajax({
-	        url: 'geojson_io.php',
-	        method: 'POST',
-	        data: {action: 'landingsAdminQuery', dbname: 'scenic_landings', queryString: `DELETE FROM flights WHERE id=${flightID};`},
-	        cache: false,
-	        success: function(queryResultString){
-	        	let resultString = queryResultString.trim();
-	        	if (resultString.startsWith('ERROR') || resultString === "false") {
-	        		alert('Unabled to delete the track from the database because ' + 
-	        			resultString.replace('["query returned an empty result"]', '')
-	        				.replace('ERROR:  ', '')
-        			);
-	        	}
+		if (!flightCard.hasClass('provisional')) {
+			$.ajax({
+		        url: 'geojson_io.php',
+		        method: 'POST',
+		        data: {action: 'landingsAdminQuery', dbname: 'scenic_landings', queryString: `DELETE FROM flights WHERE id=${flightID};`},
+		        cache: false,
+		        success: function(queryResultString){
+		        	let resultString = queryResultString.trim();
+		        	if (resultString.startsWith('ERROR') || resultString === "false") {
+		        		alert('Unabled to delete the track from the database because ' + 
+		        			resultString.replace('["query returned an empty result"]', '')
+		        				.replace('ERROR:  ', '')
+	        			);
+		        	}
 
-	        	hideLoadingIndicator();
-	        }
-	    })
-
+		        	hideLoadingIndicator();
+		        }
+		    })
+		}
+		// Recalculate the sum of all fees
+		recalcTotalFee($('.card-header').first());
     });
+}
+
+
+function onDeleteLandingClick() {
+	let thisRow = $(this).closest('tr');
+	let thisCardHeader = thisRow.closest('.card').find('.card-header')
+	thisRow.hide(400, function() { 
+		if (thisRow.hasClass('provisional')) {
+			thisRow.remove();
+		} else {
+			thisRow.addClass('to-delete');
+			$(this).closest('.card').addClass('flight-data-dirty');
+		}
+		recalcTotalFee(thisCardHeader);
+	})
+}
+
+
+function onAddNewFlightClick() {
+
+	// Check if there's a new flight that has not yet been saved
+	if ($('.card.provisional').length) {
+		alert('You already added a new flight that you have not yet saved. You have to save or delete this one before adding another one.')
+		return;
+	}
+
+	// Ask the user to save or discard edits if there are any
+	confirmCurrentEdits()
+
+	let newFlight = cloneableFlight
+		.clone(deepWithDataAndEvents=true)
+		.appendTo('#result-table .accordion')
+		.removeClass('cloneable')
+		.addClass('provisional')
+		.addClass('flight-data-dirty')
+		.hide()
+		.slideToggle('fast', function() {$(this).find('.edit-button').click()} )
+
+	newFlight.find('.flight-result-input')
+		.each(function() {
+			$(this).val('');
+		})
+	newFlight.find('.card-header > a')
+		.attr('href', '#cardContent-cloned')
+	newFlight.find('.collapse')
+		.attr('id', 'cardContent-cloned')
+		.attr('aria-labeledby', 'cardHeader-cloned')
+	newFlight.find('.delete-flight-button')
+		.attr('id', 'delete-cloned')
+	newFlight.find('.edit-button')
+		.attr('id', 'edit-cloned')
+
+}
+
+
+function addNewLanding(cardElement) {
+
+	let tbody = cardElement.find('.landings-table > tbody');
+
+	if (tbody.find('.provisional').length) {
+		if (confirm(`You haven't saved the last landing you added. To replace it with a new landing, click "OK".`  +
+			'Otherwise, press "Cancel" and then save your changes.')) {
+			tbody.find('.provisional').remove();
+		} else {
+			return;
+		}
+	}
+
+	let newRow = cloneableLanding
+		.clone(deepWithDataAndEvents=true)
+		.appendTo(tbody)
+
+	//recalcTotalFee(cardElement.find('.card-header'));
+
+	cardElement.addClass('flight-data-dirty');
+}
+
+
+function recalcTotalFee(cardHeader) {
+	/* 
+	helper function to recalculate the fee for this flight when user changes 
+	an influencing input (i.e., landing_passengers or landing_type)
+	*/
+	let feePerPax = cardHeader.find('.cell-fee_passenger > .flight-result-input')//can't use $(this) since 'this' might be n_passengers cell
+		.val().replace('$', '')
+	let flightTotalInput = cardHeader.find('.cell-total_fee > .flight-result-input')
+	let paxCount = 0;
+	cardHeader.siblings()//the card body with the table is the only sibling
+		.find('.landing-table-row').each(function() {
+			if (!$(this).hasClass('to-delete')) { //skip rows the user provisionally deleted
+				$(this).find('.cell-landing_passengers.landing-type-scenic > .landing-result-input, .cell-landing_passengers.landing-type-dropoff > .landing-result-input')
+					.each(function() {
+						paxCount += stringToNumber($(this).val())
+					})
+			}
+		})
+	if (isNaN(feePerPax) || isNaN(paxCount)) {
+		return;
+	}
+	let newTotal = (feePerPax * paxCount).toFixed(2);
+	flightTotalInput.val('$' + newTotal);
+
+	// Recalc the sum of all fees
+	let totalFee = 0;
+	cardHeader.closest('.accordion').find('.card-header .cell-total_fee > .flight-result-input').each(
+		function() {
+			//if ($(this).parent().hasClass('sum-row-cell')) return;
+			totalFee += parseFloat($(this).val().replace('$', ''));
+		}
+	)
+	$('#result-footer-row').find('.cell-total_fee').text('$' + totalFee.toFixed(2));
+
 }
 
 
@@ -683,12 +1081,20 @@ async function showQueryResult(selectedAnchor=false) {
 	$('#result-header-row').empty();
 	$('#place-holder').css('display', 'none');
 	$('#result-table-body').empty();
+	$('.result-table-footer').remove();
+	$('.add-flight-container').remove();
 
 	var landingColumnRow = '';
 	for (columnID in landingQueryResult.fields.landings) {
 		let fieldName = landingQueryResult.fields.landings[columnID] //column.replace(/[\W]+/g, '_');
 		landingColumnRow += `<th class="landing-table-column-header" id="column-${columnID}">${fieldName}</th> `
 	}
+	landingColumnRow += 
+	`<th class="landing-table-column-header cell-landing-button" id="column-landing-buttons">
+		<div class="add-landing-container">
+			<div class="add-landing-button slide-up-on-hover hidden"><span style="font-size: 35px; margin-top: -8px;">+</span> landing</div>
+		</div>
+	</th>`
 
 	let displayLandingTypes = {};
 	$(`input[type='checkbox']`).each(function() {
@@ -744,7 +1150,10 @@ async function showQueryResult(selectedAnchor=false) {
 				if (columnID === 'landing_location' || columnID === 'landing_type') {
 					inputHTML = 
 					`<select class="landing-result-input landing-result-input-disabled" id="landing-input-${landingID}-${columnID}" data-column-id="${columnID}" value="${thisLanding[columnID]}">
+						${columnID === 'landing_location' ? landingLocationOptions : landingTypeOptions}
 					</select>`
+				} else if (columnID === 'landing_passengers') {
+					inputHTML = `<input class="truncatable landing-result-input landing-result-input-disabled" type="number" id="landing-input-${landingID}-${columnID}" data-column-id="${columnID}" value="${thisLanding[columnID]}">`
 				} else {
 					inputHTML = `<input class="truncatable landing-result-input landing-result-input-disabled" type="text" id="landing-input-${landingID}-${columnID}" data-column-id="${columnID}" value="${thisLanding[columnID]}">`
 				}
@@ -757,12 +1166,18 @@ async function showQueryResult(selectedAnchor=false) {
 						<span class="truncatable" style="width: 100%">${thisLanding[column]}</span> 
 					</td>`*/
 			}
+			// Add delete button
+			thisRow += 
+				`<td class="landing-table-cell cell-landing-button landing-type-${landingType}">
+					<button class="delete-landing-button hidden slide-up-on-hover" id="delete-${id}"></button>
+				</td>`
+
 			let displayClass = displayLandingTypes[landingType] ? '' : 'hidden'
 			landingRows += `<tr class="landing-table-row ${displayClass}" data-landing-id=${landingID}>${thisRow}</tr>`;
 		}
 		//
-		$(`<div class="card" id="flight-card-${id}"> 
-				
+		$(`
+			<div class="card" id="flight-card-${id}"> 
 				<div class="card-header max-0 px-0" id="cardHeader-${id}" style="width:100%; position: relative;">
 					<div class="row result-table-row">
 						<div class="flight-cell-container">
@@ -780,22 +1195,32 @@ async function showQueryResult(selectedAnchor=false) {
 					</a>
 				</div>
 				<div class="collapse" id="cardContent-${id}" aria-labeledby="cardHeader-${id}" data-parent="result-table-body" style="width: 100%; padding-left: 5%;">
-					<table class="landings-table">
-						<thead>
-							<tr>${landingColumnRow}</tr>
-						</thead>
-						<tbody>
-							${landingRows}
-						</tbody>
-					</table>
+					<div class="landing-content-container">
+						<table class="landings-table">
+							<thead>
+								<tr>${landingColumnRow}</tr>
+							</thead>
+							<tbody>
+								${landingRows}
+							</tbody>
+						</table>
+					</div>
 				</div>
-			</div>`
-		).appendTo('#result-table-body')
+			</div>
+		`)
+		.appendTo('#result-table-body')
+		
+
 	}
 
-	// Add options to selects in landings tables
-	landingLocationOptions.appendTo($('.cell-landing_location > .landing-result-input'));
-	$(landingTypeOptions).appendTo($('.cell-landing_type > .landing-result-input'));
+	$('#result-header-row').parent().append(
+		`<div class="result-table-column-header add-flight-container">
+			<div class="add-flight-button slide-up-on-hover"><span>+</span> flight</div>
+		</div>
+		`
+	)
+	$('.add-flight-button').click(onAddNewFlightClick)
+
 
 	$('.card-header').click(function(e) {
 
@@ -805,7 +1230,14 @@ async function showQueryResult(selectedAnchor=false) {
 			$(this).find('a').click()
 			//$('.card-header > a').get(0).click()
 		}
-		
+	})
+
+	// Set value of landing selects because for some reason, setting the value in the HTML doesn't work
+	$('.landing-table-cell > select').each(function() {
+		let flightID = $(this).closest('.card').attr('id').replace('flight-card-', '');
+		let landingID = $(this).closest('tr').attr('data-landing-id');
+		let columnID = $(this).attr('data-column-id');
+		$(this).val(landingQueryResult.data[flightID].landings[landingID][columnID])
 	})
 
 	$('.edit-button').click(onEditButtonClick);
@@ -814,7 +1246,14 @@ async function showQueryResult(selectedAnchor=false) {
 		deleteFlight($(this).closest('.card'));
 	})
 
-	$('.flight-result-input')
+	$('.delete-landing-button').click(onDeleteLandingClick)
+
+	$('.add-landing-button').click(function() {
+		addNewLanding($(this).closest('.card'));
+	})
+
+	// On focus event for inputs
+	$('.flight-result-input, .landing-result-input')
 		.focus( function() {
 			// When a flight input 
 			let thisParent = $(this).closest('.card-header').parent();
@@ -825,6 +1264,8 @@ async function showQueryResult(selectedAnchor=false) {
 			// Show the modal expanded text if this textbox is truncated (and the modal is not already shown)
 			if ($(this).hasClass('truncated') && $('.modal-content').length === 0) {
 				showExpandedText($(this).parent().attr('id'));
+				const thisVal = $('.modal-expanded-text').val();
+				$('.modal-expanded-text').val(thisVal);
 			}
 
 			// If there's already a modal content div being shown, give the focus to it. This only happens 
@@ -833,37 +1274,44 @@ async function showQueryResult(selectedAnchor=false) {
 				$('.modal-expanded-text').focus();
 			}
 		})
+
+	// When an input value is changed
 	$('.flight-result-input, .landing-result-input')
 		.change( function() {
-			let thisCardHeader = $(this).closest('.card').find('.card-header');
+			let thisCard = $(this).closest('.card');
+			let thisCardHeader = thisCard.find('.card-header');
 			let thisFlightID = thisCardHeader.attr('id').replace('cardHeader-', '')
 			if (!editedFlights.includes(thisFlightID)) {
 				editedFlights.push(thisFlightID);
 			}
 			// add class to indicate that this flight is in a dirty state
-			thisCardHeader.addClass('flight-data-dirty')
+			thisCard.addClass('flight-data-dirty')
 			
 			// Add the expandText button for any textboxes that are truncated
 			thisCardHeader.closest('.card').find('.truncatable:truncated').each(function(){
 				addExpandTruncatedButton($(this).parent(), $(this));
 			})
 
-			// If this is the fee/pax field, update the total fee
+			// If this is the landing_type field, change the landing-type class
 			let parentCell = $(this).parent();
-			if (parentCell.hasClass('cell-fee_passenger') || parentCell.hasClass('cell-landing_passengers')) {
-				let totalInput = thisCardHeader.find('.cell-total_fee > .flight-result-input')
-				let paxCount = 0;
-				thisCardHeader.siblings()//the card body with the table is the only sibling
-					.find('.cell-landing_passengers.landing-type-scenic > .landing-result-input, .cell-landing_passengers.landing-type-dropoff > .landing-result-input')
-					.each(function() {paxCount += stringToNumber($(this).val())})
-				let newTotal = (thisCardHeader.find('.cell-fee_passenger > .flight-result-input')//can't use $(this) since 'this' might be n_passengers cell
-					.val().replace('$', '') * paxCount).toFixed(2);
-				totalInput.val('$' + newTotal);
+			if (parentCell.hasClass('cell-landing_type')) {
+				let siblingCells = $(this).closest('tr').find('.landing-table-cell')
+				siblingCells
+					.removeClass('landing-type-scenic')
+					.removeClass('landing-type-dropoff')
+					.removeClass('landing-type-pickup');
+				const landingType = $(this).val();
+				siblingCells.addClass('landing-type-' + landingType)
+			}
+
+			// If this is the fee/pax field or the landing type, update the total fee
+			if (parentCell.hasClass('cell-fee_passenger') || parentCell.hasClass('cell-landing_passengers') || parentCell.hasClass('cell-landing_type')) {
+				recalcTotalFee(thisCardHeader);
 			}
 		})
 
 	// Expand on double-click (and show help tip to indicate this)
-	$('td').dblclick(function() {
+	/*$('td').dblclick(function() {
 		$(this).css('white-space',
 			$(this).css('white-space') === 'nowrap' ? 'normal' : 'nowrap')
 	})
@@ -873,7 +1321,7 @@ async function showQueryResult(selectedAnchor=false) {
 		} else {
 			$(this).attr('title', '')
 		}
-	});
+	});*/
 
 	var sumRow = '';
 	for (columnID in sums) {
@@ -889,23 +1337,38 @@ async function showQueryResult(selectedAnchor=false) {
 
 	$(`
 		<div class="row result-table-header result-table-footer" id="sum-row">
-			<div class="result-header-cell-container" id="result-footer-row">
+			<div class="result-header-cell-container sum-row-cell" id="result-footer-row">
 				${sumRow}
 			</div>
 		</div>
-	`).appendTo('#result-table-body')	
+	`).appendTo('#flight-result-container')	
 
 	// Set the width for each cell to be the same as it's column
 	resizeColumns();
 
+	// Make a cloneable (hidden) flight and a cloneable landing for each card
+	cloneableLanding = 
+		$('.card').find('.landing-table-row')
+			.last()
+			.clone(deepWithDataAndEvents=true)
+			.attr('data-landing-id', '')
+			.addClass('provisional');
+	cloneableLanding.find('.landing-result-input-disabled').removeClass('landing-result-input-disabled');
+	cloneableLanding.find('.delete-landing-button').removeClass('hidden');
+	cloneableLanding.find('.landing-table-cell > .landing-result-input').each(function() {$(this).val(null)});
+	cloneableFlight = 
+		$('#result-table').find('.card')
+			.last()
+			.clone(deepWithDataAndEvents=true)
+			.attr('id', 'flight-card-cloned')
+			.addClass('cloneable');
+	cloneableFlight.find('.card-header').attr('id', 'cardHeader-cloned');
+	cloneableFlight.find('.landings-table > tbody')
+		.empty()
+		.append(cloneableLanding)
+
 	// Show the export button
 	$('#export-button-container').css('display', 'flex');
-
-	/*if (selectedAnchor !== false) {
-		//$(`${selectedCardID} > a`).get(0).click()
-		selectedAnchor.get(0).click()
-
-	}*/
 }	
 
 
@@ -972,7 +1435,7 @@ function onExportDataClick() {
 	// If there are unsaved edits, ask if the user wants to save them
 	if ($('.flight-data-dirty').length) {
 		if (confirm(`You have unsaved edits. Click 'OK' to save them or 'Cancel' to discard them`)) {
-			saveEdits($('.flight-data-dirty').attr('id').replace('cardHeader-', ''))
+			saveEdits($('.flight-data-dirty').attr('id').replace('flight-card-', ''))
 		} 
 	}
 

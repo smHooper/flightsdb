@@ -20,7 +20,7 @@ body {
 .query-form-row {
 	width: 100%;
 	justify-content: space-between;
-	padding-bottom: 50px;
+	padding-bottom: 30px;
 	align-content: center;
 }
 .query-input-container {
@@ -103,6 +103,11 @@ input[type="submit"]:focus, button:focus {
 
 #result-table {
 	background-color: #a5aeb080;/*rgba(255, 255, 255, 0.5)*/
+	width: 100%; 
+	display: flex; 
+	overflow-x: hidden; 
+	margin-top: 30px; 
+	flex-wrap: wrap;
 }
 
 
@@ -124,10 +129,26 @@ input[type="submit"]:focus, button:focus {
 	background: url(../imgs/delete_flight_icon_100px.svg) no-repeat;
 }
 
+.cell-landing-button {
+	width: 100px;
+}
+
+.delete-landing-button {
+	height: 100%;
+    width: 25px;
+    margin-top: 17px;
+	position: relative;
+	z-index: 99;
+	border: none;
+	cursor: pointer;
+}
+
 .white-haloed {
 	-webkit-filter: drop-shadow(0px 0px 10px rgb(255, 255, 255));
 	filter: drop-shadow(0px 0px 10px rgb(255, 255, 255));
 }
+
+
 
 .result-table-cell, .result-table-column-header {
 	text-align: center;
@@ -156,6 +177,15 @@ input[type="submit"]:focus, button:focus {
 	padding: 0px 5px 0px 5px;
 	background-color: rgba(255, 255, 255, 0);
 	border: none;
+
+}
+
+.flight-result-input:-webkit-autofill,
+.flight-result-input:-webkit-autofill:hover, 
+.flight-result-input:-webkit-autofill:focus {
+	border: none;
+	-webkit-text-fill-color: white;
+  	-webkit-transition-delay: 99999s; /*apparently the only way to keep background color from being overridden*/
 }
 
 /* remove Bootstrap border when focused */
@@ -261,6 +291,8 @@ span.truncatable {
 	height: 60px;
 	width: 100%;
 	padding-right: 0px;
+	display: flex;
+	justify-content: space-between;
 }
 
 .result-header-cell-container {
@@ -299,12 +331,16 @@ span.truncatable {
 
 }
 
-.landings-table {
+.landing-content-container {
 	width: 97%; 
 	float: right; 
 	margin-right: 2.5%; 
-	margin-top: 10px; 
-	margin-bottom: 30px;"
+	margin-top: 15px; 
+	margin-bottom: 20px;
+}
+
+.landing-table {
+	width: 100%;
 }
 
 .landing-table-column-header {
@@ -316,7 +352,43 @@ span.truncatable {
 	position: relative;
 }
 
-.hidden {
+.add-flight-container {
+	width: 100px;
+	display: flex;
+	justify-content: flex-end;
+}
+
+.add-landing-container {
+	width: 100%;
+	display: flex;
+	justify-content: flex-end;
+}
+
+.add-landing-button, .add-flight-button {
+	color: hsl(195, 84%, 45%);
+	margin-right: 15px;
+	cursor: pointer;
+	display: flex;
+    align-items: center;
+}
+
+.add-flight-button {
+	font-weight: 500;
+	font-size: 18px;
+}
+
+.add-flight-button > span {
+	font-weight: 700;
+	font-size: 35px; 
+	margin-top: -8px;
+}
+
+.add-landing-button {
+	font-weight: 700;
+	font-size: 16px;
+}
+
+.hidden, .cloneable {
 	display: none;
 }
 
@@ -552,9 +624,9 @@ th {
 .modal-button-container {
 	display: flex;
 	justify-content: flex-end;
-	align-items: center;
+	align-items: flex-start;
 	width: 100%; 
-	height: 50px;
+	height: 40px;
 }
 
 .close-modal-text-button, .save-modal-text-button {
@@ -562,8 +634,12 @@ th {
 	font-size: 30px;
 	font-weight: bold;
 	margin-right: 10px;
-	-webkit-transition: all 0.3s ease;
-			transition: all 0.3s ease;
+	/*-webkit-transition: all 0.3s ease;
+			transition: all 0.3s ease;*/
+}
+
+.close-modal-text-button {
+	margin-top: -12px;
 }
 
 .save-modal-text-button-container {
@@ -579,7 +655,7 @@ th {
 }
 
 .close-modal-text-button:hover, .close-modal-text-button:focus, .save-modal-text-button:hover, .save-modal-text-button:focus {
-	transform: translate(0px, -5px);
+	/*transform: translate(0px, -5px);*/
 	text-decoration: none;
 	cursor: pointer;
 }
