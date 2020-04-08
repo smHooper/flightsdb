@@ -5,7 +5,7 @@
 include '../config/track-editor-config.php';
 
 
-function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr) {
+function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr, $parameters=array()) {
 	/*return result of a postgres query as an array*/
 
 	$conn = pg_connect("hostaddr=$ipAddress port=$port dbname=$dbName user=$username password=$password");
@@ -13,13 +13,23 @@ function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr) {
 		return false;
 	}
 
-	$result = pg_query($conn, $queryStr);
+	$result = pg_query_params($conn, $queryStr, $parameters);
 	if (!$result) {
 	  	echo pg_last_error();
 	}
 
 	$resultArray = pg_fetch_all($result) ? pg_fetch_all($result) : array("query returned an empty result");
 	return $resultArray;
+}
+
+
+function runQueryWithinTransaction($conn, $queryStr, $parameters=array()) {
+
+	$result = pg_query_params($conn, $queryStr, $parameters);
+	if (!$result) {
+	  	return pg_last_error();
+	}
+
 }
 
 
@@ -106,6 +116,61 @@ if (isset($_POST['action'])) {
 		if (isset($_POST['queryString'])) {
 			$result = runQuery($dbhost, $dbport, $_POST['dbname'], $readonly_username, $readonly_password, $_POST['queryString']);
 			echo json_encode($result);
+		} else {
+			echo "php query failed";//false;
+		}
+	}
+
+	if ($_POST['action'] == 'landingsAdminQuery') {
+
+		if (isset($_POST['queryString'])) {
+			$result = runQuery($dbhost, $dbport, $_POST['dbname'], $landings_admin_username, $landings_admin_password, $_POST['queryString']);
+			echo json_encode($result);
+		} else {
+			echo "php query failed";//false;
+		}
+	}
+
+	if ($_POST['action'] == 'landingsParamQuery') {
+
+		if (isset($_POST['queryString']) && isset($_POST['params'])) {
+			// If there are multiple SQL statements, execute as a single transaction
+			if (gettype($_POST['queryString']) == 'array') {
+				$resultArray = array();
+				$dbname = $_POST['dbname'];
+				$conn = pg_connect("hostaddr=$dbhost port=$dbport dbname=$dbname user=$landings_admin_username password=$landings_admin_password");
+				if (!$conn) {
+					echo "Could not connect DB";
+					exit();
+				}
+
+				// Begin transations
+				pg_query($conn, 'BEGIN');
+
+				for ($i = 0; $i < count($_POST['params']); $i++) {
+					$params = $_POST['params'][$i];
+					for ($j = 0; $j < count($params); $j++) {
+						if ($params[$j] === '') {
+							$params[$j] = null;
+						}
+					}
+					$result = runQueryWithinTransaction($conn, $_POST['queryString'][$i], $params);
+					if (strpos($result, 'ERROR') !== false) {
+						// roll back the previous queries
+						pg_query($conn, 'ROLLBACK');
+						echo $result, " from the query $i ", $_POST['queryString'][$i], ' with params ', json_encode($params);
+						exit();
+					}
+				}
+
+				// COMMIT the transaction
+				pg_query($conn, 'COMMIT');
+				echo "success";
+
+			} else {
+				$result = runQuery($dbhost, $dbport, $_POST['dbname'], $landings_admin_username, $landings_admin_password, $_POST['queryString'], $_POST['params']);
+				echo json_encode($result), ";";	
+			}
 		} else {
 			echo "php query failed";//false;
 		}
