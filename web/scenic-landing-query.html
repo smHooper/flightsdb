@@ -26,68 +26,89 @@
 	<div id="loading-indicator-background" style="display: none;"></div>
 	<div id="loading-indicator" style="display: none;"></div>
 
-	<!---<div id="background" style="margin: 0; width: 100%; height: 100%; ">
-		<img src="imgs/scenic_landings_bg.jpg" style="margin-bottom: 0; margin-left: 0; margin-right: 0;"></img>
-	</div>-->
 	<div style="display: flex; justify-content: center; width: 100%; ">
-		<div id="main-container" style="padding-top: 50px; display: flex; flex-wrap: wrap; min-width: 1200px; max-width: 80%; height: 100%;">
-			<form class="row mx-0 px-0" style="width: 100%; display: flex; flex-direction: column; flex: space-between;">
-				<div class="row query-form-row">
-					<div class="query-input-container">
-						<label class="query-input-label">Start date</label>
-						<input class="query-input" type="date" id="input-start_date">
-					</div>
+		<div id="main-container" style="padding-top: 10px; display: flex; flex-wrap: wrap; min-width: 1200px; max-width: 80%; height: 100%;">
+			<div id="header-menu">
+				<div id="header-menu-content-container">
+					<div class="header-menu-item" id="username-container">
+						<img id="username-icon" src="imgs/user_icon_50px.svg">
+						<span id="username"></span>
+					</div> 
+				</div> 
+			</div>
 
-					<div class="query-input-container">
-						<label class="query-input-label">End date</label>
-						<input class="query-input" type="date" id="input-end_date" value="2019-01-01">
-					</div>
-					
-					<div class="query-input-container">
-						<label class="query-input-label">Flight operator</label>
-						<select class="query-input" id="select-operator">
-							<option value="">Select an operator</option>
-						</select>
-					</div>
+			<div id="search-by-slider-container">
+				<label class="switch mx-10">
+					<input type="checkbox">
+					<span class="slider round"></span>
+				</label>
+				<span style="margin-left: 15px">Search by ticket only</span>
+			</div>
 
-				</div>
-
-				<div class="row query-form-row" style="align-items: center;">
-					<!-- checkboxes 
-					<div class="row" style="width: 100%">
-						<label class="query-input-label">Landing types</label>
-					</div>-->
-					<div class="query-input-container">
-						<label class="query-input-label">Landing types</label>
-						<div style="display: flex; align-items: center; justify-content: space-between; background-color: hsl(218, 15%, 95%); height: 50px; padding-left: 10px; padding-right: 10px;">
-							<label class="checkmark-container">scenic
-								<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-scenic">
-								<span class="checkmark"></span>
-							</label>
-							<label class="checkmark-container">dropoff
-								<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-dropoff">
-								<span class="checkmark"></span>
-							</label>
-							<label class="checkmark-container">pickup
-								<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-pickup">
-								<span class="checkmark"></span>
-							</label>
-						</div>
-					</div>
-
-
+			<form class="row mx-0 px-0" style="width: 100%;">
+				
+				<div class="row mx-0 px-0 form-input-container hidden" id="ticket-search-container">
 					<div class="query-input-container">
 						<label class="query-input-label">Ticket numbers</label>
-						<select class="query-input select2-tag" multiple="multiple" id="select-tickets"></select>
+						<select class="query-input select2-tag" multiple="multiple" id="select-tickets-only"></select>
 					</div>
-
-					<div class="query-input-container">
-						<label class="query-input-label">Landing locations</label>
-						<select class="query-input select2-tag" multiple="multiple" id="select-locations"></select>
-					</div>
-
 				</div>
-				
+
+				<div class="row mx-0 px-0 form-input-container" id="datetime-search-container">
+					<div class="row query-form-row">
+						<div class="query-input-container">
+							<label class="query-input-label">Start date</label>
+							<input class="query-input" type="date" id="input-start_date">
+						</div>
+
+						<div class="query-input-container">
+							<label class="query-input-label">End date</label>
+							<input class="query-input" type="date" id="input-end_date" value="2019-01-01">
+						</div>
+						
+						<div class="query-input-container">
+							<label class="query-input-label">Flight operator</label>
+							<select class="query-input" id="select-operator">
+								<option value="">Select an operator</option>
+							</select>
+						</div>
+
+					</div>
+
+					<div class="row query-form-row" style="align-items: center;">
+						<!-- checkboxes -->
+						<div class="query-input-container">
+							<label class="query-input-label">Landing types</label>
+							<div style="display: flex; align-items: center; justify-content: space-between; background-color: hsl(218, 15%, 95%); height: 50px; padding-left: 10px; padding-right: 10px;">
+								<label class="checkmark-container">scenic
+									<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-scenic">
+									<span class="checkmark"></span>
+								</label>
+								<label class="checkmark-container">dropoff
+									<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-dropoff">
+									<span class="checkmark"></span>
+								</label>
+								<label class="checkmark-container">pickup
+									<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-pickup">
+									<span class="checkmark"></span>
+								</label>
+							</div>
+						</div>
+
+
+						<div class="query-input-container">
+							<label class="query-input-label">Ticket numbers</label>
+							<select class="query-input select2-no-tag" multiple="multiple" id="select-tickets"></select>
+						</div>
+
+						<div class="query-input-container">
+							<label class="query-input-label">Landing locations</label>
+							<select class="query-input select2-no-tag" multiple="multiple" id="select-locations"></select>
+						</div>
+
+					</div>
+				</div> <!-- <datetime-search>-->
+
 				<!--submit button-->
 				<div class="row query-form-row" style="align-items: center;">
 					<div class="query-input-container" style="padding-right: 0; width: 100%;  display: flex; justify-content: center;">
@@ -135,7 +156,23 @@
 			showLoadingIndicator();
 			$.when(
 				fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators ORDER BY sort_order;", 'scenic_landings'),
-				fillSelectOptions('select-locations', "SELECT name, code AS value FROM landing_locations ORDER BY name;", 'scenic_landings')
+				fillSelectOptions('select-locations', "SELECT name, code AS value FROM landing_locations ORDER BY name;", 'scenic_landings'),
+				$.ajax({
+					url: 'geojson_io.php',
+					method: 'POST',
+					data: {action: 'getUser'},
+					cache: false,
+					success: function(usernameString){
+						// If authentication failed, do nothing
+						if (usernameString)  {
+							username = usernameString.trim();
+							$('#username').text(username);
+						} else {
+							$('#username-icon').addClass('hidden')
+							alert(`Your username could not be retreived so you won't be able to make any edits`)
+						}
+					}
+				})
 			).then(function() {
 				hideLoadingIndicator();
 				landingLocationOptions = $('#select-locations').html();
@@ -149,6 +186,10 @@
 			$('#export-file-button').click(onExportDataClick);
 			$('.input-checkbox').click(onCheckboxClick);
 			$(".select2-tag").select2({
+				tokenSeparators: [',', ' '],
+				tags: true
+			})
+			$(".select2-no-tag").select2({
 				tokenSeparators: [',', ' ']
 			})
 			$('#input-start_date, #input-end_date, #select-operator')
@@ -175,8 +216,15 @@
 		        }
 		    });
 
-		    
-
+		    $(`#search-by-slider-container input[type='checkbox']`).change(function() {
+		    	if (this.checked) {
+		    		$('#ticket-search-container').removeClass('hidden');
+		    		$('#datetime-search-container').addClass('hidden');
+		    	} else {
+		    		$('#ticket-search-container').addClass('hidden');
+		    		$('#datetime-search-container').removeClass('hidden');
+		    	}
+		    })
 		})
 
 	</script>

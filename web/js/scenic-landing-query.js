@@ -22,6 +22,11 @@ const landingColumns = [
 	"justification"
 ];
 
+const editors = [
+	'shooper',
+	'amaki'
+];
+
 var landingQueryResult = {}; //global var to store result for writing CSV  
 var currentControlVal; // used in .change() events to decide whether function should be fired
 var editedFlights = []; // global var to keep track of data that have been edited (stores flight IDs)
@@ -29,7 +34,7 @@ var landingTypeOptions = ''; // Store results of query
 var landingLocationOptions = [];
 var cloneableLanding;
 var cloneableFlight;
-var username;
+var username = '';
 
 /* Extentions */
 Date.prototype.addDays = function(days) {
@@ -176,14 +181,22 @@ function getSanitizedFieldName(fieldName) {
 
 
 function queryFlights() {
-
+	const searchByTicket = $(`#search-by-slider-container input[type='checkbox']`).get(0).checked
+	const ticketNumbers = searchByTicket ? $('#select-tickets-only').val().join(',') : $('#select-tickets').val().join(',');
 	const operator_code = $('#select-operator').val();
-	if (!operator_code.length) {
-		alert('You must select on operator first before running a query');
-		return;
+	if (searchByTicket) {
+		if (!ticketNumbers.length) {
+			alert('You must enter at least one ticket number before running a query');
+			return;
+		}
+	} else {
+		if (!operator_code.length) {
+			alert('You must select on operator first before running a query');
+			return;
+		}
 	}
 
-	const ticketNumbers = $('#select-tickets').val().join(',');
+	
 	const ticketSearchClause = (ticketNumbers.length) ? ` AND ticket IN (${ticketNumbers})` : '';
 
 	const locations = $('#select-locations').val().join(`', '`);
@@ -191,7 +204,18 @@ function queryFlights() {
 
 	const start_date = $('#input-start_date').val();
 	const end_date = $('#input-end_date').val();
-	
+	let conditions; 
+	if (searchByTicket) {
+		conditions = ` ticket IN (${ticketNumbers}) `
+	} else {
+		conditions = `
+			flights.departure_datetime::date BETWEEN '${start_date}' AND '${end_date}' AND 
+			flights.operator_code = '${operator_code}'
+			${ticketSearchClause}
+			${locationSearchClause}
+		`;
+	}
+
 	const sql = `
 		SELECT 
 			flights.id, 
@@ -204,8 +228,8 @@ function queryFlights() {
 			to_char(flights.departure_datetime, 'HH24:MI:SS') AS "departure time", 
 			coalesce(flights.scenic_route, '') AS "scenic route",
 			coalesce(flights.notes, '') AS "flight notes", 
-			concession_fees_view.n_fee_passengers AS "fee_passengers", 
-			concession_fees_view.fee AS "total fee", 
+			coalesce(fees.n_fee_passengers, 0) AS "fee_passengers", 
+			coalesce(fees.fee, 0) AS "total fee", 
 			landings.location AS "landing location",
 			landings.id AS landing_id,  
 			landings.n_passengers AS "landing passengers", 
@@ -214,17 +238,13 @@ function queryFlights() {
 			coalesce(landings.justification, '') AS justification  
 		FROM 
 			flights 
-		INNER JOIN 
-			concession_fees_view ON flights.id = concession_fees_view.flight_id 
-		INNER JOIN 
+		LEFT JOIN 
+			concession_fees_all_flights_view fees ON flights.id = fees.flight_id 
+		LEFT JOIN 
 			landings ON flights.id = landings.flight_id 
-		INNER JOIN 
+		LEFT JOIN 
 			landing_locations ON landings.location = landing_locations.code 
-		WHERE 
-			flights.departure_datetime::date BETWEEN '${start_date}' AND '${end_date}' AND 
-			flights.operator_code = '${operator_code}'
-			${ticketSearchClause}
-			${locationSearchClause}
+		WHERE ${conditions}
 		ORDER BY
 			flights.departure_datetime,
 			landings.id
@@ -581,7 +601,7 @@ function isFlightIDStringDuplicated(flightIDString) {
             		'is already a flight with this departure date/time and registraton number. ' + 
             		'Please check to make sure you have entered these correctly.')
             	return true;
-            } else if (!queryResultString.startsWith('ERROR')) {
+            } else if (queryResultString.startsWith('ERROR')) {
             	alert('An error occurred while validating the flight data: ' + queryResultString)
             	return true;
             } else {
@@ -592,11 +612,183 @@ function isFlightIDStringDuplicated(flightIDString) {
 }
 
 
-function insertFlight(flightID, departureDatetime, flightIDString) {
-	if (isFlightIDStringDuplicated(flightIDString)) return;
+function getFlightSQLParams(dbColumns, flightID, departureDatetime, flightIDString, statementType='update') {
+	// collect values from inputs and landings table
+	
+	let thisCardHeader = $(`#cardHeader-${flightID}`);
+	
+	var parametizedFields = [];
+	let sqlValues = []; //gets overwritten with each landing statement
+	let paramCount = 1;
+	thisCardHeader
+		.find('.flight-result-input')
+		.filter(function(){
+			return !(
+				$(this).hasClass('flight-result-input-disabled') ||
+				$(this).parent().hasClass('cell-departure_date') ||
+				$(this).parent().hasClass('cell-departure_time') ||
+				$(this).parent().hasClass('cell-ticket')
+				);
+		})
+		.each(function() {
+			let columnID = $(this).attr('data-column-id');
+			let newVal = $(this).val();
+			
+			// Update in-memory query result
+			landingQueryResult.data[flightID][columnID] = newVal;
+			
+			// Add set clause to update DB
+			let cleanedNewVal = newVal.replace('$', '')
+			let thisSQLVal = cleanedNewVal;//newVal.length ? cleanedNewVal : undefined;//undefined -> php null -> SQL NULL
+			let thisDBColumn = dbColumns.flights[columnID];
+			parametizedFields.push(`${thisDBColumn}=$${paramCount}`);
+			sqlValues.push(thisSQLVal);
+			paramCount ++;
+		});
+	
+	// Add departure_datetime and update flight ID
+	sqlValues.push(departureDatetime);
+	parametizedFields.push(`departure_datetime=$${paramCount}`);
+	sqlValues.push(flightIDString);
+	parametizedFields.push(`flight_id=$${paramCount + 1}`);
+
+	return [sqlValues, parametizedFields];
+}
+
+
+function insertFlight(dbColumns, flightID, departureDatetime, flightIDString) {
+
+	showLoadingIndicator();
 
 	let thisCard = $('.card.provisional') // should only be one with .provisional class
 
+	let ticket = thisCard.find('.cell-ticket > .flight-result-input').val();
+	let deferred = $.when(true);
+	if (isNaN(ticket)) {
+		let dt = new Date();
+		let datetimeString = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()} ${dt.getHours()}:${dt.getMinutes()}`
+		let submissionSQL = `INSERT INTO submissions (submitter, submission_time) VALUES ('${username}', '${datetimeString}') RETURNING ticket;`;
+		deferred = 
+			$.ajax({
+		 		url: 'geojson_io.php',
+		 		method: 'POST',
+		 		data: {action: 'landingsAdminQuery', dbname: 'scenic_landings', queryString: submissionSQL},
+		 		cache: false
+		    }).then( 
+		    	function(queryResultString){
+		        	let resultString = queryResultString.trim();
+		        	if (resultString.startsWith('ERROR') || resultString === "false") {
+		        		alert('Unable to add a new landing to the database. ' + resultString);
+		        		return false;
+		        	} else {
+		        		let result = $.parseJSON(resultString);
+		        		if (result.length) {
+		        			let ticket = result[0].ticket;
+		        			return true; // if there wasn't an error
+		        		}
+		        	}
+		        }
+		    )
+	}
+
+	let newFlightData = {};
+
+	return deferred.then(function(ticketExists) {
+		if (ticketExists) {
+			var sqlStatements = []; // array of SQL statement strings for parametizing
+			let sqlParameters = []; // array of arrays containing parameters for corresponding sqlStatements
+			
+			var fields = [];
+			let sqlValues = []; //gets overwritten with each landing statement
+			let paramCount = 1;
+			thisCard
+				.find('.flight-result-input')
+				.filter(function(){
+					return !(
+						$(this).hasClass('flight-result-input-disabled') ||
+						$(this).parent().hasClass('cell-departure_date') ||
+						$(this).parent().hasClass('cell-departure_time') ||
+						$(this).parent().hasClass('cell-ticket')
+						);
+				})
+				.each(function() {
+					let columnID = $(this).attr('data-column-id');
+					let newVal = $(this).val();
+					
+					// Add set clause to update DB
+					let thisSQLVal = newVal.replace('$', '')
+					newFlightData[columnID] = thisSQLVal;
+					let thisDBColumn = dbColumns.flights[columnID];
+					fields.push(thisDBColumn);
+					sqlValues.push(thisSQLVal);
+					paramCount ++;
+				});
+			
+			// Add departure_datetime and update flight ID
+			sqlValues.push(departureDatetime);
+			fields.push('departure_datetime');
+			sqlValues.push(flightIDString);
+			fields.push('flight_id');
+			
+			// Add ticket since it's normally disabled
+			sqlValues.push(ticket);
+			fields.push('ticket');
+			
+			let parametizedValues = [];
+			for (i = 1; i <= fields.length; i++) {
+				parametizedValues.push(`$${i}`);
+			}
+			sqlParameters.push(sqlValues);
+			sqlStatements.push(`INSERT INTO flights (${fields.join(', ')}) VALUES(${parametizedValues.join(', ')});`);
+
+			thisCard // the landing table is in the collapse
+				.find('.landing-table-row')
+				.each(function() {
+					// If this is an unsaved landing or one to delete, it's getting inserted/deleted already, so skip it
+					if ($(this).hasClass('to-delete')) {
+						return;
+					}
+					// Loop through each <td> element
+					let fields = [];
+					let sqlValues = [];
+					let parametizedValues = [];
+					let paramCount = 1;
+					$(this).find('.landing-result-input').each(function() {
+						let thisColumnID = $(this).attr('data-column-id');
+						let thisSQLVal = $(this).val();
+						
+						// Add set clause to update DB
+						let thisDBColumn = dbColumns.landings[thisColumnID];
+						fields.push(thisDBColumn);
+						sqlValues.push(thisSQLVal);
+						parametizedValues.push(`$${paramCount}`)
+						paramCount ++;
+					})
+					sqlStatements.push(`INSERT INTO landings (${fields.join(', ')}) VALUES(${parametizedValues.join(', ')});`);
+					sqlParameters.push(sqlValues);
+				})
+
+			return $.when(
+				$.ajax({
+			        url: 'geojson_io.php',
+			        method: 'POST',
+			        data: {action: 'landingsParamQuery', dbname: 'scenic_landings', queryString: sqlStatements, params: sqlParameters},
+			        cache: false
+		    	})
+		    ).then(
+		    	function(queryResultString){
+		        	let resultString = queryResultString.trim();
+		        	if (resultString.startsWith('ERROR') || resultString === "false") {
+		        		alert('Unabled to save changes to the database. ' + resultString);
+		        		return false; // Save was unsuccessful
+		        	} else {
+		        		return true; // Save was successful
+		        	}
+		        	hideLoadingIndicator();
+		        }
+		    )
+		}
+	})
 
 }
 
@@ -618,12 +810,14 @@ function updateFlight(dbColumns, flightID, departureDatetime, flightIDString) {
     	deleteLanding($(this), flightID);
     });
 
-
-	// collect values from inputs and landings table
-	var flightUpdates = [];
-	let sqlValues = []; //gets overwritten with each landing statement
 	var sqlStatements = []; // array of SQL statement strings for parametizing
 	let sqlParameters = []; // array of arrays containing parameters for corresponding sqlStatements
+	
+	// Get flight vals and parametized clauses (i.e. <field>=$1)
+	/*let flightSQLValues, flightParametizedFields;
+	[flightSQLValues, flightParametizedFields] = getFlightSQLParams(dbColumns, flightID, departureDatetime, flightIDString);*/
+	var flightParametizedFields = [];
+	let flightSQLValues = []; //gets overwritten with each landing statement
 	let paramCount = 1;
 	thisCardHeader
 		.find('.flight-result-input')
@@ -631,7 +825,8 @@ function updateFlight(dbColumns, flightID, departureDatetime, flightIDString) {
 			return !(
 				$(this).hasClass('flight-result-input-disabled') ||
 				$(this).parent().hasClass('cell-departure_date') ||
-				$(this).parent().hasClass('cell-departure_time')
+				$(this).parent().hasClass('cell-departure_time') ||
+				$(this).parent().hasClass('cell-ticket')
 				);
 		})
 		.each(function() {
@@ -645,20 +840,21 @@ function updateFlight(dbColumns, flightID, departureDatetime, flightIDString) {
 			let cleanedNewVal = newVal.replace('$', '')
 			let thisSQLVal = cleanedNewVal;//newVal.length ? cleanedNewVal : undefined;//undefined -> php null -> SQL NULL
 			let thisDBColumn = dbColumns.flights[columnID];
-			flightUpdates.push(`${thisDBColumn}=$${paramCount}`);
-			sqlValues.push(thisSQLVal);
+			flightParametizedFields.push(`${thisDBColumn}=$${paramCount}`);
+			flightSQLValues.push(thisSQLVal);
 			paramCount ++;
 		});
 	
 	// Add departure_datetime and update flight ID
-	sqlValues.push(departureDatetime);
-	flightUpdates.push(`departure_datetime=$${paramCount}`);
-	sqlValues.push(flightIDString);
-	flightUpdates.push(`flight_id=$${paramCount + 1}`);
-
-	sqlParameters.push(sqlValues);
-	sqlStatements.push(`UPDATE flights SET ${flightUpdates.join(', ')} WHERE id=${flightID};`);
+	flightSQLValues.push(departureDatetime);
+	flightParametizedFields.push(`departure_datetime=$${paramCount}`);
+	flightSQLValues.push(flightIDString);
+	flightParametizedFields.push(`flight_id=$${paramCount + 1}`);
 	
+	sqlParameters.push(flightSQLValues);
+	sqlStatements.push(`UPDATE flights SET ${flightParametizedFields.join(', ')} WHERE id=${flightID};`);
+	
+	let sqlValues = []; //gets overwritten with each landing statement
 	thisCardHeader.siblings() // the landing table is in the collapse
 		.find('.landing-table-row')
 		.each(function() {
@@ -759,11 +955,11 @@ function saveEdits(flightID) {
 	// If this is a newly added flight, first check if the departure datetime/registration 
 	//	combination already exist. If it does, don't INSERT intot the db
 	if (thisCard.hasClass('provisional')) {
-		$.when(
+		return $.when(
 			isFlightIDStringDuplicated(flightIDString)
 		).then(function(duplicated) {
 			if (!duplicated) {
-				return insertFlight(flightID, departureDatetime, flightIDString);
+				return insertFlight(_dbColumns, flightID, departureDatetime, flightIDString);
 			} else {
 				return false;
 			}
@@ -774,7 +970,7 @@ function saveEdits(flightID) {
 		//	this flight already exists according to those values. Update the flight only if it 
 		//	doesn't already exist
 		if (flightIDString !== landingQueryResult.data[flightID].flight_id) {
-			$.when(
+			return $.when(
 				isFlightIDStringDuplicated(flightIDString)
 			).then(function(duplicated) {
 				if (!duplicated) {
@@ -817,7 +1013,7 @@ function discardEdits(cardElement) {
 		} else {
 			thisValue = landingQueryResult.data[flightID][columnID];
 		}
-		$(this).val(columnID === 'fee_passenger' ? '$' + thisValue : thisValue);
+		$(this).val(columnID === 'fee_passenger' && !thisValue.startsWith('$') ? '$' + thisValue : thisValue);
 	})
 
 	removeExpandTruncatedButtons();
@@ -835,12 +1031,12 @@ function discardEdits(cardElement) {
 
 	cardElement.removeClass('flight-data-dirty');
 
-	return true;
+	return $.when(true);
 
 }
 
 
-function confirmCurrentEdits() {
+async function confirmCurrentEdits() {
 	
 	let enabledFlightInputs = $('#result-table').find('.flight-result-input').filter(function(){
 		return !$(this).hasClass('flight-result-input-disabled')
@@ -857,7 +1053,7 @@ function confirmCurrentEdits() {
 			if (response) {
 				deferred = saveEdits(previousCard.attr('id').replace('flight-card-', ''));
 			} else {
-				deferred = $.when(discardEdits(previousCard));
+				deferred = discardEdits(previousCard);
 			}
 			previousCard.removeClass('flight-data-dirty');
 		} else {
@@ -879,14 +1075,29 @@ function confirmCurrentEdits() {
 	}
 }
 
+
+function unfocusEditButton(saveSuccessful, thisCard, thisCardHeader) {
+	
+	if (saveSuccessful) {
+		thisCard.removeClass('flight-data-dirty');
+		thisCardHeader.find('.flight-result-input').addClass('flight-result-input-disabled')
+		thisCardHeader.siblings().find('.landing-result-input').addClass('landing-result-input-disabled');
+		thisCardHeader.siblings().find('.delete-landing-button, .add-landing-button').addClass('hidden');
+		thisCardHeader.find('.delete-flight-button, .delete-landing-button').addClass('hidden');
+		thisCardHeader.find('.edit-button').removeClass('white-haloed');
+	}
+}
+
+
 function onEditButtonClick() {
 	let thisCard = $(this).closest('.card')
 	let thisCardHeader = thisCard.find('.card-header');
+	let deferred;
 	// If there are any disabled inputs, they're all disabled and this row is not currently editable
 	if (thisCardHeader.find('.flight-result-input-disabled').length > 2) {
 		// Check to see if the user is currently editing another flight. Ask if they want to
 		//	abondon those edits or save them
-		$.when(confirmCurrentEdits())
+		return $.when(confirmCurrentEdits())
 		.then(function(saveSucessful) {
 			if (saveSucessful) {
 				// Add/remove appropriate classes to enable these inputs
@@ -904,27 +1115,24 @@ function onEditButtonClick() {
 		})
 	} else {
 		// The user is already editing this flight and wants to stop 
-		let deferred;
 		if (thisCard.hasClass('flight-data-dirty')) {
 			if (confirm(`You have unsaved edits. Click 'OK' to save them or 'Cancel' to discard them`)) {
-				deferred = saveEdits(thisCard.attr('id').replace('flight-card-', ''));
+				deferred = saveEdits(thisCard.attr('id').replace('flight-card-', ''))							
+				deferred.then((saveSucessful) => {
+								unfocusEditButton(saveSucessful, thisCard, thisCardHeader);
+							});
 			} else {
-				deferred = $.when(discardEdits($(this).closest('.card')));
+				deferred = $.when(discardEdits($(this).closest('.card')))
+							.then((saveSucessful) => {
+								unfocusEditButton(saveSucessful, thisCard, thisCardHeader);
+							})
 			}
 		} else {
-			deferred = $.when(function() {return true});
+			deferred = $.when(unfocusEditButton(true, thisCard, thisCardHeader));
 		}
-		deferred.then(function(saveSucessful) {
-			if (saveSucessful) {
-				thisCard.removeClass('flight-data-dirty');
-				thisCardHeader.find('.flight-result-input').addClass('flight-result-input-disabled')
-				thisCardHeader.siblings().find('.landing-result-input').addClass('landing-result-input-disabled');
-				thisCardHeader.siblings().find('.delete-landing-button, .add-landing-button').addClass('hidden');
-				thisCardHeader.find('.delete-flight-button, .delete-landing-button').addClass('hidden');
-				thisCardHeader.find('.edit-button').removeClass('white-haloed');
-			}
-		})
 	}
+
+	return deferred;
 }
 
 
@@ -988,30 +1196,42 @@ function onAddNewFlightClick() {
 	}
 
 	// Ask the user to save or discard edits if there are any
-	confirmCurrentEdits()
+	$.when(confirmCurrentEdits())
+	.then( function() {
+		let newFlight = cloneableFlight
+			.clone(deepWithDataAndEvents=true)
+			.appendTo('#result-table .accordion')
+			.removeClass('cloneable')
+			.hide()
+			.slideToggle('fast', function() {
+				$(this).find('.edit-button').triggerHandler('click')//.click()
+				// THis is pretty lame, but without delaying adding classes, confirmCurrentEdits gets tripped up
+				setTimeout(() => {
+					$(this).addClass('provisional').addClass('flight-data-dirty')
+					$(this).find('.cell-ticket > .flight-result-input')
+						.removeClass('flight-result-input-disabled') // This should be editable in case the user wants to add the flight to another ticket
+						.attr('type', 'number')
+				}, 500)
+			} )
 
-	let newFlight = cloneableFlight
-		.clone(deepWithDataAndEvents=true)
-		.appendTo('#result-table .accordion')
-		.removeClass('cloneable')
-		.addClass('provisional')
-		.addClass('flight-data-dirty')
-		.hide()
-		.slideToggle('fast', function() {$(this).find('.edit-button').click()} )
-
-	newFlight.find('.flight-result-input')
-		.each(function() {
-			$(this).val('');
-		})
-	newFlight.find('.card-header > a')
-		.attr('href', '#cardContent-cloned')
-	newFlight.find('.collapse')
-		.attr('id', 'cardContent-cloned')
-		.attr('aria-labeledby', 'cardHeader-cloned')
-	newFlight.find('.delete-flight-button')
-		.attr('id', 'delete-cloned')
-	newFlight.find('.edit-button')
-		.attr('id', 'edit-cloned')
+		newFlight.find('.flight-result-input')
+			.each(function() {
+				$(this).val('');
+			})
+		newFlight.find('.card-header > a')
+			.attr('href', '#cardContent-cloned')
+		newFlight.find('.collapse')
+			.attr('id', 'cardContent-cloned')
+			.attr('aria-labeledby', 'cardHeader-cloned')
+		newFlight.find('.delete-flight-button')
+			.attr('id', 'delete-cloned')
+		newFlight.find('.edit-button')
+			.attr('id', 'edit-cloned')
+		newFlight.find('.cell-ticket > .flight-result-input')
+			.removeClass('flight-result-input-disabled') // This should be editable in case the user wants to add the flight to another ticket
+			.attr('type', 'number')
+		
+	})
 
 }
 
@@ -1097,7 +1317,7 @@ async function showQueryResult(selectedAnchor=false) {
 	</th>`
 
 	let displayLandingTypes = {};
-	$(`input[type='checkbox']`).each(function() {
+	$(`.query-input-container input[type='checkbox']`).each(function() {
 		let landingType = $(this).attr('id').replace('checkmark-', '')
 		//// need to add function to change the checked vs not check prop
 		displayLandingTypes[landingType] = $(this).get(0).checked;
@@ -1133,7 +1353,7 @@ async function showQueryResult(selectedAnchor=false) {
 				`;
 
 			thisValue = !isNaN(parseFloat(thisValue)) && isFinite(thisValue) ? parseFloat(thisValue) : '';
-			sums[columnID] = sums[columnID] === undefined ? thisValue : sums[columnID] + thisValue;
+			sums[columnID] = sums[columnID] == undefined ? thisValue : sums[columnID] + thisValue;
 		}
 
 		let landingRows = '';
@@ -1241,6 +1461,10 @@ async function showQueryResult(selectedAnchor=false) {
 	})
 
 	$('.edit-button').click(onEditButtonClick);
+
+	if (!editors.includes(username)) {
+		$('.edit-button, .add-flight-button, .save-button').addClass('hidden')
+	}
 
 	$('.delete-flight-button').click(function() {
 		deleteFlight($(this).closest('.card'));
