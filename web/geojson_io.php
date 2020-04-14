@@ -148,6 +148,7 @@ if (isset($_POST['action'])) {
 				pg_query($conn, 'BEGIN');
 
 				for ($i = 0; $i < count($_POST['params']); $i++) {
+					// Make sure any blank strings are converted to nulls
 					$params = $_POST['params'][$i];
 					for ($j = 0; $j < count($params); $j++) {
 						if ($params[$j] === '') {
@@ -168,8 +169,15 @@ if (isset($_POST['action'])) {
 				echo "success";
 
 			} else {
-				$result = runQuery($dbhost, $dbport, $_POST['dbname'], $landings_admin_username, $landings_admin_password, $_POST['queryString'], $_POST['params']);
-				echo json_encode($result), ";";	
+				$params = $_POST['params'];
+				for ($j = 0; $j < count($params); $j++) {
+					if ($params[$j] === '') {
+						$params[$j] = null;
+					}
+				}
+				$result = runQuery($dbhost, $dbport, $_POST['dbname'], $landings_admin_username, $landings_admin_password, $_POST['queryString'], $params);
+				
+				echo json_encode($result);	
 			}
 		} else {
 			echo "php query failed";//false;
