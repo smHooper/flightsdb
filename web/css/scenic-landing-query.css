@@ -97,8 +97,8 @@ body {
 	bottom: 4px;
 	border-radius: 50%;
 	background-color: white;
-	-webkit-transition: .4s;
-	transition: .4s;
+	-webkit-transition: .25s;
+	transition: .25s;
 }
 
 input:checked + .slider {
@@ -221,12 +221,11 @@ input[type="submit"]:focus, button:focus {
 	width: 100%; 
 	display: flex; 
 	overflow-x: hidden; 
-	margin-top: 30px; 
 	flex-wrap: wrap;
 }
 
 
-.edit-button, .delete-flight-button {
+.edit-button, .delete-flight-button, #save-edits-button {
 	width: 50px;
 	height: 35px;
 	display: inline-block;
@@ -242,6 +241,20 @@ input[type="submit"]:focus, button:focus {
 
 .delete-flight-button, .delete-landing-button {
 	background: url(../imgs/delete_flight_icon_100px.svg) no-repeat;
+}
+
+#save-edits-button {
+	background: url(../imgs/save_edits_icon_50px.svg) no-repeat;
+	transition: .3s;
+}
+
+#save-edits-button-container {
+	width: 100%;
+	height: 35px;
+	margin-bottom: 10px;
+	margin-right: 10px;
+	display: flex;
+	justify-content: flex-end;
 }
 
 .cell-landing-button {
@@ -332,7 +345,7 @@ input[type="submit"]:focus, button:focus {
 
 .flight-result-input-disabled, .landing-result-input-disabled {
 	pointer-events: none;
-	background-color: rgba(0, 0, 0, 0);
+	background-color: rgba(0, 0, 0, 0) !important;
 	-webkit-appearance: none;
 }
 
