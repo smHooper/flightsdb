@@ -16,11 +16,16 @@
 }
 
 #loading-indicator-background {
-	position: absolute;
+	/*position: absolute;*/
 	z-index: 9998;
 	margin: 0;
-	height: 100%;
-	width: 100%;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+	/*height: 100%;
+	width: 100%;*/
 	background-color: white;
 	opacity: 0.4;
 }
