@@ -135,14 +135,16 @@ def query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=T
                     }
     if last_poll_time:
         query_params['layerDefs'] = json.dumps(
-            {str(layer_id): "CreationDate > TIMESTAMP '%s'" % last_poll_time for layer_id in layers})
+            {str(layer_id): "CreationDate > '%s'" % last_poll_time for layer_id in layers})
     else:
         # Return everything
         query_params['layerDefs'] = json.dumps(
             {str(layer_id): "CreationDate > TIMESTAMP '1970-1-1 00:00:00'" for layer_id in layers})
+
     query_response = requests.post('%s/query' % service_url, params=query_params, verify=ssl_cert)
     check_http_error('query number of records', query_response)
     query_json = query_response.json()
+
     if len(query_json) and 'layers' in query_json and return_counts:
         return sum([layer['count'] for layer in query_json['layers']])
     elif return_counts:
@@ -151,9 +153,64 @@ def query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=T
         return query_json
 
 
-def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=True, last_poll_time=None):
+def download_attachments(agol_ids, token, layer, layer_info, service_url, out_dir, ssl_cert=True, additional_info={}):
     '''
-    Download data from an AGOL feature service. If last_poll_time is given, only return records created after this time
+    Download attachments from the specified layer of feature layer
+    :param agol_ids: AGOL feature global IDs (not global IDs of attachments) to download attachments for
+    :param token: REST API token string from getToken()
+    :param layer: layer ID to look for attachments
+    :param layer_info: pd.DataFrame of layer info from get_service_info()['layers']
+    :param service_url: URL of feature service
+    :param out_dir: path to directory to save attachments to
+    :param ssl_cert: any valid value for requests.post() verify param (SSL .crt path or boolean)
+    :param additional_info: dictionary of additional info to save in the metadata for each attachment
+    :return: DataFrame of attachment info
+    '''
+    agol_id_str = ','.join(agol_ids).lower()
+    query_params = {'f': 'json',
+                    'token': token,
+                    'globalIds': agol_id_str,
+                    'returnUrl': True}
+    query_response = requests.post('{service_url}/{layer}/queryAttachments'.format(service_url=service_url, layer=layer),
+                                   params=query_params, verify=ssl_cert)
+    check_http_error('downloading attachments', query_response)
+    # Get attachment info as a dataframe. Note: g['attachmentInfos'][0] this assumes one attachment per feature
+    df = pd.DataFrame({g['parentGlobalId']: {k.lower(): v for k, v in g['attachmentInfos'][0].items()} for g in  query_response.json()['attachmentGroups']})\
+        .T\
+        .reset_index()\
+        .rename(columns={'index': 'parentglobalid'})
+
+    attachments_dir = os.path.join(out_dir, 'attachments')
+    # Create a separate dir for saving attachments (if it doesn't already exist).
+    if len(df) and not os.path.isdir(attachments_dir):
+        os.mkdir(attachments_dir)
+
+    for i, row in df.iterrows():
+        name, extension = os.path.splitext(row['name'])
+        attachment_path = os.path.join(attachments_dir, row['name'])
+        result_response = requests.get(row.url, params={'token': token}, verify=ssl_cert)
+        check_http_error('download attachment %s' % row.parentglobalid, result_response)
+        content = result_response.content
+        with open(attachment_path, 'wb') as attachment_pointer:
+            attachment_pointer.write(content)
+        df.loc[i, 'content'] = content
+        # write a JSON file with some metadata so the attachment can be related back to this DB file
+        row_dict = row.to_dict()
+        row_dict['parent_table_name'] = layer_info.loc[layer, 'name']
+        row_dict['REL_GLOBALID'] = row.parentglobalid # This is what's called in the createReplica result so just make it consistent
+        for k, v in additional_info.items():
+            row_dict[k] = v
+        json_path = attachment_path.rstrip(extension) + '.json'
+        with open(json_path, 'w') as json_pointer:
+            json.dump(row_dict, json_pointer, indent=4)
+
+    return df
+
+
+def download_from_replica(out_dir, token, layers, service_info, service_url, ssl_cert=True, last_poll_time=None, asynchronous=False):
+    '''
+    Download data from an AGOL feature service using createReplica. If last_poll_time is given, only return records
+    created after this time
     :return: path to the SQLite DB of downloaded data
     '''
 
@@ -168,10 +225,11 @@ def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=Tr
         'dataFormat': 'sqlite',
         'returnAttachments': True,
         'returnAttachmentsDatabyURL': False,
-        'async': True,
+        'async': asynchronous,
         'syncModel': 'none'
     }
     # Define a query if last poll time was given. Otherwise, all records will be returned
+
     if last_poll_time:
         layer_queries = {}
         for layer_id in layers:
@@ -179,39 +237,46 @@ def download_data(out_dir, token, layers, service_info, service_url, ssl_cert=Tr
             layer_queries[str_id] = {
                 'includeRelated': True,
                 'queryOption': 'useFilter',
-                'where': "CreationDate > TIMESTAMP '%s'" % last_poll_time
+                'where': "CreationDate > '%s'" % last_poll_time
             }
         create_replica_params['layerQueries'] = json.dumps(layer_queries)
     replica_response = requests.post('%s/createReplica' % service_url, params=create_replica_params, verify=ssl_cert)
     check_http_error('create replica', replica_response)
-    status_url = replica_response.json()['statusUrl']
 
-    # Query was set as asynchronous, so check the status at a set interval
-    for i in range(0, RESULT_TIMEOUT, CHECK_STATUS_INTERVAL):
-        status_response = requests.get(status_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
-        check_http_error('check status after %s iterations', status_response)
-        status_json = status_response.json()
+    if asynchronous:
+        status_url = replica_response.json()['statusUrl']
 
-        # If the resultUrl isn't empty, that means the result is ready to download
-        result_url = status_json['resultUrl']
-        if result_url != '':
-            break
-        elif status_json['status'] in ('CompletedWithErrors', 'Failed'):
-            raise requests.HTTPError('the query failed for an unspecified reason')
-        else:
-            if i + CHECK_STATUS_INTERVAL >= RESULT_TIMEOUT:  # timeout exceeded
-                raise requests.exceptions.ConnectTimeout(
-                    'Asynchronous query exceeded RESULT_TIMEOUT of %.1f minutes' % (RESULT_TIMEOUT / 60.0)
-                )
-            time.sleep(CHECK_STATUS_INTERVAL)
+        # Query was set as asynchronous, so check the status at a set interval
+        for i in range(0, RESULT_TIMEOUT, CHECK_STATUS_INTERVAL):
+            status_response = requests.get(status_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
+            check_http_error('check status after %s iterations', status_response)
+            status_json = status_response.json()
 
-    # Write the result to disk
-    result_response = requests.get(result_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
-    check_http_error('get createReplica result', result_response)
+            # If the resultUrl isn't empty, that means the result is ready to download
+            result_url = status_json['resultUrl']
+            if result_url != '':
+                break
+            elif status_json['status'] in ('CompletedWithErrors', 'Failed'):
+                raise requests.HTTPError('the query failed for an unspecified reason')
+            else:
+                if i + CHECK_STATUS_INTERVAL >= RESULT_TIMEOUT:  # timeout exceeded
+                    raise requests.exceptions.ConnectTimeout(
+                        'Asynchronous query exceeded RESULT_TIMEOUT of %.1f minutes' % (RESULT_TIMEOUT / 60.0)
+                    )
+                time.sleep(CHECK_STATUS_INTERVAL)
+
+        # Write the result to disk
+        result_response = requests.get(result_url, params={'f': 'json', 'token': token}, verify=ssl_cert)
+        check_http_error('get createReplica result', result_response)
+        content = result_response.content
+    else:
+        import pdb; pdb.set_trace()
+        content = replica_response.content
+
     service_name = service_info['serviceDescription']
     sqlite_path = os.path.join(out_dir, '{0}_{1}.db'.format(service_name, datetime.now().strftime('%Y%m%d-%H%M%S')))
     with open(sqlite_path, 'wb') as f:
-        f.write(result_response.content)
+        f.write(content)
 
     # Get attachments (stored as bytes in Blob dtype column of the sqlite DB)
     engine = create_engine('sqlite:///' + sqlite_path)
@@ -278,7 +343,7 @@ def main(out_dir, ssl_cert=True, credentials_json=None, portal_url=None, service
     # If there are any records that match the query, download them
     matching_records = query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=ssl_cert, return_counts=True)
     if matching_records:
-        data_path = download_data(out_dir, token, layers, service_info, service_url,
+        data_path = download_from_replica(out_dir, token, layers, service_info, service_url,
                                   ssl_cert=ssl_cert, last_poll_time=last_poll_time)
         if verbose:
             sys.stdout.write('Downloaded {0} records from {1} layers/tables to {2}'

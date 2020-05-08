@@ -10,6 +10,7 @@ import shutil
 import smtplib
 import openpyxl
 import traceback
+import requests
 import pandas as pd
 import numpy as np
 from glob import glob
@@ -307,6 +308,23 @@ def track_to_json(gdf, attachment_info):
     return {'geojsons': geojson_strs, 'track_info': attachment_info.astype(str).to_dict()}
 
 
+def delete_from_feature_service(agol_ids, token, service_url, ssl_cert):
+
+    agol_id_str = ("'%s'" % "', '".join(agol_ids)).upper()
+    query_params = {'f': 'json',
+                    'token': token,
+                    'where': "upper(globalid) IN (%s)" % agol_id_str,
+                    'returnDeleteResults': True}
+    query_response = requests.post('%s/0/deleteFeatures' % service_url, params=query_params, verify=ssl_cert)
+    download.check_http_error('deleting %s' % agol_id_str, query_response)
+    result = query_response.json()
+    result_df = pd.DataFrame(result['deleteResults'])
+
+    failed_deletes = result_df.loc[~result_df.success, 'objectId']
+
+    return failed_deletes
+
+
 def get_traceback_frame():
     ''' Traverse the traceback and get the frame of the actual script that caused the last error'''
     traceback_exc = traceback.TracebackException(*sys.exc_info())
@@ -583,7 +601,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     receipt_path = save_excel_receipt(receipt_template, receipt_dir, ticket, 'landing_data', receipt, receipt_header, sheet_password, info)
     html_receipt = format_landing_html_receipt(receipt)
 
-    return receipt_path, html_receipt
+    return receipt_path, html_receipt, new_flights
 
 
 def get_unique_filename(path, filename_suffix=''):
@@ -681,13 +699,13 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
 
     # Copy to archive dir
     try:
-    	shutil.copy(track_path, attachment_info['source_file'])
-    	# Delete the file and attachment info json since the data were processed successfully
+        shutil.copy(track_path, attachment_info['source_file'])
+        # Delete the file and attachment info json since the data were processed successfully
     	# This won't throw an error, but it should only be executed if the above line succeeds
-    	delete_attachment()
+        delete_attachment()
     except:
-    	html_li = ('<li>Unable to copy {track_path} to the track archive directory {archive_dir}. This file should be copied manually.</li>').format(track_path=track_path, archive_dir=import_track.ARCHIVE_DIR)
-    	MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'warning'})
+        html_li = ('<li>Unable to copy {track_path} to the track archive directory {archive_dir}. This file should be copied manually.</li>').format(track_path=track_path, archive_dir=import_track.ARCHIVE_DIR)
+        MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'warning'})
 
     return json_path
 
@@ -713,7 +731,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
             attachment_info = get_attachment_info(zip_path)
         except Exception as e:
             html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(file=zip_path, error=e)
-            MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'severity': 'error'})
+            MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
             ERRORS.append(traceback.format_exc())
             continue
         submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
@@ -724,7 +742,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                     z.extract(fname, attachment_dir)
                 except Exception as e:
                     html_li = ('<li>An error occurred while trying to extract {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(file=fname, zip=zip_path, error=e, agol_id=attachment_info['objectid'])
-                    MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'severity': 'error'})
+                    MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
                     ERRORS.append(traceback.format_exc())
                 unzipped_files.append(fname)
 
@@ -749,7 +767,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                 attachment_info = get_attachment_info(path, ext)
             except Exception as e:
                 html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(file=path, error=e)
-                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'severity': 'error'})
+                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
                 continue
             
@@ -815,8 +833,8 @@ def compose_error_notifications(tickets, param_dict):
         </ul>
         <br>
         '''
-        warnings = info.loc[info.severity == 'warning', 'message']
-        errors = info.loc[info.severity == 'error', 'message']
+        warnings = info.loc[info.level == 'warning', 'message']
+        errors = info.loc[info.level == 'error', 'message']
         warning_html = ul_template.format(type='Warnings', li_elements=''.join(warnings))
         error_html = ul_template.format(type='Errors', li_elements=''.join(errors))
 
@@ -877,8 +895,19 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # Get last submission time
     agol_credentials = param_dict['agol_credentials']
     service_url = agol_credentials['service_url']
-    token = download.get_token(**agol_credentials, ssl_cert=ssl_cert)
-    service_info = download.get_service_info(service_url, token, ssl_cert)
+    try:
+        token = download.get_token(**agol_credentials, ssl_cert=ssl_cert)
+        service_info = download.get_service_info(service_url, token, ssl_cert)
+    except:
+        EMAILS.append({'message_body': 'An unexpected error occurred while generating a REST API token:\n%s'
+                                       % traceback.format_exc(),
+                       'subject': 'Error while running %s' % __file__,
+                       'sender': param_dict['mail_sender'],
+                       'recipients': param_dict['admin_email_address'],
+                       'message_body_type': 'plain'
+                       })
+        return
+
     layer_info = pd.DataFrame(service_info['layers'] + service_info['tables']).set_index('id')
     layers = layer_info.index.tolist()
 
@@ -886,7 +915,17 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     last_download_time_utc = TIMEZONE.localize(pd.to_datetime(last_download_time))
     last_download_time_utc -= last_download_time_utc.utcoffset()
     
-    result = download.query_after_timestamp(service_url, token, layers, last_download_time_utc, ssl_cert)
+    try:
+        result = download.query_after_timestamp(service_url, token, layers, last_download_time_utc, ssl_cert)
+    except:
+        EMAILS.append({'message_body': 'An unexpected error occurred while querying submission info:\n%s'
+                                       % traceback.format_exc(),
+                       'subject': 'Error while running %s' % __file__,
+                       'sender': param_dict['mail_sender'],
+                       'recipients': param_dict['admin_email_address'],
+                       'message_body_type': 'plain'
+                       })
+        return
     submissions = pd.DataFrame([feature['attributes'] for feature in result['layers'][0]['features']]) # pretty sure the first layer is always the parent table for a survey123 survey with related tables
     if not len(submissions):
         log_and_exit(log_info, [log_dir, download_dir, timestamp, False, 'No new data to download'])
@@ -912,18 +951,35 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         log_and_exit(log_info, [log_dir, download_dir, timestamp, False,
                                 'Last submission was within %d minutes' % (SUBMISSION_TICKET_INTERVAL/60)])#'''
 
-    # download the data
-    sqlite_path = download.download_data(download_dir, token, layers, service_info, service_url, ssl_cert, last_poll_time=last_download_time_utc)
+    # download the attachments
+    feature_service_name = os.path.basename(os.path.dirname(service_url)) if not service_info['description'] else service_info['description']
+    sqlite_path = os.path.join(download_dir, '{}_{}.db'.format(feature_service_name, datetime.now().strftime('%Y%m%d-%H%M%S')))
+    try:
+        attachments = download.download_attachments(submissions.globalid, token, 0, layer_info, service_url, download_dir, ssl_cert=ssl_cert, additional_info={'sqlite_path': sqlite_path})
+    except:
+        EMAILS.append({'message_body': 'An unexpected error occurred while downloading attachments:\n%s'
+                                       % traceback.format_exc(),
+                       'subject': 'Error while running %s' % __file__,
+                       'sender': param_dict['mail_sender'],
+                       'recipients': param_dict['admin_email_address'],
+                       'message_body_type': 'plain'
+                       })
+        return
 
-    # Make edits to a working copy of the data
-    working_dir = os.path.join(download_dir, 'working')
-    if not os.path.isdir(working_dir):
-        os.mkdir(working_dir)
-    working_sqlite_path = os.path.join(working_dir, os.path.basename(sqlite_path))
-    shutil.copyfile(sqlite_path, working_sqlite_path)
-    engine = create_engine('sqlite:///' + working_sqlite_path)
+    # Write data to SQLite db so everything can be stored as a single file
+    engine = create_engine('sqlite:///' + sqlite_path)
+    tables = {}
+    with engine.connect() as conn:
+        for layer in result['layers']:
+            layer_name = layer_info.loc[layer['id'], 'name']
+            data = pd.DataFrame([feature['attributes'] for feature in layer['features']])
+            if len(data):
+                data.to_sql(layer_name, conn, index=False)
+            tables[layer_name] = data
+        if len(attachments):
+            attachments.to_sql('attachments', conn, index=False)
 
-    operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email', conn=landings_conn)
+    # Get operator codes from usernames/submitter
     operator_codes = db_utils.get_lookup_table(table='operators', index_col='code', value_col='agol_username', conn=landings_conn)
 
     # Create separate tickets for each user for both landing and track data
@@ -937,46 +993,26 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
 
     # Process and import the landing data. The flight tracks will need to be unzipped, but they need to be
     #   validated/edited before they can be imported. This is handled manually via a separate web app
-    main_table_name = pd.DataFrame(service_info['layers']).set_index('id').loc[service_info['layers'][0]['id'], 'name']
-    with engine.connect() as conn, conn.begin():
-        # Convert datetimes in place and get rid of the braces around IDs
-        for table_name, data_types in field_types.items():
-            df = pd.read_sql_table(table_name, conn)
-            
-            for field, _ in data_types.loc[data_types == 'esriFieldTypeDate'].iteritems():
-                utc_datetime = pd.to_datetime(pd.read_sql("SELECT datetime({0}) FROM {1}".format(field, table_name), conn)
-                                                          .squeeze(axis=1))
-                if utc_datetime.isna().all():
-                    continue
-                df[field] = pd.Series({i: (d.replace(tzinfo=pytz.UTC) + TIMEZONE.utcoffset(d))
-                             for i, d in utc_datetime.dropna().iteritems()}).dt.round('S')
+    # Add the ticket column to the sqlite flights table
+    for table_name, data_types in field_types.items():
+        df = tables[table_name]
+        for field, _ in data_types.loc[data_types == 'esriFieldTypeDate'].iteritems():
+            df.loc[~df[field].isnull(), field] = [datetime.fromtimestamp(ts / 1000.0) if ts else pd.NaT for ts in df.loc[~df[field].isnull(), field]]
 
-            for field in df.columns[['globalid' in c.lower() for c in df.columns]]:
-                df[field] = df[field].str.replace('{', '').str.replace('}', '')
-            df.to_sql(table_name, conn, if_exists='replace', index=False)
+        tables[table_name] = df
 
-        # Add the ticket column to the sqlite flights table
-        all_flights = pd.read_sql_table(main_table_name, conn)
-        # global IDs in query are lowercase but they're uppercase in createReplica
-        submissions.globalid = submissions.globalid.str.upper()
-        merged = all_flights.merge(submissions, on='globalid')
-        all_flights['ticket'] = merged.ticket
-        all_flights['submission_time'] = merged.submission_time
-        all_flights.to_sql(main_table_name, conn, if_exists='replace')
-        all_landings = pd.read_sql_table('landing_repeat', conn)
+    all_flights = tables['flights']
+    merged = all_flights.merge(submissions, on='globalid')
+    all_flights['ticket'] = merged.ticket
+    all_flights['submission_time'] = merged.submission_time
+    all_landings = tables['landing_repeat']
 
     # Get operator emails from landings DB
     operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email', conn=landings_conn)
-    operator_codes = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='code', conn=landings_conn)
-    operator_emails['smhooper'] = "samuel_hooper@nps.gov" ############## delete this after finished testing #############
     param_dict['agol_users'] = operator_emails
     submitter_emails = submissions.groupby(['ticket', 'submission_type']).first()\
         .apply(lambda r: get_submitter_email(r.submitter, param_dict['agol_users']), axis=1)
 
-    # Get operator codes from usernames
-    #submissions = submissions.merge(pd.Series(operator_codes, name='operator'), left_on='submitter', right_index=True)
-    #merged = all_flights.merge(submissions, on='globalid', suffixes=('', '_y'))
-    #all_flights = merged.loc[:, all_flights.columns.tolist() + ['operator']]
     submissions['tracks_operator'] = submissions.loc[submissions.submission_type == 'tracks', 'operator'].fillna('NPS')
     all_flights['tracks_operator'] = all_flights.loc[all_flights.submission_type == 'tracks', 'operator']
     all_flights['landing_operator'] = all_flights.loc[all_flights.submission_type == 'landings', 'operator']
@@ -999,9 +1035,10 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                 MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['landing_data_stewards'], 'type': 'landings', 'level': 'warning'})
                 continue
             try:
-                excel_path, html_df = import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir,
-                                                  receipt_params['template'], receipt_params['header_img'],
-                                                  receipt_params['sheet_password'], param_dict['landing_data_stewards'])
+                excel_path, html_df, imported_flights = \
+                    import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir,
+                                    receipt_params['template'], receipt_params['header_img'],
+                                    receipt_params['sheet_password'], param_dict['landing_data_stewards'])
             except Exception as e:
                 tb_frame = get_traceback_frame()
                 html_li = ('<li>An unexpected error, "{error}", occurred on line {lineno} of {script} while processing the following flights:<br>{table}<br></li>')\
@@ -1012,6 +1049,21 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
 
             if not excel_path: # There weren't any new landings
                 continue
+
+            agol_ids = imported_flights.agol_global_id
+            try:
+                failed_object_ids = delete_from_feature_service(agol_ids, token, service_url, ssl_cert)
+            except Exception as e:
+                html_li = ('<li>The following error occurred while trying to delete features with AGOL IDs {agol_ids}, "{error}", while processing the following flights:<br>{table}<br></li>')\
+                        .format(agol_ids=', '.join(agol_ids.astype(str)), error=e, table=html_table)
+                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'], 'type': 'landings', 'level': 'error'})
+                ERRORS.append(traceback.format_exc())
+
+            if len(failed_object_ids):
+                html_li = ('<li>Unable to delete features with Object IDs {object_ids}<br></li>')\
+                        .format(object_ids=', '.join(failed_object_ids.astype(str)), table=html_table)
+                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'], 'type': 'landings', 'level': 'error'})
+                ERRORS.append(traceback.format_exc())
 
             start_datetime = all_landings['CreationDate'].min()
             end_datetime = datetime.now()
@@ -1028,6 +1080,23 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     track_submissions = submissions.loc[submissions.submission_type == 'tracks']
     if len(track_submissions):
         geojson_paths, submitted_files = prepare_track_data(param_dict, download_dir, tracks_conn, submissions)
+
+        try:
+            failed_object_ids = delete_from_feature_service(submitted_files.index, token, service_url, ssl_cert)
+        except Exception as e:
+            EMAILS.append({'message_body': 'Unable to delete the following features: %s. These should be manually deleted.' % submitted_files.index.tolist(),
+              'subject': 'Error while attempting to delete features',
+              'sender': param_dict['mail_sender'],
+              'recipients': param_dict['admin_email_address'],
+              'message_body_type': 'plain'
+              })
+        if len(failed_object_ids):
+            EMAILS.append({'message_body': 'Unable to delete the following features: %s. These should be manually deleted.' % failed_object_ids.astype(str),
+                          'subject': 'Error while attempting to delete features',
+                          'sender': param_dict['mail_sender'],
+                          'recipients': param_dict['admin_email_address'],
+                          'message_body_type': 'plain'
+                          })
 
         # Compose email to track editors
         if len(geojson_paths):
@@ -1118,10 +1187,9 @@ def main(config_json):
                                      'processing submissions:\n%s' % traceback_details['full_traceback'],
                        'subject': 'Error while running %s' % __file__,
                        'sender': params['mail_sender'],
-                       'recipients': params['track_data_stewards'],
+                       'recipients': params['admin_email_address'],
                        'message_body_type': 'plain'
                        })
-        #log_file = write_log(params['log_dir'], params['download_dir'], timestamp, '', False, traceback_details)
     #'''
 
     # send emails here so that all DB transactions are committed before actually sending anything
@@ -1156,7 +1224,6 @@ def main(config_json):
             msg_info['server'] = server
             failed = send_email_per_recipient(msg_info)
             failed_emails.extend(failed)#'''
-
 
     # Write the log file
     log_file, log = write_log(params['log_dir'], params['download_dir'], timestamp, DATA_PROCESSED)
