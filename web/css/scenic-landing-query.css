@@ -188,6 +188,36 @@ input[type=date]::-webkit-inner-spin-button, input[type=time]::-webkit-inner-spi
     display: none;
 }
 
+/*Chrome recently changed the way date/time input indicators are hadnled, so hide them
+solution from: https://stackoverflow.com/a/45461709*/
+
+input[type="date"] {
+    position: relative;
+}
+
+/* make the native arrow invisible and stretch it over the whole field so you can click anywhere in the input field to trigger the native datepicker*/
+input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: auto;
+    color: transparent;
+    background: transparent;
+}
+
+/* adjust increase/decrease button */
+input[type="date"]::-webkit-inner-spin-button, input[type="time"]::-webkit-calendar-picker-indicator {
+    z-index: 1;
+}
+
+ /* adjust clear button */
+ input[type="date"]::-webkit-clear-button, input[type="time"]::-webkit-calendar-picker-indicator {
+     z-index: 1;
+ }
+
 ::-webkit-clear-button {
     display: none; /* Hide the button */
     -webkit-appearance: none; /* turn off default browser styling */
