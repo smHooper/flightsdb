@@ -67,7 +67,8 @@ import kml_parser
 CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
                     'gsat': ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts'],
                     'spy': ['Registration', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Speed(knots)', 'Bearing', 'PointType', 'Description'],
-                    'tms': ['Serial No.', ' UTC', ' Latitude', ' HemNS',  ' Longititude', ' HemEW', ' Knots', ' Heading', ' Altitude (m)', ' HDOP', ' New Conn', ' Entered', ' Event'],
+                    'tms': ['Serial No.', 'UTC', 'Latitude', 'HemNS', 'Longititude', 'HemEW', 'Knots', 'Heading', 'Altitude (m)', 'HDOP', 'New Conn', 'Entered', 'Event', 'ESN', 'Latitude (DDMM.MMMM)', 'Longititude (DDMM.MMMM)',
+       'Heading (True)', 'Server Time (PDT)'],
                      'foreflight': ['Pilot', 'Tail Number', 'Derived Origin', 'Start Latitude', 'Start Longitude', 'Derived Destination', 'End Latitude', 'End Longitude', 'Start Time', 'End Time', 'Total Duration', 'Total Distance', 'Initial Attitude Source', 'Device Model', 'Device Model Detailed', 'iOS Version', 'Battery Level', 'Battery State', 'GPS Source', 'Maximum Vertical Error', 'Minimum Vertical Error', 'Average Vertical Error', 'Maximum Horizontal Error', 'Minimum Horizontal Error', 'Average Horizontal Error', 'Imported From', 'Route Waypoints']
                }
 
@@ -97,8 +98,10 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                               'Longititude':        'longitude',
                               'Longitude (DDMM.MMMM)': 'longitude',
                               'Longititude (DDMM.MMMM)': 'longitude',
+                              'Latitude (DDMM.MMMM)': 'latitude',
                               'Knots':              'knots',
-                              'Heading':            'heading'
+                              'Heading':            'heading',
+                              'Heading (True)':     'heading'
                               }
                        }
 ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
@@ -305,6 +308,7 @@ def format_tms(path):
 
     # some of the time TMS columns names have spaces on either end
     df.columns = df.columns.str.strip()
+
     df.rename(columns=CSV_OUTPUT_COLUMNS['tms'], inplace=True)
 
     # Lat and lon are (annoyingly) in the format DDMM.MMMM without any separator between degrees and minutes, so attempt
@@ -363,7 +367,7 @@ def read_csv(path, seg_time_diff=None):
     """
 
     df = pd.read_csv(path, encoding='ISO-8859-1', nrows=2)#ISO encoding handles symbols like '°'
-
+    df.columns = df.columns.str.strip()
     # Figure out which file type it is (aff, gsat, spy, or tms) by selecting the file type that most closely matches
     #   the expected columns per type
     named_columns = df.columns[~df.columns.str.startswith('Unnamed')].str.strip()
@@ -484,6 +488,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     # Calculate local (AK) time
     timezone = pytz.timezone('US/Alaska')
     gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
+    gdf = gdf.sort_values('ak_datetime') # track points are *usually* in chronological order, but not all
 
     # Validate the registration
     if 'registration' in gdf.columns and not force_registration: # Already in a column in the data
