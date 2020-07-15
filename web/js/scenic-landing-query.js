@@ -696,7 +696,7 @@ function insertFlight(dbColumns, flightID, departureDatetime, flightIDString) {
 	let deferred = $.when(true);
 	if (isNaN(ticket)) {
 		let dt = new Date();
-		let datetimeString = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()} ${dt.getHours()}:${dt.getMinutes()}`
+		let datetimeString = `${dt.getFullYear()}-${dt.getMonth() + 1}-${dt.getDate()} ${dt.getHours()}:${dt.getMinutes()}`
 		let submissionSQL = `INSERT INTO submissions (submitter, submission_time) VALUES ('${username}', '${datetimeString}') RETURNING ticket;`;
 		deferred = 
 			$.ajax({
@@ -774,7 +774,7 @@ function insertFlight(dbColumns, flightID, departureDatetime, flightIDString) {
 			fields.push('edited_by');
 			
 			const now = new Date();
-			sqlValues.push(`${now.getFullYear()}-${now.getMonth()}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}`);
+			sqlValues.push(`${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}`);
 			fields.push('last_edit_time');
 			
 			const operator = landingQueryResult.data[Object.keys(landingQueryResult.data)[0]].operator_code;
@@ -902,7 +902,7 @@ function updateFlight(dbColumns, flightID, departureDatetime, flightIDString) {
 	flightParametizedFields.push(`edited_by=$${paramCount}`);
 	paramCount ++;
 	const now = new Date();
-	flightSQLValues.push(`${now.getFullYear()}-${now.getMonth()}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}`);
+	flightSQLValues.push(`${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}`);
 	flightParametizedFields.push(`last_edit_time=$${paramCount}`);
 	
 	sqlParameters.push(flightSQLValues);

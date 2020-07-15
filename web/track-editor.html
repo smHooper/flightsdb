@@ -27,7 +27,7 @@
     <!-- message for when there are no files to import -->
   <div id="no-files-message" style="display: none;">
     <div style="position:absolute; left: 50%; top: 30%; transform: translateX(-50%);">
-      <h3 style="color: rgb(110, 110, 110); text-align: center; padding-bottom: 20px;">Dang, no flight data to import right now</h3>
+      <h3 style="color: rgb(125, 125, 125); text-align: center; padding-bottom: 20px;">Dang, no flight data to import right now</h3>
       <img id="no-files-gif" width="480" height="270" frameBorder="0"></img>
     </div>
   </div>
@@ -35,7 +35,7 @@
   <div id="dashboard-container" class="container-fluid">
 
     <div class="row col-12" id="file-menu-title" style="width:100%; display: block; margin-top: 10px">
-      <h4 style="color: rgb(110, 110, 110);">Files to import</h4>
+      <h4 style="color: rgb(125, 125, 125);">Files to import</h4>
     </div>
     <div class="row h-90" style="display: flex; width:100%; float:left;">
       
@@ -52,7 +52,7 @@
         <div class="dark-scrollbar" id="track-info-panel" style="width:100%; display: flex; flex-direction: column; flex:1; background-color: rgb(60, 60, 60); padding: 20px;">
           <!-- Info about each track-->
           <div style="display:flex;">
-            <div style="color: rgb(110, 110, 110); width:100%">
+            <div style="color: rgb(125, 125, 125); width:100%">
               <!--<div style="display: block; width: 100%">-->
               <h4 style="display: inline-block; float: left; color: inherit">Track info</h4>
               <button id="button-track-info-lock" title="Toggle lock on track info" style="display: inline-block;" onclick="lockButtonClick()"></button>
@@ -112,7 +112,7 @@
           <!--<div class="col-sm-2 mx-0 px-0" style="display:inline-block;">
             <button class="button data-button" id="save-button" onclick="onImportDataClick()" style="float:left;">Import tracks</button>
           </div>-->
-          <div style="float:right; display:inline-block; color:rgb(110, 110, 110); flex:1; height:100%; margin-left:0;">
+          <div style="float:right; display:inline-block; color:rgb(125, 125, 125); flex:1; height:100%; margin-left:0;">
             <p style="width:100%; float:right; font-size:14px; display:inline-block; margin-top:10px; text-align:right;">Questions? Contact the flight data steward at <a id="contact-link" style="color:hsl(195, 85%, 50%); display:inline;"></a></p>
           </div>         
         </div>
@@ -224,8 +224,9 @@
     
     // Add options to the select elements. 
     $.when(
+      // Fill operator code select with just names (and no differing values) because the data come from the Survey123 with names, not code values
       fillSelectOptions('select-operator_code', "SELECT name AS value FROM operators ORDER BY sort_order;", 'overflights'),
-      fillSelectOptions('select-nps_mission_code', "SELECT code AS value FROM nps_mission_codes ORDER BY code;", 'overflights')
+      fillSelectOptions('select-nps_mission_code', "SELECT code || ' - ' || name AS name, code AS value FROM nps_mission_codes ORDER BY code;", 'overflights')
     ).then(function() {
       fillTrackInfo(); // Fill track info here because select options weren't available to fill before
       $('#select-operator_code').change(); // disable the mission code select if necessary after track info is filled in 

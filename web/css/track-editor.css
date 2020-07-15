@@ -164,6 +164,10 @@ g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
 	padding-bottom: 12px;
 }
 
+.legend-patch {
+	cursor: pointer;
+}
+
 .vertical-center {
 	margin: 0;
 	position: absolute;
@@ -199,6 +203,10 @@ g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
 
 .file-card-button:hover{
 	opacity: 0.65;
+}
+
+.line-color-picker {
+	opacity: 0;
 }
 
 #dashboard-container {
