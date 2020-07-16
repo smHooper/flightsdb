@@ -420,12 +420,12 @@ function showVertices(id, hideCurrent=true) {
 }
 
 
-function showLoadingIndicator() {
+function showLoadingIndicator(timeout=15000) {
 
     //set a timer to turn off the indicator after a max of 15 seconds because 
     //  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
     //  with who called it
-    setTimeout(hideLoadingIndicator, 15000);
+    if (timeout) setTimeout(hideLoadingIndicator, timeout);
 
     var thisCaller = showLoadingIndicator.caller.name;
 
@@ -1279,7 +1279,7 @@ function fillTrackInfo(){
 		$('#select-' + key).val(thisInfo[key])//for the select dropdowns
 	}
 
-	if ($('#select-operator_code').val() !== 'National Park Service') {
+	if ($('#select-operator_code').val() !== 'NPS') {
 		$('#select-nps_mission_code').addClass('select-disabled')
 	}
 	//$('#track-info-subtitle').text(`Submitted at ${thisInfo.submission_time}\nby ${thisInfo.submitter}`)
@@ -1310,7 +1310,7 @@ function onOperatorChange(selectedOperator){
 	var fileName = getSelectedFileName();
 
 	// Update track info
-	if (trackInfo[fileName] !== undefined) {
+	if (trackInfo[fileName] !== undefined && selectedOperator != null) {
 		for (segmentID in trackInfo[fileName]) {
 			trackInfo[fileName][segmentID]['operator_code'] = //capture value
                 selectedOperator.length ? selectedOperator : trackInfo[fileName][segmentID]['operator_code']; 
@@ -1318,7 +1318,7 @@ function onOperatorChange(selectedOperator){
 	}
 
 	// If the operator isn't the NPS, disable mission_code select
-	if (selectedOperator !== 'National Park Service') {
+	if (selectedOperator !== 'NPS') {
 		$('#label-nps_mission_code').addClass('select-disabled-label');
 		// Record the currently selected mission code
 		if (trackInfo[fileName] !== undefined) {
@@ -1514,9 +1514,9 @@ function validateTrackInfo() {
     for (elementID in trackInfoInputs) {
         var thisElement = $(trackInfoInputs[elementID]);
         var thisLabel = $(thisElement.siblings()[0]).text();
-        if (!(thisElement.is('input') || thisElement.is('select'))) continue;
+        if (!(thisElement.is('input') || thisElement.is('select')) || thisElement.val() == undefined) continue;
         var thisID = thisElement[0].id;
-        if (!(thisElement.val().length) && !thisElement.hasClass('select-disabled') && thisLabel !== "NPS Mission Code"){
+        if (!(thisElement.val().length) && !thisElement.hasClass('select-disabled') && thisLabel !== "NPS mission code"){
             alert(`The "${thisLabel}" field is empty but all track info fields are mandatory.`);
             thisElement.focus();
             return false;
@@ -1529,7 +1529,7 @@ function validateTrackInfo() {
         return false;
     }
 
-    if ($('#select-operator_code').val() === 'National Park Service' && !$('#select-nps_mission_code').val().length){
+    if ($('#select-operator_code').val() === 'NPS' && !$('#select-nps_mission_code').val().length){
         if (!confirm(`Are you sure you want to import this file without an NPS mission code selected?`)) {
 	        $('#select-nps_mission_code').focus();
 	        return false;
@@ -1561,12 +1561,12 @@ function importData(fileName){
     for (segmentID in pointGeojsonLayers[fileName]) {
         var geojson = pointGeojsonLayers[fileName][segmentID].toGeoJSON();
         features = features.concat(geojson.features)
-        if (!trackInfo[fileName][segmentID].visible) {
+        /*if (!trackInfo[fileName][segmentID].visible) {
             hiddenTracks.push(segmentID);
-        }
+        }*/
     }
 
-    if (hiddenTracks.length) {
+    /*if (hiddenTracks.length) {
         var continueImporting = confirm(`There are ${hiddenTracks.length} track segments currently hidden, but all tracks listed for this file will be imported. Are you sure you want to continue?`)
         if (!continueImporting) {
         	removeTemporaryImportFiles(filePath, trackInfoPath);
@@ -1578,7 +1578,7 @@ function importData(fileName){
         type: "FeatureCollection",
         crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },
         features: features
-    };
+    };*/
 
     //var thisTrackInfo = {...trackInfo[fileName][Object.keys(trackInfo[fileName])[0]]};
     //thisTrackInfo['track_editor'] = $('#textbox-track_editor').val();
@@ -1588,11 +1588,12 @@ function importData(fileName){
     var stderrPath = `errorLogs/${fileName}_${Date.now()}.log`;
     var data = {
         action: "importData",
-        geojsonString: filePath,//JSON.stringify(thisGeojson).replace('"', '\\"'),
-        trackInfoString: trackInfoPath, //JSON.stringify(thisTrackInfo).replace('"', '\\"')
+        geojsonString: filePath,
+        trackInfoString: trackInfoPath,
         stderrPath: stderrPath
     };
 
+    
     $.ajax({
         url: 'geojson_io.php',
         method: 'POST',
@@ -1606,23 +1607,31 @@ function importData(fileName){
                 cache: false,
                 success: function(stderr) {
                     if (stderr.trim().length) {
-                        var lines = stderr.split('\n');
-                        var errorName = stderr.match(/[A-Z][a-z]*Error/)
-                        var error;
-                        for (lineNumber in lines) {
-                            if (lines[lineNumber].startsWith(errorName)) {
-                                error = lines[lineNumber];
-                                break;
-                            }
-                        }
+                    	var error;
+                    	var dbErrorDetail = stderr.match(/[\r\n]DETAIL.*[\r\n]/).toString();
+                    	if (dbErrorDetail != null) {
+                    		error = dbErrorDetail.replace('DETAIL: ', '').trim();
+                    	} else {
+	                        var lines = stderr.split('\n');
+	                        var errorName = stderr.match(/[A-Z][a-z]*Error/)//standard python Exception ends in "Error" (e.g., ValueError);
+	                        
+	                        for (lineNumber in lines) {
+	                            if (lines[lineNumber].startsWith(errorName)) {
+	                                error = lines[lineNumber];
+	                                break;
+	                            }
+	                        }
+	                    }
 
                         alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
+                        hideLoadingIndicator();
 
                     } else {
                         alert(importResponse.replace(/\t/g, ''));
                         
                         // Remove the file from the menu and delete it
-                        //removeFile(fileName);
+                        removeFile(fileName);
+                        hideLoadingIndicator();
                     }
                     // delete error log
                     //$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
@@ -1632,12 +1641,13 @@ function importData(fileName){
     				alert(`Unknown script status. Failed to read stderr file because of a ${status} error: ${error}. You can view this file yourself at ${stderrPath}`)                        
                 	// make sure the file error log is deleted even if reading it failed
                 	//$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
+            		 hideLoadingIndicator();
             	}
             );
 
-            // Try to delete data
-            //$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: filePath}, cache:false});
-            $.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: trackInfoPath}, cache:false});
+            // Try to delete temp files. Don't worry about handling failures because it doesn't *really* matter if they don't get deleted
+            removeTemporaryImportFiles(filePath, trackInfoPath)
+            hideLoadingIndicator();
 
         }
     })
@@ -1645,6 +1655,7 @@ function importData(fileName){
     	function(xhr, status, error) {
     		alert(`Failed to call import script because of a ${status} error: ${error}`)
         	removeTemporaryImportFiles(filePath, trackInfoPath)
+    		hideLoadingIndicator();
     	}
     )
 
@@ -1663,10 +1674,23 @@ function onImportDataClick(fileName=undefined){
 	//  the features into a single FeatureCollection GeoJSON object since the 
 	//  segment IDs are also recorded in the properties of each feature
 	var features = [];
+	var hiddenTracks = [];
 	for (segmentID in pointGeojsonLayers[fileName]) {
 		var geojson = pointGeojsonLayers[fileName][segmentID].toGeoJSON();
         features = features.concat(geojson.features)
-	}
+        if (!trackInfo[fileName][segmentID].visible) {
+            hiddenTracks.push(segmentID);
+        }
+    }
+
+    if (hiddenTracks.length) {
+        var continueImporting = confirm(`There are ${hiddenTracks.length} track segments currently hidden, but all tracks listed for this file will be imported. Are you sure you want to continue?`)
+        if (!continueImporting) {
+        	//removeTemporaryImportFiles(filePath, trackInfoPath);
+            return;
+        }
+    }
+
 	var thisGeojson = {
 		type: "FeatureCollection",
 		crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },
@@ -1679,21 +1703,23 @@ function onImportDataClick(fileName=undefined){
 		filePath: filePath,
 		jsonString: JSON.stringify(thisGeojson)
 	};
-	$.ajax({
-		url: 'geojson_io.php',
-		method: 'POST',
-		data: data,
-        cache: false,
-		success: function(response) {
-			if (response == false) {
-				alert('JSON data failed to save')
-			}
-		}
-	})
-	.done(function() {
-		// When the geojson has been written, write the track info
-        var thisTrackInfo = {...trackInfo[fileName][Object.keys(trackInfo[fileName])[0]]}
-        thisTrackInfo['track_editor'] = $('#textbox-track_editor').val()//set here because it might not have been
+
+    var thisTrackInfo = {...trackInfo[fileName][Object.keys(trackInfo[fileName])[0]]}
+    thisTrackInfo['track_editor'] = $('#textbox-track_editor').val()//set here because it might not have been
+	
+	showLoadingIndicator(timeout=false);
+	$.when(
+		$.ajax({
+			url: 'geojson_io.php',
+			method: 'POST',
+			data: data,
+	        cache: false
+		}).fail(
+			function(xhr, status, error) {
+	            alert(`JSON track failed to save because of the following error: ${error}`);
+	            hideLoadingIndicator();
+	        }
+	    ),
 		$.ajax({
 			url: 'geojson_io.php',
 			method: 'POST',
@@ -1702,26 +1728,23 @@ function onImportDataClick(fileName=undefined){
 				action: 'writeFile',
 				filePath: filePath.replace('.geojson', '_track_info.json'),
 				jsonString: JSON.stringify(thisTrackInfo)
-			},
-			success: function(response) {
-				if (response == false) {
-					alert('JSON track info failed to save')
-				} else {
-                    //alert('JSON saved to: ' + filePath)
-                }
-			},
-            error: function(xhr, status, error) {
-                alert(`JSON track failed to save because of a ${status} error: ${error}`)
-            }
-		})
-        .done(
-        	// Finally, import the data
-        	() => {importData(fileName)}
-        ); 
-	}).fail(
-		function(xhr, status, error) {
-            alert(`JSON track failed to save because of a ${status} error: ${error}`)
-        }
-    )
+			}
+		}).fail(
+        	function(xhr, status, error) {
+            	alert(`JSON track failed to save because of the following error: ${error}`);
+            	hideLoadingIndicator();
+        	}
+        )
+	).then(
+    	// With temporary files written, import the data
+    	(geojsonDeferred, trackInfoDeferred) => {
+    		if (geojsonDeferred[0] == false || trackInfoDeferred[0] == false) {
+				alert('Unable to create temporary files for import. Check your network connection and try again.');
+				hideLoadingIndicator();
+    		} else {
+    			importData(fileName);
+    		}
+    	}
+    ); 
 
 }

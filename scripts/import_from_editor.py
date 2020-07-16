@@ -29,10 +29,6 @@ def main(geojson_path, track_info_json, config_json):
                            .format(**connection_info))
     flight_columns = db_utils.get_db_columns('flights', engine)
 
-    # switch names back to codes
-    operator_codes = db_utils.get_lookup_table(engine, 'operators', 'name', 'code')
-    track_info['operator_code'] = operator_codes[track_info['operator_code']]
-
     # assign constants (that will eventually wind up in the fights table) to gdf
     for k, v in track_info.items():
         if k in flight_columns.values and k not in gdf:

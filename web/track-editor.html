@@ -225,7 +225,7 @@
     // Add options to the select elements. 
     $.when(
       // Fill operator code select with just names (and no differing values) because the data come from the Survey123 with names, not code values
-      fillSelectOptions('select-operator_code', "SELECT name AS value FROM operators ORDER BY sort_order;", 'overflights'),
+      fillSelectOptions('select-operator_code', "SELECT code AS value, name FROM operators ORDER BY sort_order;", 'overflights'),
       fillSelectOptions('select-nps_mission_code', "SELECT code || ' - ' || name AS name, code AS value FROM nps_mission_codes ORDER BY code;", 'overflights')
     ).then(function() {
       fillTrackInfo(); // Fill track info here because select options weren't available to fill before

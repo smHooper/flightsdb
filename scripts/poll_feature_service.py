@@ -28,7 +28,7 @@ import process_emails
 pd.set_option('display.max_columns', None)# useful for debugging
 pd.options.mode.chained_assignment = None
 
-SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
+SUBMISSION_TICKET_INTERVAL = 1#900 # seconds between submission of a particular user
 LOG_CACHE_DAYS = 365 # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 TIMEZONE = pytz.timezone('US/Alaska')
@@ -618,7 +618,7 @@ def get_unique_filename(path, filename_suffix=''):
     return new_path
 
 
-def prepare_track(track_path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, web_data_dir):
+def prepare_track(track_path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, web_data_dir, db_columns):
     '''Prepare the track file to be read by the editing web app (inpdenards.nps.doi.net/track-editor.html). It needs to
     be in format that both the web app and the rest of import_track functions will understand'''
 
@@ -666,17 +666,26 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
         MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
         return
 
-    # Set the operator code to the operator name, not the code (easier to read for editors). The web app
+    # Drop any columns that aren't in the flights or flight_points tables
+    gdf.drop(columns=gdf.columns[~gdf.columns.isin(db_columns + ['segment_id', 'geometry'])], inplace=True)
+
+    '''# Set the operator code to the operator name, not the code (easier to read for editors). The web app
     #   will replace the name with the code on import
     if attachment_info['tracks_operator'] in operator_codes:
         attachment_info['operator_code'] = operator_codes[this_submission.tracks_operator]
     else:
-        attachment_info['operator_code'] = ''
+        attachment_info['operator_code'] = '' '''
+    attachment_info['operator_code'] = this_submission.tracks_operator
 
     if attachment_info['tracks_mission'] in mission_codes:
         attachment_info['nps_mission_code'] = attachment_info['tracks_mission']  # , mission_codes[attachment_info['tracks_mission']]
     else:
         attachment_info['nps_mission_code'] = ''
+
+    
+    attachment_info['nps_work_group'] = attachment_info['tracks_work_group'] 
+    attachment_info['nps_work_group_other'] = attachment_info['tracks_other_work_group']
+
 
     attachment_info['source_file'] = get_unique_filename(os.path.join(import_track.ARCHIVE_DIR, fname))
 
@@ -692,7 +701,6 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
 
     with open(json_path, 'w') as j:
         json.dump(geojson_strs, j, indent=4)
-        #attachment_info['source_file'] = os.path.join(import_track.ARCHIVE_DIR, json_path.replace('_geojsons.json', ext))
 
     global DATA_PROCESSED
     DATA_PROCESSED = True
@@ -701,7 +709,7 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     try:
         shutil.copy(track_path, attachment_info['source_file'])
         # Delete the file and attachment info json since the data were processed successfully
-    	# This won't throw an error, but it should only be executed if the above line succeeds
+        # This won't throw an error, but it should only be executed if the above line succeeds
         delete_attachment()
     except:
         html_li = ('<li>Unable to copy {track_path} to the track archive directory {archive_dir}. This file should be copied manually.</li>').format(track_path=track_path, archive_dir=import_track.ARCHIVE_DIR)
@@ -717,6 +725,11 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
     operator_codes = db_utils.get_lookup_table(table='operators', conn=tracks_conn)
     mission_codes = db_utils.get_lookup_table(table='nps_mission_codes', conn=tracks_conn)
     data_steward = param_dict['track_data_stewards']
+
+    db_columns = pd.concat([db_utils.get_db_columns('flights', conn=tracks_conn),
+                            db_utils.get_db_columns('flight_points', conn=tracks_conn)])\
+        .drop_duplicates()\
+        .to_list()
 
     # If for some reason the dir got removed, create it
     if not os.path.isdir(attachment_dir):
@@ -752,9 +765,17 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                 MESSAGES.append({'ticket': attachment_info['ticket'], 'message': '%s is not in an accepted file format' % fname, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
                 continue
             path = os.path.join(attachment_dir, fname)
-            geojson_paths.append(prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir']))
-
-        submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(zip_path)
+            try:
+                geojson_path = prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir'], db_columns)
+                geojson_paths.append(geojson_path)
+                submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(zip_path)
+            except Exception as e:
+                html_li = (
+                    '<li>An error occurred while trying to process {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(
+                    file=fname, zip=zip_path, error=e, agol_id=attachment_info['objectid'])
+                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,
+                                 'type': 'tracks', 'level': 'error'})
+                ERRORS.append(traceback.format_exc())
 
     # Find all the files that were downloaded without being zipped. This will only include files with valid extensions
     #   because Survey123 will reject all others
@@ -770,10 +791,16 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                 MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
                 continue
-            
+
             submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
-            geojson_paths.append(prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir']))
-            submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(path)
+            try:
+                geojson_path = prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir'], db_columns)
+                geojson_paths.append(geojson_path)
+                submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(path)
+            except Exception as e:
+                html_li = ('<li>An error occurred while trying to process {file}: {error}.</li>').format(file=path, error=e)
+                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
+                ERRORS.append(traceback.format_exc())
 
     return geojson_paths, pd.Series(submitted_files)
 
@@ -825,7 +852,7 @@ def compose_error_notifications(tickets, param_dict):
     messages['recipient_str'] = messages.recipients.apply(str)
     html_emails = []
     for (ticket, _, submission_type), info in messages.groupby(['ticket', 'recipient_str', 'type']):
-        submission_info = tickets.loc[(tickets.ticket == int(ticket)) & (tickets.submission_type == submission_type)].squeeze()
+        
         ul_template = r'''
         <h4>{type}:</h4>
         <ul>
@@ -837,34 +864,57 @@ def compose_error_notifications(tickets, param_dict):
         errors = info.loc[info.level == 'error', 'message']
         warning_html = ul_template.format(type='Warnings', li_elements=''.join(warnings))
         error_html = ul_template.format(type='Errors', li_elements=''.join(errors))
-
-        email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[-1].strip('>')
-        #if submission_type == 'tracks':
-        concluding_message = r'<br><br><span>If you cannot resolve the issue(s), try contacting the submitter directly if they are an NPS employee. If the submitter is a commercial flight operator, notify Commercial Services of the problem and they will contact the submitter. </span>'
-        #else:
-        #    concluding_message = ''
-        message = '''
-        <html>
-            <head></head>
-            <body>
-                <p>Flight data were recently submitted by the AGOL user {submission_info.submitter} that resulted in warnings and/or errors.
+        
+        if ticket == -1:
+            message = '''
+            <html>
+                <head></head>
+                <body>
+                    <p>Flight data were recently submitted that resulted in warnings and/or errors.
+                        <br>
+                        {warnings}
+                        {errors}
+                    </p>
+                    You can inspect these files at {attachments_dir}.
                     <br>
-                    {warnings}
-                    {errors}
-                    <span><strong>Submitter email:</strong> {email_address}</span>
-                    <br>
-                    <span><strong>Submission time:</strong> {submission_info.submission_time}</span>
-                    {concluding_message}
-                </p>
-            </body>
-        </html>
-        '''.format(submission_info=submission_info, email_address=email_address,
-                   warnings=warning_html if len(warnings) else '',
-                   errors=error_html if len(errors) else '',
-                   concluding_message=concluding_message if submission_type == 'tracks' else '',
-                   delete_url=param_dict['delete_features_url'])
-        subject = 'Issues with recent {submission_type} data submssion - ticket #{ticket:.0f}'\
-            .format(submission_type=submission_type, ticket=int(ticket))
+                </body>
+            </html>
+            '''.format(
+                warnings=warning_html if len(warnings) else '',
+                errors=error_html if len(errors) else '',
+                attachments_dir = os.path.join(param_dict['download_dir'], 'attachments')
+            )
+            subject = 'Issues with recently submitted {} data files'.format(submission_type)
+        else:
+            submission_info = tickets.loc[
+                (tickets.ticket == int(ticket)) & (tickets.submission_type == submission_type)].squeeze()
+            email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[-1].strip('>')
+            #if submission_type == 'tracks':
+            concluding_message = r'<br><br><span>If you cannot resolve the issue(s), try contacting the submitter directly if they are an NPS employee. If the submitter is a commercial flight operator, notify Commercial Services of the problem and they will contact the submitter. </span>'
+            #else:
+            #    concluding_message = ''
+            message = '''
+            <html>
+                <head></head>
+                <body>
+                    <p>Flight data were recently submitted by the AGOL user {submission_info.submitter} that resulted in warnings and/or errors.
+                        <br>
+                        {warnings}
+                        {errors}
+                        <span><strong>Submitter email:</strong> {email_address}</span>
+                        <br>
+                        <span><strong>Submission time:</strong> {submission_info.submission_time}</span>
+                        {concluding_message}
+                    </p>
+                </body>
+            </html>
+            '''.format(submission_info=submission_info, email_address=email_address,
+                       warnings=warning_html if len(warnings) else '',
+                       errors=error_html if len(errors) else '',
+                       concluding_message=concluding_message if submission_type == 'tracks' else '',
+                       delete_url=param_dict['delete_features_url'])
+            subject = 'Issues with recent {submission_type} data submssion - ticket #{ticket:.0f}'\
+                .format(submission_type=submission_type, ticket=int(ticket))
         html_emails.append(dict(subject=subject,
                                 message_body=message,
                                 recipients=info.recipients.iloc[0],
