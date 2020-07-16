@@ -55,11 +55,18 @@ def get_lookup_table(engine=None, table=None, index_col='code', value_col='name'
     return data[value_col].to_dict()
 
 
-def get_db_columns(table_name, engine):
+def get_db_columns(table_name, engine=None, conn=None):
 
-    with engine.connect() as conn, conn.begin():
-        db_columns = pd.read_sql("SELECT column_name FROM information_schema.columns WHERE table_name = '%s';" % table_name,
-                                 conn)\
-            .squeeze()
+    if not conn:
+        with engine.connect() as conn, conn.begin():
+            db_columns = pd.read_sql(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = '%s';" % table_name,
+                conn
+            )
+    else:
+        db_columns = pd.read_sql(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = '%s';" % table_name,
+            conn
+        )
 
-    return db_columns
+    return db_columns.squeeze()
