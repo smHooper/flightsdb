@@ -153,6 +153,7 @@ def read_gpx(path, seg_time_diff=15):
     # Convert to datetime. It's almost in the right format to be read automatically except there's a T instead of a
     #   space between the date and the time
     gdf['utc_datetime'] = pd.to_datetime(gdf.time)
+    gdf = gdf.loc[~gdf.utc_datetime.isna()] # drop any points without a time. some garmin GPX files do this
 
     # Make points 3D
     gdf['altitude_ft'] = (gdf.ele * 3.2808399).astype(int)
@@ -485,6 +486,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
                              (extension.replace('.', '').upper(), ', '.join(sorted_extensions[:-1]), sorted_extensions[-1])
         raise IOError(error_message)
 
+
     # Calculate local (AK) time
     timezone = pytz.timezone('US/Alaska')
     gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
@@ -546,7 +548,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     return gdf
 
 
-def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None, engine=None, force_registration=False):
+def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None, engine=None, force_registration=False, ignore_duplicate_flights=False):
 
 
     if type(data) == gpd.geodataframe.GeoDataFrame:
@@ -607,7 +609,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
             matching_flights = check_duplicate_flights(f.registration, conn, f.departure_datetime, f.end_datetime)
             existing_flight_info.extend([(m.registration, m.departure_datetime) for _, m in matching_flights.iterrows()])
             existing_flight_ids.extend(matching_flights.flight_id)
-        if len(existing_flight_info) and not force_import:
+        if len(existing_flight_info) and not force_import and not ignore_duplicate_flights:
             existing_str = '\n\t-'.join(['%s: %s' % f for f in existing_flight_info])
             raise ValueError('The file {path} contains flight segments that already exist in the database as'
                              ' indicated by the following registration and departure times:\n\t-{existing_flights}.'
@@ -616,7 +618,8 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
                              .format(path=path, existing_flights=existing_str))
 
         new_flights = flights.loc[~flights.flight_id.isin(existing_flight_ids)]
-        new_flights.drop(columns='end_datetime').to_sql('flights', conn, if_exists='append', index=False)
+        new_flights.drop(columns='end_datetime')\
+            .to_sql('flights', conn, if_exists='append', index=False)
 
         # Warn the user if any of the flights already exist
         n_flights = len(flights)
@@ -628,9 +631,9 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
             warnings.warn('For the file {path}, the following {existing} of {total} flight segments already exist:'
                               '\n\t- {ids}'
                               .format(path=path,
-                                      existing=n_flights-n_new_flights,
+                                      existing=n_flights - n_new_flights,
                                       total=n_flights,
-                                      ids='\n\t-'.join(flights.loc[flights.flight_id.isin(existing_flight_ids)])
+                                      ids='\n\t-'.join(existing_flight_ids)
                                       )
                               )
 
@@ -661,6 +664,18 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
         # INSERT info about this aircraft if it doesn't already exist. If it does, UPDATE it if necessary
         if ssl_cert_path:
             ainfo.update_aircraft_info(conn, registration, ssl_cert_path)#'''
+
+    # VACUUM and ANALYZE clean up unused space and recalculate statistics to improve spatial query performance. Attempt
+    #   to run these commands on both spatial tables, but if they fail, just warn the user since it's not that big of
+    #   a deal
+    try:
+        with engine.execution_options(isolation_level='AUTOCOMMIT').connect() as conn:
+            conn.execute('VACUUM ANALYZE flight_points;')
+            conn.execute('VACUUM ANALYZE flight_lines;')
+    except:
+        warnings.warn("Unable to VACUUM and ANALYZE geometry tables. You should connect to the database and manually"
+                      " run 'VACUUM ANALYZE flight_points' and 'VACUUM ANALYZE flight_lines;' to ensure queries are as"
+                      " effecient as possible")
 
     # Archive the data file
     if not os.path.isdir(ARCHIVE_DIR):
@@ -731,8 +746,8 @@ def main(connection_txt, track_path, seg_time_diff=15, min_point_distance=200, r
         server.login(sender, password)
 
     try:
-        import_data(connection_txt, track_path, seg_time_diff, min_point_distance, registration, submission_method, operator_code,
-                      aircraft_type, force_import=force_import, ssl_cert_path=ssl_cert_path)
+        import_data(connection_txt, path=track_path, seg_time_diff=seg_time_diff, min_point_distance=min_point_distance, registration=registration, submission_method=submission_method, operator_code=operator_code,
+                      aircraft_type=aircraft_type, force_import=force_import, ssl_cert_path=ssl_cert_path)
     except Exception as e:
         if email_credentials_txt:
             message_body = '''There was a problem with the attached file: %s'''

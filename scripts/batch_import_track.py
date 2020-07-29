@@ -2,7 +2,7 @@
 Run import_track.py using all tracks found with a glob-style search string
 
 Usage:
-    batch_import_track.py <connection_txt> <search_str> [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--ssl_cert_path=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--walk_dir_tree]
+    batch_import_track.py <connection_txt> <search_str> [--seg_time_diff=<int>] [--min_point_distance=<int>] [--registration=<str>] [--ssl_cert_path=<str>] [--submission_method=<str>] [--operator_code=<str>] [--aircraft_type=<str>] [--walk_dir_tree] [--ignore_duplicate_flights]
     batch_import_track.py <connection_txt> --show_operators
 
 Examples:
@@ -33,7 +33,8 @@ Options:
                                     in the database already
     -s, --show_operators            Print all available operator names and codes to the console
     -w, --walk_dir_tree             Search for files in all sub-dirs of the directory specified by search_str. Only
-                                    files with a recognizable file extension (.gdb, .gpx, or .csv) will be processed
+                                    files with a recognizable file extension (.gdb, .gpx, .kml, or .csv) will be processed
+    -i, --ignore_duplicate_flights  Import all flights except those that already exist in the database
 
 """
 
@@ -45,7 +46,7 @@ from datetime import datetime
 import import_track
 
 
-def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False, force_import=False, ssl_cert_path=None):
+def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, operator_code=None, aircraft_type=None, registration=None, walk_dir_tree=False, force_import=False, ssl_cert_path=None, ignore_duplicate_flights=False):
 
     subprocess.call('', shell=True) #For some reason, this enables ANSII escape characters to be properly read by cmd.exe
 
@@ -74,8 +75,8 @@ def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, o
                          .format(path=os.path.basename(path), this_n=i + 1, n_tracks=n_tracks, percent=float(i + 1)/n_tracks * 100))
         
         try:
-            import_track.import_track(connection_txt,
-                                      path,
+            import_track.import_data(connection_txt,
+                                      path=path,
                                       seg_time_diff=seg_time_diff,
                                       min_point_distance=min_point_distance,
                                       registration=registration,
@@ -83,7 +84,8 @@ def main(connection_txt, search_str, seg_time_diff=15, min_point_distance=200, o
                                       operator_code=operator_code,
                                       aircraft_type=aircraft_type,
                                       force_import=force_import,
-                                      ssl_cert_path=ssl_cert_path)
+                                      ssl_cert_path=ssl_cert_path,
+                                      ignore_duplicate_flights=ignore_duplicate_flights)
 
         except Exception as e:
             failed_tracks[path] = e
