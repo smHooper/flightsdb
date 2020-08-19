@@ -191,13 +191,17 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 		}
 	)
 
+	// Add the newly create geojson layers
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(originalGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
-		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID]))
+		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
+		style: {className: 'cut-cursor-eligible'}
 	});
+	// If the split tool is selected, add the cut-cursor-enabled
 	pointGeojsonLayers[fileName][newSegmentID] = L.geoJSON(newGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
-		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, newColor))
+		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, newColor)),
+		style: {className: 'cut-cursor-eligible'}
 	});
 
 
@@ -272,7 +276,8 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 	// Reset colors and event handler for when the points are clicked again
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(originalGeojson, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
-		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID]))
+		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
+		style: {className: 'cut-cursor-eligible'}
 	});
 
 	// delete the old stuff
@@ -415,7 +420,9 @@ function showVertices(id, hideCurrent=true) {
 
 	// Remove the cut cursor on hover for the previosu track and show the cut icon on hover for this
 	//$('.cut-cursor-eligible').removeClass('cut-cursor-enabled')
-	//geojsonPoints.setStyle({className: 'cut-cursor-eligible'})
+	$('#img-split_vertex').parent().hasClass('map-tool-selected') ? 		
+		$('.cut-cursor-eligible').addClass('cut-cursor-enabled'):
+		$('.cut-cursor-enabled').removeClass('cut-cursor-enabled');
 	
 }
 
@@ -493,7 +500,9 @@ function fillSelectOptions(selectElementID, queryString, dbname, optionClassName
 
 function hideVertices(id) {
 	var fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
-	map.removeLayer(pointGeojsonLayers[fileName][id]); 
+	var pointLayer = pointGeojsonLayers[fileName][id];
+	//$(pointLayer._path).removeClass('cut-cursor-enabled');
+	map.removeLayer(pointLayer); 
 
 	//unselect this legend item (if it's selected)
 	$('#legend-' + fileName + '-' + id)
@@ -601,6 +610,7 @@ function onLineClick(e) {
 
 		selectLegendItem(thisLineID);
 
+		
 		L.DomEvent.stop(e) // don't propagate to the map
 	}
 }
@@ -645,7 +655,7 @@ async function removeFile(fileName) {
 				});
 	    }
 	} else {
-		showLoadingIndicator();
+		showLoadingIndicator(timeout=false);
 		setTimeout(() => {
 			hideLoadingIndicator();
 			showNoFileMessage();
@@ -739,7 +749,8 @@ function undoDeleteTrack({fileName, pointGeoJSON, latlngs, thisTrackInfo, segmen
 	colors[fileName][segmentID] = colors[fileName][segmentID] === undefined ? getColor() : colors[fileName][segmentID];
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(pointGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
-		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID]))
+		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
+		style: {className: 'cut-cursor-eligible'}
 	});
 	lineLayers[fileName][segmentID] = L.polyline(
 		latlngs, 
@@ -878,7 +889,8 @@ function onKeyDown(e) {
 
 function onMapClick(e) {
 	/*
-	If the map is clicked (not a polyline layer), deselect the current layer
+	If the map is clicked (not a polyline layer), deselect the current layer.
+	Also, remove the cut-cursor-enabled class in case it was added
 	*/
 
 	var fileName = getSelectedFileName()
@@ -888,6 +900,10 @@ function onMapClick(e) {
 		selectedLines[fileName] = -1;
 		$('#img-zoom_selected').parent().addClass('leaflet-toolbar-icon-disabled');
 	}
+
+	// If the split tool was selected, deselect and don't show the cut icon on hover
+	$('.cut-cursor-enabled').removeClass('cut-cursor-enabled');
+	$('#img-split_vertex').parent().removeClass('map-tool-selected');
 }
 
 
@@ -1119,7 +1135,7 @@ function loadTracksFromJSON(filePath) {
 	// Read the track JSON file and 
 
 	// start the loading indicator
-	showLoadingIndicator();
+	showLoadingIndicator(timeout=false);
 
 	removeAllLayers();
 
@@ -1219,7 +1235,7 @@ function loadTracksFromJSON(filePath) {
 
 async function loadTracksFromMemory(fileName) {
 
-	showLoadingIndicator();
+	showLoadingIndicator(timeout=false);
 
 	// remove current layers
 	removeAllLayers();
@@ -1389,9 +1405,9 @@ function onSplitButtonClick() {
 
 	var thisTool = $('#img-split_vertex').parent();
 	//thisTool.data('selected', thisTool.data('selected') ? false : true)
-	thisTool.hasClass('map-tool-selected') ? 
+	thisTool.toggleClass('map-tool-selected');/*thisTool.hasClass('map-tool-selected') ? 
 		thisTool.removeClass('map-tool-selected') :
-		thisTool.addClass('map-tool-selected');
+		thisTool.addClass('map-tool-selected');*/
 
 	$('.cut-cursor-enabled').length ?
 		$('.cut-cursor-enabled').removeClass('cut-cursor-enabled') :
@@ -1553,36 +1569,6 @@ function importData(fileName){
     var filePath = `data/edited/${fileName}.geojson`;
     var trackInfoPath = filePath.replace('.geojson', '_track_info.json')
 
-    // The point layes are in the format {segID: {geojson}} so just combine all of 
-    //  the features into a single FeatureCollection GeoJSON object since the 
-    //  segment IDs are also recorded in the properties of each feature
-    var features = [];
-    var hiddenTracks = [];
-    for (segmentID in pointGeojsonLayers[fileName]) {
-        var geojson = pointGeojsonLayers[fileName][segmentID].toGeoJSON();
-        features = features.concat(geojson.features)
-        /*if (!trackInfo[fileName][segmentID].visible) {
-            hiddenTracks.push(segmentID);
-        }*/
-    }
-
-    /*if (hiddenTracks.length) {
-        var continueImporting = confirm(`There are ${hiddenTracks.length} track segments currently hidden, but all tracks listed for this file will be imported. Are you sure you want to continue?`)
-        if (!continueImporting) {
-        	removeTemporaryImportFiles(filePath, trackInfoPath);
-            return;
-        }
-    }
-
-    var thisGeojson = {
-        type: "FeatureCollection",
-        crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-        features: features
-    };*/
-
-    //var thisTrackInfo = {...trackInfo[fileName][Object.keys(trackInfo[fileName])[0]]};
-    //thisTrackInfo['track_editor'] = $('#textbox-track_editor').val();
-
     console.log(`python ..\\scripts\\import_from_editor.py ../web/${filePath} ../web/${filePath.replace('.geojson', '_track_info.json')} \\\\inpdenards\\overflights\\config\\poll_feature_service_params.json`)
     // send a post request to the PHP script to run the Python script
     var stderrPath = `errorLogs/${fileName}_${Date.now()}.log`;
@@ -1608,9 +1594,9 @@ function importData(fileName){
                 success: function(stderr) {
                     if (stderr.trim().length) {
                     	var error;
-                    	var dbErrorDetail = stderr.match(/[\r\n]DETAIL.*[\r\n]/).toString();
+                    	var dbErrorDetail = stderr.match(/[\r\n]DETAIL.*[\r\n]/);
                     	if (dbErrorDetail != null) {
-                    		error = dbErrorDetail.replace('DETAIL: ', '').trim();
+                    		error = dbErrorDetail.toString().replace('DETAIL: ', '').trim();
                     	} else {
 	                        var lines = stderr.split('\n');
 	                        var errorName = stderr.match(/[A-Z][a-z]*Error/)//standard python Exception ends in "Error" (e.g., ValueError);
