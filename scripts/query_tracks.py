@@ -49,7 +49,6 @@ import geopandas as gpd
 import db_utils
 from import_track import get_cl_args
 
-#SUPPORTED_FILE_EXTENSIONS = ['.geojson', '.json', '.shp', '.csv', '.gpx']
 FIONA_DRIVERS = {'.geojson': 'GeoJSON',
                  '.json': 'GeoJSON',
                  '.shp': 'ESRI Shapefile',
@@ -75,7 +74,107 @@ def validate_bounding_box(bbox):
         warnings.warn('The bounding box given is outside of mainland Alaska')
 
 
-def query_tracks(connection_txt, start_date, end_date, table='flight_points', start_time='00:00', end_time='23:59', bbox=None, mask_file=None, mask_buffer_distance=None, clip_output=False, output_path=None, aircraft_info=False, sql_criteria=''):
+def get_mask_wkt(mask_gdf, buffer_distance=None):
+    '''
+    Get a Well-Known Text string from a
+    :param mask_gdf: GeoDataframe from the vector mask file
+    :param buffer_distance: distance in meters to buffer around the mask
+    :return:
+    '''
+    mask_gdf['dissolve_field'] = 1
+    if buffer_distance:
+        ak_albers_mask = mask_gdf.to_crs(epsg=3338)
+        mask_gdf.geometry = ak_albers_mask.buffer(buffer_distance).to_crs(epsg=4326)
+    elif not (mask_gdf.geom_type == 'Polygon').all():
+        raise ValueError("If specifying a mask_file, all features must either have a Polygon geometry type or "
+                         "you must specify a mask_buffer_distance with either a Point or Line mask_file")
+    mask_wkt = mask_gdf.dissolve(by='dissolve_field').squeeze()['geometry'].wkt
+
+    return mask_wkt
+
+
+def query_tracks(start_date, end_date, connection_txt=None, engine=None, table='flight_points', start_time='00:00', end_time='23:59', bbox=None, mask=None, mask_buffer_distance=None, clip_output=False, aircraft_info=False, sql_criteria=''):
+
+    if not engine:
+        if not connection_txt:
+            raise ValueError('You must either specify an SQLAalchemy Engine or connection_txt to connect to the database')
+        engine = db_utils.connect_db(connection_txt)
+
+    with engine.connect() as conn, conn.begin():
+        query_columns = pd.Series(
+            ['flights.' + c for c in db_utils.get_db_columns('flights', engine)
+             if c not in ['source_file', 'time_submitted']] + \
+            [f'{table}.{c}' for c in db_utils.get_db_columns(table, engine)
+             if c not in ['flight_id', 'id']])
+        if aircraft_info:
+            query_columns = query_columns.append(
+                ['aircraft_info.' + c for c in db_utils.get_db_columns('aircraft_info', engine)])
+
+    mask_specified = isinstance(mask, gpd.geodataframe.GeoDataFrame)
+    if mask_specified:
+        # Make sure the mask is in WGS84 (same as database features)
+        if not mask.crs['init'] == 'epsg:4326':
+            mask = mask.to_crs(epsg='4326')
+
+        mask_wkt = get_mask_wkt(mask, mask_buffer_distance)
+        if clip_output:
+            query_columns.replace(
+                {f'{table}.geom': "ST_Intersection(geom, ST_GeomFromText('%s', 4326)) AS geom" % mask_wkt},
+                inplace=True)
+            if table == 'flight_points':
+                warnings.warn("You specified clip_output=True, but you're querying the flight_points table. This will "
+                              "take much longer and yield the same result as specifying a mask with clip_output=False "
+                              "(the default)")
+        if bbox:
+            warnings.warn('You specified both a mask_file and a bbox, but only the mask_file will be used to filter results')
+    elif clip_output:
+        warnings.warn('clip_output was set to True, but you did not specify a mask_file to spatially filter query results.')
+
+    # Compose the SQL
+    if start_time and end_time:
+        # If the user is getting points, select points by their timestamp
+        if table == 'flight_points':
+            time_clause = f"flight_points.ak_datetime::time >= '{start_time}' AND " \
+                          f"flight_points.ak_datetime::time <= '{end_time}'"
+        # Otherwise, the user is getting lines, so the only timestamps are the departure and landing times
+        else:
+            time_clause = f"departure_datetime::time >= '{start_time}' AND landing_datetime::time <= '{end_time}'"
+    else:
+        time_clause = ''
+
+    sql = '''SELECT {columns} FROM {table}
+          INNER JOIN flights ON flights.id = {table}.flight_id 
+          {aircraft_join}
+          WHERE 
+             {date_field}::date BETWEEN '{start_date}' AND '{end_date}' AND 
+             {time_clause}
+             {bbox_criteria}
+             {spatial_filter}
+             {other_criteria}'''\
+        .format(columns=', '.join(query_columns),
+                table=table,
+                aircraft_join="INNER JOIN aircraft_info ON aircraft_info.registration = flights.registration" if aircraft_info else '',
+                date_field="ak_datetime" if table == 'flight_points' else "departure_datetime",
+                time_clause=time_clause if start_time and end_time else '',
+                start_date=start_date,
+                end_date=end_date,
+                start_time=start_time,
+                end_time=end_time,
+                bbox_criteria=f" AND ST_Intersects(ST_MakeEnvelope({bbox}, 4326), geom)" if bbox else "",
+                spatial_filter=f" AND ST_Intersects(geom, ST_GeomFromText('{mask_wkt}', 4326))" if mask_specified and not clip_output else '',
+                other_criteria=" AND " + sql_criteria if sql_criteria else ''
+                )
+
+    with engine.connect() as conn, conn.begin():
+        data = gpd.GeoDataFrame.from_postgis(sql, conn, geom_col='geom')
+
+    # Clipping will return null geometries if other SQL criteria would have returned additional features, so remove those empty geometries
+    data = data.loc[~data.geometry.is_empty]
+
+    return data
+
+
+def main(connection_txt, start_date, end_date, table='flight_points', start_time='00:00', end_time='23:59', bbox=None, mask_file=None, mask_buffer_distance=None, clip_output=False, output_path=None, aircraft_info=False, sql_criteria=''):
 
     if output_path:
         _, path_extension = os.path.splitext(output_path)
@@ -87,6 +186,7 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
                                      )
                              )
     # If a mask file is given, get the Well-Known Text representation to feed to the query
+    mask = None
     if mask_file:
         # Check if the file exists
         if not os.path.isfile(mask_file):
@@ -103,77 +203,12 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
                              )
         # Make a multi-feature geometry from the mask_file
         mask = gpd.read_file(mask_file).to_crs(epsg=4326)
-        mask['dissolve_field'] = 1
-        if mask_buffer_distance:
-            ak_albers_mask = mask.to_crs(epsg=3338)
-            mask.geometry = ak_albers_mask.buffer(mask_buffer_distance).to_crs(epsg=4326)
-        elif not (mask.geom_type == 'Polygon').all():
-            raise ValueError("If specifying a mask_file, all features must either have a Polygon geometry type or "
-                             "you must specify a mask_buffer_distance with either a Point or Line mask_file")
-        mask_wkt = mask.dissolve(by='dissolve_field').squeeze()['geometry'].wkt
 
-        if bbox:
-            warnings.warn('You specified both a mask_file and a bbox, but only the mask_file will be used to filter results')
-    elif clip_output:
-        warnings.warn('clip_output was set to True, but you did not specify a mask_file to spatially filter query results.')
 
     engine = db_utils.connect_db(connection_txt)
-    with engine.connect() as conn, conn.begin():
-        query_columns = pd.Series(
-            ['flights.' + c for c in db_utils.get_db_columns('flights', engine)
-             if c not in ['source_file', 'time_submitted']] + \
-            ['{table}.{column}'.format(table=table, column=c) for c in db_utils.get_db_columns(table, engine)
-             if c not in ['flight_id', 'id']])
-        if aircraft_info:
-            query_columns = query_columns.append(
-                ['aircraft_info.' + c for c in db_utils.get_db_columns('aircraft_info', engine)])
-        if mask_file and clip_output:
-            query_columns.replace({'%s.geom' % table: "ST_Intersection(geom, ST_GeomFromText('%s', 4326)) AS geom" % mask_wkt}, inplace=True)
-        '''# split datetime columns into date and time because fiona (underlying GeoPandas) freaks out about datetimes
-        datetime_columns = []
-        for c in query_columns:
-            if c.endswith('datetime'):
-                datetime_columns.append(c)
-                query_columns = query_columns.append(
-                    pd.Series(['%s::date AS %s' % (c, c.replace('datetime', 'date').split('.')[-1]),
-                               '%s::time AS %s' % (c, c.replace('datetime', 'time').split('.')[-1])]
-                                                               ))
-        query_columns = query_columns.loc[~query_columns.isin(datetime_columns)].sort_values()'''
-
-    # Compose the SQL
-    if start_time and end_time:
-        time_clause = "departure_datetime::time >= '{start_time}' AND landing_datetime::time <= '{end_time}'".format(
-            start_time=start_time, end_time=end_time)
-    else:
-        time_clause = ''
-    sql = "SELECT {columns} FROM {table} " \
-          "INNER JOIN flights ON flights.id = {table}.flight_id " \
-          "{aircraft_join}" \
-          "WHERE " \
-          "   {date_field}::date BETWEEN '{start_date}' AND '{end_date}' AND " \
-          "   {time_clause}" \
-          "   {bbox_criteria}" \
-          "   {spatial_filter}" \
-          "   {other_criteria}"\
-        .format(columns=', '.join(query_columns),
-                table=table,
-                aircraft_join="INNER JOIN aircraft_info ON aircraft_info.registration = flights.registration" if aircraft_info else '',
-                date_field="ak_datetime" if table == 'flight_points' else "departure_datetime",
-                time_clause=time_clause if start_time and end_time else '',
-                start_date=start_date,
-                end_date=end_date,
-                start_time=start_time,
-                end_time=end_time,
-                bbox_criteria=" AND ST_Intersects(ST_MakeEnvelope(%s, 4326), geom)" % bbox if bbox else "",
-                spatial_filter=" AND ST_Intersects(geom, ST_GeomFromText('%s', 4326))" % mask_wkt if mask_file and not clip_output else '',
-                other_criteria=" AND " + sql_criteria if sql_criteria else ''
-                )
-    
-    with engine.connect() as conn, conn.begin():
-        data = gpd.GeoDataFrame.from_postgis(sql, conn, geom_col='geom')
-
-    # Clipping will return null geometries if other SQL criteria would have returned additional features, so remove those empty geometries
-    data = data.loc[~data.geometry.is_empty]
+    data = query_tracks(start_date, end_date, engine=engine, table=table, start_time=start_time, end_time=end_time,
+                        bbox=bbox, mask=mask, mask_buffer_distance=mask_buffer_distance, clip_output=clip_output,
+                        aircraft_info=aircraft_info, sql_criteria=sql_criteria)
 
     if output_path:
         datetime_columns = data.columns[data.dtypes == 'datetime64[ns]']
@@ -188,5 +223,5 @@ def query_tracks(connection_txt, start_date, end_date, table='flight_points', st
 if __name__ == '__main__':
 
     args = get_cl_args(__doc__)
-    sys.exit(query_tracks(**args))
+    sys.exit(main(**args))
 
