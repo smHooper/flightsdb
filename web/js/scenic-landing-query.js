@@ -1413,7 +1413,11 @@ async function showQueryResult(selectedAnchor=false) {
 			}
 			//input class="query-input" type="date" id="input-end_date" value="2019-01-01"
 			var thisValue = thisFlight[columnID];
-			let cellValue = ['total fee', 'fee/passenger'].includes(fieldName) ? '$' + parseFloat(thisValue).toFixed(2) : thisValue;
+			let cellValue = ['total fee', 'fee/passenger'].includes(fieldName) ? 
+				'$' + parseFloat(
+						thisValue == null ? 0 : thisValue
+					).toFixed(2) : 
+				thisValue;
 			let inputType = 'text';
 			if (fieldName.endsWith(' date')) inputType = 'date';
 			if (fieldName.endsWith(' time')) inputType = 'time'; 
@@ -1534,7 +1538,7 @@ async function showQueryResult(selectedAnchor=false) {
 
 	$('.edit-button').click(onEditButtonClick);
 
-	if (!editors.includes(username)) {
+	if (!editors.includes(username.toLowerCase())) {
 		$('.edit-button, .add-flight-button, .save-button').addClass('hidden')
 	}
 
