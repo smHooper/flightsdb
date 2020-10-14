@@ -113,6 +113,9 @@ ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files\tracks'
 
 REGISTRATION_REGEX = r'(?i)N\d{2,5}[A-Z]{0,2}'
 
+FEET_PER_METER = 3.2808399
+M_PER_S_TO_KNOTS = 1.94384
+
 def calc_bearing(lat1, lon1, lat2, lon2):
     '''
     Calculate bearing from two lat/lon coordinates. Logic from https://gist.github.com/jeromer/2005586
@@ -156,7 +159,7 @@ def read_gpx(path, seg_time_diff=15):
     gdf = gdf.loc[~gdf.utc_datetime.isna()] # drop any points without a time. some garmin GPX files do this
 
     # Make points 3D
-    gdf['altitude_ft'] = (gdf.ele * 3.2808399).astype(int)
+    gdf['altitude_ft'] = (gdf.ele * FEET_PER_METER).astype(int)
     gdf.geometry = gdf.apply(lambda row: shapely_Point(row.geometry.x, row.geometry.y, row.altitude_ft), axis=1)
 
     gdf['longitude'] = gdf.geometry.x
@@ -166,9 +169,9 @@ def read_gpx(path, seg_time_diff=15):
     gdf.sort_values(by='utc_datetime', inplace=True)
     gdf['diff_m'] = calc_distance_to_last_pt(gdf)
     gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
-    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > seg_time_diff * 60), 'diff_seconds'] = -1
+    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff / 60)), 'diff_seconds'] = -1
     gdf['m_per_sec'] = gdf.diff_m / gdf.diff_seconds
-    gdf['knots'] = (gdf.m_per_sec * 1.94384).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
+    gdf['knots'] = (gdf.m_per_sec * M_PER_S_TO_KNOTS).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
     gdf.loc[(gdf.knots < 0) | gdf.knots.isnull(), 'knots'] = 0
 
     gdf['previous_lat'] = gdf.shift().latitude
@@ -207,18 +210,115 @@ def read_gdb(path, seg_time_diff=None):
     return read_gpx(out_path)
 
 
-def read_kml(path):
+def parse_web_sentinel_xml(parser, seg_time_diff=15):
+
+    points = []
+    for placemark in parser.find_all('Placemark'):
+        if placemark.find('styleUrl').text == '#waypt':
+            if not placemark.description:
+                raise ValueError
+            content = {
+                k.strip(): v.strip() for k, v in
+                [
+                    [j for j in i.split(':', 1)]
+                    for i in placemark.description.text.split('\n')
+                    if ':' in i
+                ]
+            }
+            coordinate_el = placemark.find('coordinates')
+            if not coordinate_el:
+                raise ValueError
+            coordinates = [c.strip() for c in coordinate_el.text.split(',')]
+            content['latitude'] = float(coordinates[1])
+            content['longitude'] = float(coordinates[0])
+            if len(coordinates) > 2:
+                content['altitude_ft'] = float(coordinates[2])
+            elif 'Feet' in content:
+                content['altitude_ft'] = float(content['Feet'])
+            else:
+                raise RuntimeError('No altitude value for point in KML file:\n%s' % placemark.prettify())
+
+            if 'Knots' in content:
+                content['knots'] = float(content['Knots'])
+            content['utc_datetime'] = pd.to_datetime(content['UTC'])
+
+            points.append(content)
+
+    df = pd.DataFrame(points).sort_values('utc_datetime')
+    geometry = df.apply(lambda row: shapely_Point(row.longitude, row.latitude, row.altitude_ft), axis=1)
+    gdf = gpd.GeoDataFrame(df, geometry=geometry)
+    gdf['diff_m'] = calc_distance_to_last_pt(gdf)
+    gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
+    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff / 60)), 'diff_seconds'] = -1
+    gdf['m_per_sec'] = gdf.diff_m / gdf.diff_seconds
+    if 'knots' not in gdf:
+        gdf['knots'] = (gdf.m_per_sec * M_PER_S_TO_KNOTS).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
+    gdf.loc[(gdf.knots < 0) | gdf.knots.isnull(), 'knots'] = 0
+
+    gdf['previous_lat'] = gdf.shift().latitude
+    gdf['previous_lon'] = gdf.shift().longitude
+    gdf['heading'] = gdf.apply(lambda row:
+                                    calc_bearing(*row[['previous_lat', 'previous_lon', 'latitude', 'longitude']]),
+                               axis=1)\
+        .fillna(-1).round().astype(int)
+
+    return gdf
+
+
+def read_kml(path, seg_time_diff=15):
     '''
-    Convert KML to GPX, then just use read_gpx() function
+    KMLs come in two accepted variants, Foreflight and Web Sentinel. If the file is of the Foreflight variant, convert
+    KML to GPX, then just use read_gpx() function. Otherwise, parse the file and convert directly to a GeoDataframe.
+    KML formats are:
+        1. Foreflight:
+            <Placemark>
+                <styleUrl>#trackStyle</styleUrl>
+                <gx:Track>
+                    <when>2019-11-17T18:45:59.015Z</when>
+                    <gx:coord>-147.85804607913613 64.80618080143059 126.2699673929132</gx:coord>
+                    ...
+                </gx:Track>
+            </Placemark>
+
+        2. Web Sentinel:
+            <Placemark>
+                <styleUrl>#waypt</styleUrl>
+                <description>
+                    UTC: Wed Jun 10 18:37:00 PDT 2020
+                    Lat: 63.73285333 N
+                    Lon: -148.91178833 E
+                    Knots: 0
+                    Track: 356
+                    Feet: 1738.845147
+                </description>
+                <Point>
+                    <altitudeMode>absolute</altitudeMode>
+                    <coordinates>-148.91178833,63.73285333,530.0</coordinates>
+                </Point>
+            </Placemark>
+            <Placemark>
+            ...
     '''
 
-    try:
-        parser = kml_parser.KMLParser()
-        gpx_path = parser.to_gpx(path, path.replace('.kml', '_from_kml.gpx'))
-    except Exception as e:
-        raise RuntimeError('Problem reading KML file %s: %s' % (path, e))
+    with open(path) as f:
+        soup = bs4.BeautifulSoup(f, 'xml')
 
-    return read_gpx(gpx_path)
+    if soup.find('name', text='www.websentinel.net'):
+        try:
+            return parse_web_sentinel_xml(soup, seg_time_diff)
+        except Exception as e:
+            raise RuntimeError('Could not parse Web Sentinel KML file %s: %s' % (path, e))
+
+    elif soup.find('gx:Track'):
+        try:
+            parser = kml_parser.ForeflightKMLParser()
+            gpx_path = parser.to_gpx(path, path.replace('.kml', '_from_kml.gpx'))
+        except Exception as e:
+            raise RuntimeError('Could not parse KML file %s from Foreflight format: %s' % (path, e))
+        return read_gpx(gpx_path, seg_time_diff)
+    
+    else:
+        raise RuntimeError('Could not understand KML format of file %s' % path)
 
 
 def format_aff(path):
@@ -325,7 +425,7 @@ def format_tms(path):
     except Exception as e:
         raise AttributeError('Could not parse longitude field for %s because of %s' % (path, e))
 
-    df['altitude_ft'] = (df['Altitude (m)'] * 3.2808399).astype(int)
+    df['altitude_ft'] = (df['Altitude (m)'] * FEET_PER_METER).astype(int)
     df['utc_datetime'] = pd.to_datetime(df['utc_datetime'], errors='coerce')
 
     return df
@@ -346,7 +446,7 @@ def format_foreflight_csv(path):
     df['utc_datetime'] = pd.to_datetime([epoch_datetime + timedelta(seconds=round(ts/1000)) for ts in df['Timestamp']])
 
     # Convert altitude meters to feet
-    df['altitude_ft'] = (df['Altitude'] * 3.2808399).astype(int)
+    df['altitude_ft'] = (df['Altitude'] * FEET_PER_METER).astype(int)
 
     # Rename other columns that don't need to be recalculated
     df.rename(columns={'Longitude': 'longitude',
@@ -406,12 +506,14 @@ def get_flight_id(gdf, seg_time_diff):
     time_diff = gdf.ak_datetime.diff() / np.timedelta64(1, 'm')#.groupby(gdf['date_str']).diff() # don't groupby day in case there's an overnight flight
     # Assign a sequential integer to each different flight segment for the file. Only the start of a new flight will
     #   have a difference in time with it's previous row of more than seg_time_diff (in theory), so these rows will
-    #   evaluate to True. cumsum() treats these as a 1 and False values as 0, so all rows of the same segment will have
-    #   the same ID
-    gdf['segment_id'] = (time_diff >= seg_time_diff).cumsum()
-    #
+    #   evaluate to True. Also start a new segment where the is_new_segment column is True (this column is potentially 
+    #   altered in the web app when a track is split, but if it doesn't exist in the data, create it). cumsum() treats 
+    #   these as a 1 and False values as 0, so all rows of the same segment will have the same ID.
+    if 'is_new_segment' not in gdf:
+        gdf['is_new_segment'] = False
+    gdf['segment_id'] = ((time_diff >= seg_time_diff) | gdf.is_new_segment).cumsum()
+    
     departure_times = gdf.groupby('segment_id').ak_datetime.min().to_frame().rename(columns={'ak_datetime': 'departure_datetime'})
-    #timestamps = gdf.groupby('segment_id').ak_datetime.first().dt.floor('%smin' % seg_time_diff).dt.strftime('%Y%m%d%H%M').to_frame().rename(columns={'ak_datetime': 'departure_datetime'})
     gdf = gdf.merge(departure_times, on='segment_id')
     gdf['timestamp_str'] = gdf.departure_datetime.dt.floor('%smin' % seg_time_diff).dt.strftime('%Y%m%d%H%M')
     gdf['flight_id'] = gdf.registration + '_' + gdf.timestamp_str#gdf.date_str + '_' + segment_id.astype(str)
@@ -538,6 +640,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     # Get metadata-y columns
     gdf['submission_time'] = (datetime.now()).strftime('%Y-%m-%d %H:%M')
     gdf['submission_method'] = submission_method
+    gdf['is_new_segment'] = False
     if operator_code:
         gdf['operator_code'] = operator_code
     if aircraft_type:
@@ -566,6 +669,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
         raise ValueError('Either an SQLAlchemy Engine (from create_engine()) or connection_txt must be given')
 
     # drop any segments with only one vertex
+    gdf['duration_hrs'] = (gdf.landing_datetime - gdf.departure_datetime).dt.seconds/3600.0
     gdf = gdf.loc[gdf.duration_hrs > 0]
 
     # get columns from DB tables
@@ -576,6 +680,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
 
     # separate flights, points, and lines
     flights = gdf[[c for c in flight_columns if c in gdf]].drop_duplicates()
+
     flights['end_datetime'] = gdf.groupby('flight_id').ak_datetime.max().values
     # if coming from web app, this should already be in the data so don't overwrite
     #if 'submitter' not in flights.columns:
@@ -612,7 +717,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
         if len(existing_flight_info) and not force_import and not ignore_duplicate_flights:
             existing_str = '\n\t-'.join(['%s: %s' % f for f in existing_flight_info])
             raise ValueError('The file {path} contains flight segments that already exist in the database as'
-                             ' indicated by the following registration and departure times:\n\t-{existing_flights}.'
+                             ' indicated by the following registration and departure times:\n\t-{existing_flights}'
                              '\nEither delete these flight segments from the database or run this script again with'
                              ' the --force_import flag (ONLY USE THIS FLAG IF YOU KNOW WHAT YOU\'RE DOING).'
                              .format(path=path, existing_flights=existing_str))
@@ -683,7 +788,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
             os.mkdir(ARCHIVE_DIR)
         except:
             pass
-    if path:
+    if os.path.isdir(os.path.dirname(path)):
         try:
             shutil.copy(path, ARCHIVE_DIR)
             os.remove(path)

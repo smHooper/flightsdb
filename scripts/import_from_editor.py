@@ -18,11 +18,13 @@ def main(geojson_path, track_info_json, config_json):
     with open(config_json) as j:
         params = json.load(j)
 
-    '''gdf = gpd.GeoDataFrame.from_features(json.loads(geojson_str)['features'])
-    track_info = json.loads(track_info_str)#'''
-    gdf = gpd.read_file(geojson_path)
+    # duplicate points get created when a segment is split and the only thing distinguishing 
+    #   them is the mapID, a value created by the track editing app, so sort by both timestamp
+    #   and mapID
+    gdf = gpd.read_file(geojson_path)\
+        .sort_values(['ak_datetime', 'mapID']) 
     with open(track_info_json) as j:
-        track_info = json.load(j)  # '''
+        track_info = json.load(j)
 
     connection_info = params['db_credentials']['tracks']
     engine = create_engine('postgresql://{username}:{password}@{ip_address}:{port}/{db_name}'
@@ -46,7 +48,7 @@ def main(geojson_path, track_info_json, config_json):
     seg_time_diff = import_params['seg_time_diff'] if 'seg_time_diff' in import_params else 15
     gdf = import_track.get_flight_id(gdf, seg_time_diff)
 
-    import_track.import_data(engine=engine, data=gdf, **import_params)
+    import_track.import_data(engine=engine, data=gdf, path=track_info['name'], **import_params)
 
 
 if __name__ == '__main__':
