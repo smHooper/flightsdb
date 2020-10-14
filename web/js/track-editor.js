@@ -7,6 +7,130 @@ const noFileGIFS = [
 ];
 
 
+/*
+Modify the default boxzoom Leaflet.Handler to use the same functionality for selection
+*/
+L.Map.Selector = L.Map.BoxZoom.extend({
+	initialize: function (map) {
+		this._map = map;
+		this._container = map._container;
+		this._pane = map._panes.overlayPane;
+	},
+
+	addHooks: function () {
+		L.DomEvent.on(this._container, 'mousedown', this._onMouseDown, this);
+	},
+
+	removeHooks: function () {
+		L.DomEvent.off(this._container, 'mousedown', this._onMouseDown);
+	},
+
+	_onMouseDown: function (e) {
+		if (!e.shiftKey || ((e.which !== 1) && (e.button !== 1))) { return false; }
+
+		L.DomUtil.disableTextSelection();
+
+		this._startLayerPoint = this._map.mouseEventToLayerPoint(e);
+
+		this._box = L.DomUtil.create('div', 'leaflet-zoom-box', this._pane);
+		L.DomUtil.setPosition(this._box, this._startLayerPoint);
+
+		//TODO refactor: move cursor to styles
+		this._container.style.cursor = 'crosshair';
+
+		L.DomEvent
+		    .on(document, 'mousemove', this._onMouseMove, this)
+		    .on(document, 'mouseup', this._onMouseUp, this)
+		    .on(document, 'keydown', this._onKeyDown, this)
+		    .preventDefault(e);
+
+		this._map.fire('boxzoomstart');
+	},
+
+	_onMouseMove: function (e) {
+		var startPoint = this._startLayerPoint,
+		    box = this._box,
+
+		    layerPoint = this._map.mouseEventToLayerPoint(e),
+		    offset = layerPoint.subtract(startPoint),
+
+		    newPos = new L.Point(
+		        Math.min(layerPoint.x, startPoint.x),
+		        Math.min(layerPoint.y, startPoint.y));
+
+		L.DomUtil.setPosition(box, newPos);
+
+		// TODO refactor: remove hardcoded 4 pixels
+		box.style.width  = (Math.max(0, Math.abs(offset.x) - 4)) + 'px';
+		box.style.height = (Math.max(0, Math.abs(offset.y) - 4)) + 'px';
+	},
+
+	_finish: function () {
+		this._pane.removeChild(this._box);
+		this._container.style.cursor = '';
+
+		L.DomUtil.enableTextSelection();
+
+		L.DomEvent
+		    .off(document, 'mousemove', this._onMouseMove)
+		    .off(document, 'mouseup', this._onMouseUp)
+		    .off(document, 'keydown', this._onKeyDown);
+	},
+
+	_onMouseUp: function (e) {
+
+		this._finish();
+
+		var map = this._map;
+		var layerPoint = map.mouseEventToLayerPoint(e);
+
+		if (this._startLayerPoint.equals(layerPoint)) { return; }
+
+		var bounds = new L.LatLngBounds(
+		        map.layerPointToLatLng(this._startLayerPoint),
+		        map.layerPointToLatLng(layerPoint));
+
+		//map.fitBounds(bounds);
+		console.log(bounds);
+
+		map.fire('boxzoomend', {
+			boxZoomBounds: bounds
+		});
+	},
+
+	_onKeyDown: function (e) {
+		if (e.keyCode === 27) {
+			this._finish();
+		}
+	}
+
+})
+
+L.Map.mergeOptions({selector: true});
+L.Map.addInitHook('addHandler', 'selector', L.Map.Selector);
+L.Map.mergeOptions({boxZoom: false});
+
+function deepCopy(inObject) {
+  let outObject, value, key
+
+  if (typeof inObject !== "object" || inObject === null) {
+    return inObject // Return the value if inObject is not an object
+  }
+
+  // Create an array or object to hold the values
+  outObject = Array.isArray(inObject) ? [] : {}
+
+  for (key in inObject) {
+    value = inObject[key]
+
+    // Recursively (deep) copy for nested objects, including arrays
+    outObject[key] = deepCopy(value)
+  }
+
+  return outObject
+}
+
+
 function getColor() {
 	var color = Math.floor(Math.random() * 16777216).toString(16);
 	var hexColor = '#000000'.slice(0, -color.length) + color;
@@ -136,7 +260,12 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 	var allLatlngs = originalLine.getLatLngs();
 
 	// vertexID is a global ID so calculate the index within the latlngs array
-	var vertexIndex = vertexID - minVertexIndex 
+	var vertexIndex = vertexID - minVertexIndex;
+
+	if ((vertexIndex === allLatlngs.length - 1) || (vertexIndex === 0)) {
+		alert('Invalid operation: You attempted to split this line at the end of this track segment');
+		return;
+	}
 
 	var originalLatlngs = allLatlngs.slice(0, (vertexIndex + 1));
 	var newLatLngs = allLatlngs.slice(vertexIndex);
@@ -171,19 +300,21 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 	pointGeojsonLayers[fileName][segmentID].eachLayer(
 		function(layer) {
 			var featureID = layer.feature.id;
-			let newFeature = {...layer.feature};
+			let newFeature = deepCopy(layer.feature);
 
 			// all points up to and including the splitting vertex
 			if (featureID <= vertexID) {
+				layer.feature.properties.landing_datetime = newDepartureTime;
 				originalGeoJSON.features.push(layer.feature);
-			
+			} 
 			// the splitting vertex and all points after it
-			} else if (featureID >= vertexID) {
+			if (featureID >= vertexID) {
 				// set the mapID to the new segment ID so the points 
 				//  are still related to the line
 				newFeature.properties.mapID = newSegmentID;
 				newFeature.properties.min_index = vertexID;
 				newFeature.properties.departure_datetime = newDepartureTime;
+				if (parseInt(featureID) === parseInt(vertexID)) newFeature.properties.is_new_segment = true;
 				newGeoJSON.features.push(newFeature);
 			}
 
@@ -197,7 +328,6 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
 		style: {className: 'cut-cursor-eligible'}
 	});
-	// If the split tool is selected, add the cut-cursor-enabled
 	pointGeojsonLayers[fileName][newSegmentID] = L.geoJSON(newGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
 		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, newColor)),
@@ -214,7 +344,7 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 	
 	isEditing[fileName] = true;
 	
-	// If the user is not redoing the edit action (i.e., pressed ctr + shift + Z), 
+	// If the user is not redoing the edit action (i.e., pressed ctr + shift + Z or the redo button), 
 	//	reset the buffer because this is a new action
 	if (!isRedo) {
 		redoBuffer = [];
@@ -229,8 +359,6 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 		}
 		toggleUndoButton();
 	}
-
-
 }
 
 
@@ -252,22 +380,27 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 
 	// Add the lat/lngs of the newer line to the original line
 	let allLatlngs = lineLayers[fileName][segmentID].getLatLngs();
-	allLatlngs.push(...lineLayers[fileName][mergeSegID].getLatLngs());
+	allLatlngs.push(...lineLayers[fileName][mergeSegID].getLatLngs().slice(1));//don't use 0th coord because it's duplicated
 	lineLayers[fileName][segmentID].setLatLngs(allLatlngs);
 
 	let originalGeojson = pointGeojsonLayers[fileName][segmentID].toGeoJSON();
 	let properties = originalGeojson.features[0].properties
-	let departureDatetime = properties.departure_datetime;
-	let minIndex = properties.min_index;
+	const departureDatetime = properties.departure_datetime;
+	const landingDatetime = mergeGeojson.features[0].properties.landing_datetime;
+	const minIndex = properties.min_index;
 	pointGeojsonLayers[fileName][mergeSegID].eachLayer(
 		function(layer) {
 			var featureID = layer.feature.id;
-			var theseProperties = layer.feature.properties
+			if (parseInt(featureID) === parseInt(splitVertexID)) return;
+
+			var theseProperties = layer.feature.properties //only creates reference, not copy
 			// set the mapID to the old segment ID so the points 
 			//  are still related to the line
 			theseProperties.mapID = segmentID;
 			theseProperties.min_index = minIndex;
-			layer.feature.properties.departure_datetime = departureDatetime;
+			theseProperties.departure_datetime = departureDatetime;
+			theseProperties.landing_datetime = landingDatetime;
+			theseProperties.is_new_segment = false;
 			// add this feature to the original
 			originalGeojson.features.push(layer.feature);
 		}
@@ -531,7 +664,7 @@ function selectLegendItem(id) {
 
 	var fileName = getSelectedFileName()
 	
-	// if there was no selected file, loop through and look for the visible line
+	// if there was no selected file, loop through and look for the first visible line
 	if (id < 0) {
 		for (segmentID in trackInfo[fileName]) {
 			if (trackInfo[fileName][segmentID].visible) {
@@ -550,18 +683,18 @@ function selectLegendItem(id) {
 		}
 	}
 
-	// Deselect all currently selected cell (<td>) items,
+	// Deselect all currently selected .legend-cell items,
 	//  which actually contain the formatting
 	$('.legend-cell-selected')
 		.removeClass('legend-cell-selected')
 		.addClass('legend-cell');
 	
-	// Remove the selection class from the row (<tr>)
+	// Remove the selection class from the row
 	$('.legend-row-selected')
 		.removeClass('legend-row-selected')
 		.addClass('legend-row')
 
-	// The row was a assigned the id, so get it's children (the <td>s)
+	// The row was a assigned the id, so get it's children (the .legned-cells)
 	//  and add the class that contains the 
 	$(`#legend-${fileName}-${id}`)
 		.removeClass('legend-row')
@@ -582,7 +715,8 @@ function selectLegendItem(id) {
 	var scrollPosition = $(`#legend-${fileName}`).scrollTop();
 	var rowHeight = parseInt($(`#legend-${fileName}-${id}`).css('height').replace('px', ''));
 	var legendHeight = parseInt($(`#legend-${fileName}`).css('height').replace('px', ''));
-	var scrollTo = id * rowHeight;
+	let elementIndex = $(`#legend-${fileName}-${id}`).index();
+	var scrollTo = elementIndex * rowHeight - rowHeight;
 
 	// scroll to the row if it's off the screen
 	if (scrollTo < scrollPosition || scrollTo > scrollPosition + legendHeight - rowHeight) {
@@ -984,10 +1118,6 @@ function updateLegend(fileName){
 	
 	// Add a new row for each track
 	for (segmentID in trackInfo[fileName]) {
-		/* // If the element already exists, skip it
-		if ($(`#legend-${fileName}-${segmentID}`).length) {
-			continue;
-		}*/
 		var thisInfo = trackInfo[fileName][segmentID];
 		var thisColor = colors[fileName][segmentID];
 		var htmlString = 
@@ -1071,7 +1201,6 @@ function updateLegend(fileName){
 	
 	// select the row corresponding to the selected line
 	selectLegendItem(selectedLines[fileName]);
-	//console.log($('#legend_0'))
 }
 
 
@@ -1603,14 +1732,25 @@ function importData(fileName){
 	                        
 	                        for (lineNumber in lines) {
 	                            if (lines[lineNumber].startsWith(errorName)) {
-	                                error = lines[lineNumber];
+	                                error = lines.slice(lineNumber).join('\n');//all remaining lines
 	                                break;
 	                            }
 	                        }
 	                    }
 
-                        alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
-                        hideLoadingIndicator();
+	                    var warnings = [...stderr.matchAll('UserWarning: .*')]
+	                    	.map(s=>{ return s.toString().replace('UserWarning: ', '-')})
+	                    	.join('\n')
+	                    
+	                    // Trim period at end of warnings or error
+	                    error = error.endsWith('.') ? error.slice(0, error.length - 1) : error
+	                    if (error) {
+                        	alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
+                        	hideLoadingIndicator();
+                    	} else if (warnings) {
+                    		alert(`${importResponse.trim().replace(/\t/g, '')}\nHowever, the import operation produced the following warnings:\n${warnings}`.trim());
+                    		hideLoadingIndicator();
+                    	}
 
                     } else {
                         alert(importResponse.replace(/\t/g, ''));
