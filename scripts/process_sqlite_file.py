@@ -19,7 +19,9 @@ def main(sqlite_path, config_json):
         all_flights = pd.read_sql_table('flights', conn)
         attachments = pd.read_sql_table('attachments', conn)
         if 'landing_repeat' in engine.table_names():
-            all_landings = pd.read_sql_table('landing_repeat')
+            all_landings = pd.read_sql_table('landing_repeat', conn)
+
+        all_flights.landing_datetime = (all_flights.landing_datetime/1000).dropna().apply(datetime.fromtimestamp)
 
     # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
     connection_info = params['db_credentials']
