@@ -141,8 +141,8 @@ def calc_bearing(lat1, lon1, lat2, lon2):
 
 def calc_distance_to_last_pt(gdf):
 
-    in_proj = pyproj.Proj(init='epsg:4326')
-    out_proj = pyproj.Proj(init='epsg:3338') # Alaska Albers Equal Area, which is pretty good at preserving distances
+    in_proj = pyproj.Proj('epsg:4326')
+    out_proj = pyproj.Proj('epsg:3338') # Alaska Albers Equal Area, which is pretty good at preserving distances
     gdf['x_albers'], gdf['y_albers'] = pyproj.transform(in_proj, out_proj, gdf.longitude.values, gdf.latitude.values)
     distance = (gdf.x_albers.diff()**2 + gdf.y_albers.diff()**2)**0.5 # distance between 2 points
 
