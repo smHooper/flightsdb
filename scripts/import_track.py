@@ -767,7 +767,8 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
                     dtype={'geom': Geometry('LineStringZ', srid=4326)})
 
         # INSERT info about this aircraft if it doesn't already exist. If it does, UPDATE it if necessary
-        if ssl_cert_path:
+        #   disable because this happens now as a separate scheduled task
+        '''if ssl_cert_path:
             ainfo.update_aircraft_info(conn, registration, ssl_cert_path)#'''
 
     # VACUUM and ANALYZE clean up unused space and recalculate statistics to improve spatial query performance. Attempt

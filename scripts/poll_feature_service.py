@@ -22,44 +22,44 @@ import import_track
 import db_utils
 import process_emails
 
-#import warnings
-#warnings.simplefilter("error")
+# import warnings
+# warnings.simplefilter("error")
 
-pd.set_option('display.max_columns', None)# useful for debugging
+pd.set_option('display.max_columns', None)  # useful for debugging
 pd.options.mode.chained_assignment = None
 
-SUBMISSION_TICKET_INTERVAL = 1#900 # seconds between submission of a particular user
-LOG_CACHE_DAYS = 365 # amount of time to keep a log file
+SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
+LOG_CACHE_DAYS = 365  # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 TIMEZONE = pytz.timezone('US/Alaska')
-DATA_PROCESSED = False # keep track of whether any data were processed to be able to effectively log
-#LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off. ### now reteived from DB
+DATA_PROCESSED = False  # keep track of whether any data were processed to be able to effectively log
+# LANDING_FEE = 5.15 # per person fee for each passenger on scenic flight or dropped off. ### now reteived from DB
 # Collect messages to warn either the user, the landings data steward, or the track editors. Also log all of them
-MESSAGES = [] # internal messages to data stewards
-EMAILS = [] # messages to submitters
+MESSAGES = []  # internal messages to data stewards
+EMAILS = []  # messages to submitters
 # AGOL IDs of submissions that caused errors and data stewards have been warned about. Errors are dict of ID: date so that old
 ERRORS = []
-LANDINGS_FLIGHT_COLUMNS = {'landing_operator':      'operator_code',
-                           'landing_tail_number':   'registration',
-                           'landing_datetime':      'departure_datetime',
-                           'landing_route':         'scenic_route',
+LANDINGS_FLIGHT_COLUMNS = {'landing_operator': 'operator_code',
+                           'landing_tail_number': 'registration',
+                           'landing_datetime': 'departure_datetime',
+                           'landing_route': 'scenic_route',
                            'landing_aircraft_type': 'aircraft_type',
-                           'globalid':              'agol_global_id',
-                           'ticket':                'ticket',
-                           'submission_method':     'submission_method',
-                           'submission_time':       'submission_time',
-                           'flight_id':             'flight_id',
-                           'source_file':           'source_file',
-                           'landing_flight_notes':  'notes',
-                           'fee_per_passenger':     'fee_per_passenger'
-                          }
-LANDINGS_COLUMNS = {'flight_id':            'flight_id',
-                    'landing_location':     'location',
-                    'n_passengers':         'n_passengers',
-                    'landing_type':         'landing_type',
-                    'landing_justification':'justification',
-                    'landing_notes':        'notes',
-                    'sort_order':           'sort_order'
+                           'globalid': 'agol_global_id',
+                           'ticket': 'ticket',
+                           'submission_method': 'submission_method',
+                           'submission_time': 'submission_time',
+                           'flight_id': 'flight_id',
+                           'source_file': 'source_file',
+                           'landing_flight_notes': 'notes',
+                           'fee_per_passenger': 'fee_per_passenger'
+                           }
+LANDINGS_COLUMNS = {'flight_id': 'flight_id',
+                    'landing_location': 'location',
+                    'n_passengers': 'n_passengers',
+                    'landing_type': 'landing_type',
+                    'landing_justification': 'justification',
+                    'landing_notes': 'notes',
+                    'sort_order': 'sort_order'
                     }
 
 LANDING_RECEIPT_COLUMNS = ['departure_datetime',
@@ -86,6 +86,7 @@ LANDING_RECEIPT_COLUMNS = ['departure_datetime',
                            'fee'
                            ]
 
+
 def read_json_params(params_json):
     '''
     Read and validate a parameters JSON file
@@ -109,9 +110,10 @@ def read_json_params(params_json):
     missing = required.loc[~required.isin(params.keys())]
     if len(missing):
         if 'log_dir' in params.keys():
-            msg = 'Invalid config JSON: {file}. It must contain all of "{required}" but "{missing}" are missing'\
-                         .format(file=params_json, required='", "'.join(required), missing='", "'.join(missing))
-            write_log(params['log_dir'], 'unknown', datetime.now().strftime(TIMESTAMP_FORMAT), DATA_PROCESSED, error=msg)
+            msg = 'Invalid config JSON: {file}. It must contain all of "{required}" but "{missing}" are missing' \
+                .format(file=params_json, required='", "'.join(required), missing='", "'.join(missing))
+            write_log(params['log_dir'], 'unknown', datetime.now().strftime(TIMESTAMP_FORMAT), DATA_PROCESSED,
+                      error=msg)
         raise ValueError(msg)
 
     if 'download_dir' not in required:
@@ -121,17 +123,16 @@ def read_json_params(params_json):
 
 
 def read_logs(log_dir, script_name):
-
     log_info = []
     for json_path in glob(os.path.join(log_dir, '%s_log_*.json' % script_name)):
         # Try to read the file, but if the JSON isn't valid, just skip it
         timestamp = os.path.basename(json_path).replace('%s_log_' % script_name, '').replace('.json', '')
         try:
-            if (datetime.now() - datetime.strptime(timestamp, '%Y%m%d%H%M%S')).days > 14: 
+            if (datetime.now() - datetime.strptime(timestamp, '%Y%m%d%H%M%S')).days > 14:
                 continue
         except:
             pass
-        
+
         try:
             with open(json_path) as j:
                 log_info.append(json.load(j))
@@ -142,7 +143,6 @@ def read_logs(log_dir, script_name):
 
 
 def write_log(log_dir, download_dir, timestamp, data_was_downloaded, error='none'):
-
     log_file_path = os.path.join(log_dir, '{0}_log_{1}.json'.format(os.path.basename(__file__).replace('.py', ''),
                                                                     re.sub('\D', '', timestamp)))
 
@@ -180,12 +180,13 @@ def julian_date_to_datetime(julian_date):
     '''
 
     # Python (really Unix) uses 1970-1-1 00:00:00 as the epoch (i.e., reference timestamp).
-    JULIAN_UNIX_EPOCH = 2440587.5 # 1970-1-1 00:00:00 as a Julian date
+    JULIAN_UNIX_EPOCH = 2440587.5  # 1970-1-1 00:00:00 as a Julian date
     if pd.isna(julian_date) or julian_date < JULIAN_UNIX_EPOCH:
         return pd.NaT
     try:
-        epoch_timestamp = round((julian_date - JULIAN_UNIX_EPOCH) * 60 * 60 * 24) # number of seconds since Unix epoch
-        return datetime(1970, 1, 1) + timedelta(seconds=epoch_timestamp)#datetime.fromtimestamp((julian_date - JULIAN_UNIX_EPOCH) * 60 * 60 * 24)
+        epoch_timestamp = round((julian_date - JULIAN_UNIX_EPOCH) * 60 * 60 * 24)  # number of seconds since Unix epoch
+        return datetime(1970, 1, 1) + timedelta(
+            seconds=epoch_timestamp)  # datetime.fromtimestamp((julian_date - JULIAN_UNIX_EPOCH) * 60 * 60 * 24)
     except:
         return pd.NaT
 
@@ -199,10 +200,12 @@ def get_ticket(group, connections):
     submitter = group.submitter.iloc[0]
     submission_time = group.submission_time.min()
     conn = connections[submission_type]
-    conn.execute("INSERT INTO submissions (submitter, submission_time) VALUES ('%s', '%s');" % (submitter, submission_time))
+    conn.execute(
+        "INSERT INTO submissions (submitter, submission_time) VALUES ('%s', '%s');" % (submitter, submission_time))
     group['ticket'] = pd.read_sql("SELECT max(ticket) FROM submissions;", conn).squeeze()
 
     return group
+
 
 def get_submitter_email(agol_user, agol_user_emails):
     '''
@@ -223,41 +226,42 @@ def get_submitter_email(agol_user, agol_user_emails):
 
 
 def get_html_table(data, column_widths={}):
-
     thead_tr_style = 'style="font-weight: bold; height: 40px; background-color: #cccccc;'
     cell_style = 'style="padding-left: 20px; padding-right: 20px;"'
-    thead_html = ('<tr {tr_style}"><th {cell_style}>' + '</th><th {cell_style}>'.join(data.columns) + '</th></tr>')\
+    thead_html = ('<tr {tr_style}"><th {cell_style}>' + '</th><th {cell_style}>'.join(data.columns) + '</th></tr>') \
         .format(tr_style=thead_tr_style, cell_style=cell_style)
     tr_bg_dark = ' background-color: #f2f2f2;'
-    tr_content = data.apply(lambda x: ('<td {cell_style}>' + '</td><td {cell_style}>'.join(x.astype(str)) + '</td>').format(cell_style=cell_style),
-                            axis=1)
+    tr_content = data.apply(
+        lambda x: ('<td {cell_style}>' + '</td><td {cell_style}>'.join(x.astype(str)) + '</td>').format(
+            cell_style=cell_style),
+        axis=1)
     tbody_html = ''.join(['<tr style="height: 40px; {bg_style}">{td_elements}'.format(
         bg_style=tr_bg_dark if i % 2 == 1 else '', td_elements=td_elements, cell_style=cell_style) for i, td_elements in
-                          tr_content.items()]) + '</tr>'
+        tr_content.items()]) + '</tr>'
 
     for column_name, width in column_widths.items():
         thead_html.replace('<th {cell_style}>{column}</th>'.format(cell_style=cell_style, column=column_name),
-                           '<th {cell_style}>{column}</th>'.format(cell_style=cell_style.replace(';"', '; min-width:%s;"' % width), column=column_name))
+                           '<th {cell_style}>{column}</th>'.format(
+                               cell_style=cell_style.replace(';"', '; min-width:%s;"' % width), column=column_name))
 
-    html =\
-    """<table style="border-spacing: 0px;">
-        <thead>
-            {table_header}
-        </thead>
-        <tbody>
-            {table_body}
-        </tbody>
-    </table>""".format(table_header=thead_html, table_body=tbody_html)
+    html = \
+        """<table style="border-spacing: 0px;">
+            <thead>
+                {table_header}
+            </thead>
+            <tbody>
+                {table_body}
+            </tbody>
+        </table>""".format(table_header=thead_html, table_body=tbody_html)
 
     return html
 
 
 def get_email_html(data, start_datetime, end_datetime, column_widths={}):
-
     start_date_str = start_datetime.strftime('%B %d, %Y')
     start_time_str = start_datetime.strftime('%I:%M %p').lstrip('0')
     end_time_str = end_datetime.strftime('%I:%M %p').lstrip('0')
-    #table_html = '%s %s' % ('<h4>Landings</h4><br>' if len(track_data) else '', get_html_table(landings_data))
+    # table_html = '%s %s' % ('<h4>Landings</h4><br>' if len(track_data) else '', get_html_table(landings_data))
     table_html = get_html_table(data, column_widths=column_widths)
     html = """
     <html>
@@ -290,17 +294,18 @@ def get_attachment_info(file_path, ext='.zip'):
         metadata = json.load(j)
     engine = create_engine('sqlite:///' + metadata['sqlite_path'])
     with engine.connect() as conn:
-        submission_data = pd.read_sql("SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']), conn).squeeze(axis=0)
+        submission_data = pd.read_sql(
+            "SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']),
+            conn).squeeze(axis=0)
 
     return pd.concat([pd.Series(metadata), submission_data])
 
 
 def track_to_json(gdf, attachment_info):
-
     unserializable_fields = ~gdf.dtypes.astype(str).isin(['int64', 'int32', 'float64', 'object'])
     gdf.loc[:, unserializable_fields] = gdf.loc[:, unserializable_fields].astype(str)
-    geojson_strs = {}#seg_id: json.loads(df.to_json()) for seg_id, df in gdf.groupby('segment_id')}
-    for seg_id, df in gdf.groupby('segment_id'):#.apply(lambda df: df.index.min())
+    geojson_strs = {}  # seg_id: json.loads(df.to_json()) for seg_id, df in gdf.groupby('segment_id')}
+    for seg_id, df in gdf.groupby('segment_id'):  # .apply(lambda df: df.index.min())
         df['min_index'] = df.index.min()
         df['point_index'] = df.index
         geojson_strs[seg_id] = json.loads(df.to_json())
@@ -309,7 +314,6 @@ def track_to_json(gdf, attachment_info):
 
 
 def delete_from_feature_service(agol_ids, token, service_url, ssl_cert):
-
     agol_id_str = ("'%s'" % "', '".join(agol_ids)).upper()
     query_params = {'f': 'json',
                     'token': token,
@@ -329,7 +333,7 @@ def get_traceback_frame():
     ''' Traverse the traceback and get the frame of the actual script that caused the last error'''
     traceback_exc = traceback.TracebackException(*sys.exc_info())
     current_script_dir = os.path.dirname(os.path.realpath(__file__))
-    for frame in traceback_exc.stack[::-1]:# traverse in reverse order to get topmost first
+    for frame in traceback_exc.stack[::-1]:  # traverse in reverse order to get topmost first
         # this only works for errors caused by scripts in the same dir
         if os.path.realpath(os.path.dirname(frame.filename)) == current_script_dir:
             return frame
@@ -339,12 +343,12 @@ def get_traceback_frame():
 
 
 def format_landing_excel_receipt(ticket, flights, landings, fees, contract_number, landing_fee):
-
     # For each flight, get the ordinal for each landing type (e.g., dropoff 1, dropoff 2, pickup 1, pickup 2)
     these_landings = landings.loc[landings.flight_id.isin(flights.id)]
     for flight_id, flight in these_landings.groupby(['flight_id', 'landing_type']):
         these_landings.loc[flight.index, 'landing_order'] = list(range(1, len(flight) + 1))
-    these_landings['landing_type_order'] = these_landings.landing_type + '_' + these_landings.landing_order.astype(int).astype(str)
+    these_landings['landing_type_order'] = these_landings.landing_type + '_' + these_landings.landing_order.astype(
+        int).astype(str)
 
     # Pivot the table for passengers and landings so that each row represents 1 flight
     pivoted_passengers = these_landings.pivot(index='flight_id', columns='landing_type_order', values='n_passengers')
@@ -352,28 +356,30 @@ def format_landing_excel_receipt(ticket, flights, landings, fees, contract_numbe
     pivoted_passengers.rename(columns={c: c + '_passengers' for c in pivoted_locations.columns}, inplace=True)
     pivoted_locations.rename(columns={c: c + '_location' for c in pivoted_locations.columns}, inplace=True)
 
-    receipt = flights.drop(columns='flight_id')\
-        .merge(pivoted_passengers, left_on='id', right_index=True, how='left')\
-        .merge(pivoted_locations, left_on='id', right_index=True, how='left')\
-        .merge(fees.fillna(0), left_on='id', right_on='flight_id', how='left') #left join in case there aren't any fees
+    receipt = flights.drop(columns='flight_id') \
+        .merge(pivoted_passengers, left_on='id', right_index=True, how='left') \
+        .merge(pivoted_locations, left_on='id', right_index=True, how='left') \
+        .merge(fees.fillna(0), left_on='id', right_on='flight_id',
+               how='left')  # left join in case there aren't any fees
     receipt['departure_date'] = receipt.departure_datetime.dt.strftime('%m/%d/%Y')
     receipt['departure_time'] = receipt.departure_datetime.dt.strftime('%I:%M %p')
 
     # Concat all notes
-    these_landings['landing_notes'] = these_landings.drop_duplicates(['flight_id', 'location'])\
-        .loc[:, ['justification', 'notes']]\
-        .apply(lambda x: ('; '.join(x.fillna('').astype(str)).strip('; ')), axis=1)\
+    these_landings['landing_notes'] = these_landings.drop_duplicates(['flight_id', 'location']) \
+                                          .loc[:, ['justification', 'notes']] \
+        .apply(lambda x: ('; '.join(x.fillna('').astype(str)).strip('; ')), axis=1) \
         .fillna('')
     notes = these_landings.groupby('flight_id').apply(lambda group: '; '.join(group.landing_notes.dropna()).strip('; '))
     notes.index = notes.index.tolist()
     receipt['landing_notes'] = receipt.merge(pd.DataFrame({'flight_landing_notes': notes, 'flight_id': notes.index}),
-                                           on='flight_id').flight_landing_notes
-    receipt['all_notes'] = receipt.loc[:, [c for c in ['landing_notes', 'notes'] if c in receipt]]\
-        .apply(lambda x: ('; '.join(x.fillna('').astype(str)).strip('; ')), axis=1)\
+                                             on='flight_id').flight_landing_notes
+    receipt['all_notes'] = receipt.loc[:, [c for c in ['landing_notes', 'notes'] if c in receipt]] \
+        .apply(lambda x: ('; '.join(x.fillna('').astype(str)).strip('; ')), axis=1) \
         .fillna('')
-    #receipt['n_fee_pax'] = receipt.n_passengers
-    receipt['n_passengers'] = receipt[[c for c in receipt if c.endswith('_passengers') and c not in ('n_passengers', 'n_fee_passengers')]].sum(axis=1)
-    #receipt['n_fee_passengers'] = receipt.n_fee_pax
+    # receipt['n_fee_pax'] = receipt.n_passengers
+    receipt['n_passengers'] = receipt[
+        [c for c in receipt if c.endswith('_passengers') and c not in ('n_passengers', 'n_fee_passengers')]].sum(axis=1)
+    # receipt['n_fee_passengers'] = receipt.n_fee_pax
 
     # Fill any numeric columns with 0. All of the columns that don't yet exist in the receipt (e.g., n_pickup_3)
     #   will still be blank in the final receipt
@@ -381,10 +387,10 @@ def format_landing_excel_receipt(ticket, flights, landings, fees, contract_numbe
     receipt[numeric_columns] = receipt[numeric_columns].fillna(0)
 
     receipt_info = pd.DataFrame([{'operator': receipt.operator_code.iloc[0],
-                                 'ticket': ticket,
-                                 'date': datetime.now().strftime('%m/%d/%Y'),
-                                 'pax_fee': landing_fee,
-                                 'contract': contract_number}])\
+                                  'ticket': ticket,
+                                  'date': datetime.now().strftime('%m/%d/%Y'),
+                                  'pax_fee': landing_fee,
+                                  'contract': contract_number}]) \
         .reindex(columns=['ticket', 'date', 'operator', 'contract', 'pax_fee'])
 
     return receipt.reindex(columns=LANDING_RECEIPT_COLUMNS), receipt_info
@@ -397,7 +403,8 @@ def format_landing_html_receipt(receipt):
     :return:
     '''
 
-    _html_receipt_columns = ['Date', 'Time', 'Tail Number', 'Aircraft Type', 'Scenic Route', 'Landing Locations', 'Total Pax', 'Fee']
+    _html_receipt_columns = ['Date', 'Time', 'Tail Number', 'Aircraft Type', 'Scenic Route', 'Landing Locations',
+                             'Total Pax', 'Fee']
     # Combine all location columns
     receipt['Landing Locations'] = [', '.join(row.dropna().unique()) for _, row in
                                     receipt.loc[:, [c for c in receipt.columns if c.endswith('location')]].iterrows()]
@@ -409,14 +416,15 @@ def format_landing_html_receipt(receipt):
     receipt['Time'] = receipt.departure_datetime.dt.strftime('%I:%M %p')
     receipt['Fee'] = receipt.fee.apply('${:.2f}'.format)
     receipt['Total Pax'] = receipt.n_passengers.astype(int)
-    receipt = receipt\
-        .rename(columns={'registration': 'Tail Number', 'aircraft_type': 'Aircraft Type'})\
+    receipt = receipt \
+        .rename(columns={'registration': 'Tail Number', 'aircraft_type': 'Aircraft Type'}) \
         .reindex(columns=_html_receipt_columns).fillna('')
 
     return receipt
 
 
-def save_excel_receipt(template_path, receipt_dir, ticket, data_type, data, header_path, sheet_password, info=pd.DataFrame()):
+def save_excel_receipt(template_path, receipt_dir, ticket, data_type, data, header_path, sheet_password,
+                       info=pd.DataFrame()):
     ''' Save a formatted data frame as an Excel file to attach to notification emails to submitters'''
 
     # Remove the "data" sheet from the template so it can be replaced with the dataframe
@@ -456,7 +464,8 @@ def save_excel_receipt(template_path, receipt_dir, ticket, data_type, data, head
     return xl_path
 
 
-def import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir, receipt_template, receipt_header, sheet_password, data_steward):
+def import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir, receipt_template,
+                    receipt_header, sheet_password, data_steward):
     '''
     Process and import landing data into Postgres backend. Send receipt to the submitter
 
@@ -473,8 +482,8 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     _html_receipt_columns = ['departure_datetime', 'scenic_route', 'registration', 'aircraft_type', 'submission_time']
 
     # Create flight IDs
-    landing_flights = flights.loc[flights.submission_type == 'landings']\
-        .dropna(axis=1, how='all') # columns for all track submissions will be empty so drop them
+    landing_flights = flights.loc[flights.submission_type == 'landings'] \
+        .dropna(axis=1, how='all')  # columns for all track submissions will be empty so drop them
     landing_flights.landing_tail_number = landing_flights.landing_tail_number.str.upper()
     landing_flights.rename(columns=LANDINGS_FLIGHT_COLUMNS, inplace=True)
     landing_flights['flight_id'] = landing_flights.registration + '_' + \
@@ -484,10 +493,10 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
                                       ~landing_flights.departure_datetime.isnull()]
 
     # Check for flights with no landings
-    landings_per_flight = landing_flights\
-        .merge(landings, left_on='agol_global_id', right_on='parentglobalid', how='left')\
-        .groupby('flight_id')\
-        .parentglobalid\
+    landings_per_flight = landing_flights \
+        .merge(landings, left_on='agol_global_id', right_on='parentglobalid', how='left') \
+        .groupby('flight_id') \
+        .parentglobalid \
         .count()
     no_landings = landings_per_flight[landings_per_flight == 0]
     if len(no_landings):
@@ -496,33 +505,42 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
         html_li = (
             '<li>There were no landings submitted for the following flights:<br>{table}<br></li>') \
             .format(table=get_html_table(flights_without_landings))
-        MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
+        MESSAGES.append(
+            {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
+        # Remove the flights without landings so they don't get imported
+        new_flights = new_flights.loc[~new_flights.flight_id.isin(no_landings.index)]
 
     # Check if there are any new flights. If not, warn the submitter(s) that no new flights were found
     if len(new_flights) == 0:
-        html_li = ('<li>All landings submitted with this ticket were already reported (according to the tail number and departure time). Flights submitted with this ticket:<br>{table}<br></li>').format(table=get_html_table(landing_flights.reindex(columns=_html_receipt_columns + ['objectid'])))
-        MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
-        return None, None
+        html_li = (
+            '<li>All landings submitted with this ticket were already reported (according to the tail number and departure time). Flights submitted with this ticket:<br>{table}<br></li>').format(
+            table=get_html_table(landing_flights.reindex(columns=_html_receipt_columns + ['objectid'])))
+        MESSAGES.append(
+            {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
+        return None, None, None
 
     aircraft_types = db_utils.get_lookup_table(table='aircraft_types', conn=landings_conn)
     operators = db_utils.get_lookup_table(table='operators', conn=landings_conn)
     landing_locations = db_utils.get_lookup_table(table='landing_locations', conn=landings_conn)
-    constants = db_utils.get_lookup_table(table='numeric_constants', index_col='name', value_col='value', conn=landings_conn)
+    fee_per_passenger = db_utils.get_lookup_table(table='operators', index_col='code', value_col='fee_per_passenger',
+                                          conn=landings_conn)[landing_flights.operator_code.iloc[0]]
 
     if len(new_flights) != len(landing_flights):
         # If some flights were duplicates, warn the landing data steward(s)
         operator = operators[landing_flights.operator_code.iloc[0]]
-        duplicate_flights = landing_flights.loc[~landing_flights.flight_id.isin(new_flights.flight_id)]\
+        duplicate_flights = landing_flights.loc[~landing_flights.flight_id.isin(new_flights.flight_id)] \
             .reindex(columns=_html_receipt_columns + ['objectid'])
-        html_li = ('<li>Some landings were already reported (according to the tail number and departure time). You might'
-                   ' want to warn {operator} that landings for the following duplicated flights were already submitted:'
-                   '<br>{table}<br></li>').format(operator=operator, table=get_html_table(duplicate_flights))
-        MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
+        html_li = (
+            '<li>Some landings were already reported (according to the tail number and departure time). You might'
+            ' want to warn {operator} that landings for the following duplicated flights were already submitted:'
+            '<br>{table}<br></li>').format(operator=operator, table=get_html_table(duplicate_flights))
+        MESSAGES.append(
+            {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
 
     new_flights['submission_method'] = 'survey123'
     new_flights['source_file'] = sqlite_path
-    new_flights['fee_per_passenger'] = constants['fee_per_passenger']
-    new_flights.reindex(columns=LANDINGS_FLIGHT_COLUMNS.values())\
+    new_flights['fee_per_passenger'] = fee_per_passenger
+    new_flights.reindex(columns=LANDINGS_FLIGHT_COLUMNS.values()) \
         .to_sql('flights', landings_conn, if_exists='append', index=False)
     global_ids = pd.read_sql("SELECT id, agol_global_id FROM flights WHERE flight_id IN ('%s')"
                              % "', '".join(new_flights.flight_id),
@@ -538,17 +556,18 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
         return row
 
     landings['landing_type'] = landings.landing_type.str.split(',')
-    landings = pd.DataFrame([clean_n_passenger_cols(row, passenger_cols) for i, row in landings.explode('landing_type').iterrows()]).reset_index()
+    landings = pd.DataFrame([clean_n_passenger_cols(row, passenger_cols) for i, row in
+                             landings.explode('landing_type').iterrows()]).reset_index()
     landings['index'] = landings.index
     landings_with_fees = pd.read_sql("SELECT name FROM landing_types WHERE fee_charged;", landings_conn).squeeze(
         axis=1).tolist()
 
-    passengers = landings\
-    .melt(id_vars='globalid',
-          value_vars=passenger_cols,
-          value_name='n_passengers',
-          var_name='landing_type')\
-    .dropna(subset=['n_passengers'])#'''
+    passengers = landings \
+        .melt(id_vars='globalid',
+              value_vars=passenger_cols,
+              value_name='n_passengers',
+              var_name='landing_type') \
+        .dropna(subset=['n_passengers'])  # '''
     passengers['landing_type'] = passengers.landing_type.apply(lambda x: x.split('_')[-1])
     '''fee_passengers = passengers.loc[passengers.landing_type.isin(landings_with_fees)]
 
@@ -562,50 +581,55 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     fees = fees.loc[~fees.flight_id.isnull()] # drop flights without match'''
 
     # Get the flight ID for the landings table
-    landings = landings.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid', right_on='agol_global_id')
+    landings = landings.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid',
+                              right_on='agol_global_id')
 
-    landings = passengers.merge(landings.drop(columns='landing_type'), on='globalid')\
-        .drop_duplicates(subset=['globalid', 'landing_type'])\
-        .rename(columns=LANDINGS_COLUMNS)\
+    landings = passengers.merge(landings.drop(columns='landing_type'), on='globalid') \
+        .drop_duplicates(subset=['globalid', 'landing_type']) \
+        .rename(columns=LANDINGS_COLUMNS) \
         .reindex(columns=LANDINGS_COLUMNS.values()) \
-        .dropna(subset=['flight_id'])\
+        .dropna(subset=['flight_id']) \
         .sort_values('sort_order')
 
     # INSERT into backend
     '''fees.drop(columns=['parentglobalid', 'index', 'agol_global_id'])\
         .to_sql('concession_fees', landings_conn, if_exists='append', index=False)'''
-    landings.drop(columns='sort_order')\
-        .to_sql('landings', landings_conn, if_exists='append', index=False)#'''
+    landings.drop(columns='sort_order') \
+        .to_sql('landings', landings_conn, if_exists='append', index=False)  # '''
 
     global DATA_PROCESSED
     DATA_PROCESSED = True
 
-    contracts = db_utils.get_lookup_table(table='operators', index_col='code', value_col='contract_number', conn=landings_conn)
+    contracts = db_utils.get_lookup_table(table='operators', index_col='code', value_col='contract_number',
+                                          conn=landings_conn)
     this_contract = contracts[new_flights.operator_code.iloc[0]]
 
     # Read from view that calculates fees automatically
-    fees = pd.read_sql("SELECT * FROM concession_fees_view WHERE flight_id IN (%s)" % ','.join(global_ids.id.astype(str)), landings_conn)
-    
+    fees = pd.read_sql(
+        "SELECT * FROM concession_fees_view WHERE flight_id IN (%s)" % ','.join(global_ids.id.astype(str)),
+        landings_conn)
+
     # Format the table for the receipt(s)
     # Replace codes with names
     new_flights.reset_index(inplace=True)
     new_flights['id'] = new_flights.merge(global_ids.reset_index(), on='agol_global_id').id
-    # INR name and code are the same so don't replace it because pandas throws an error 
-    landings.replace({'location': {k: v for k, v in landing_locations.items() if k != v}}, inplace=True)#{c: landing_locations for c in receipt.columns if c.endswith('location')}, inplace=True)
-    
+    # INR name and code are the same so don't replace it because pandas throws an error
+    landings.replace({'location': {k: v for k, v in landing_locations.items() if k != v}},
+                     inplace=True)  # {c: landing_locations for c in receipt.columns if c.endswith('location')}, inplace=True)
+
     new_flights.replace({'aircraft_type': aircraft_types, 'operator_code': operators}, inplace=True)
 
     ticket = new_flights.ticket.iloc[0]
-    #for ticket, flights in new_flights.groupby('ticket'):
-    receipt, info = format_landing_excel_receipt(ticket, new_flights, landings, fees, this_contract, constants['fee_per_passenger'])
-    receipt_path = save_excel_receipt(receipt_template, receipt_dir, ticket, 'landing_data', receipt, receipt_header, sheet_password, info)
+    # for ticket, flights in new_flights.groupby('ticket'):
+    receipt, info = format_landing_excel_receipt(ticket, new_flights, landings, fees, this_contract, fee_per_passenger)
+    receipt_path = save_excel_receipt(receipt_template, receipt_dir, ticket, 'landing_data', receipt, receipt_header,
+                                      sheet_password, info)
     html_receipt = format_landing_html_receipt(receipt)
 
     return receipt_path, html_receipt, new_flights
 
 
 def get_unique_filename(path, filename_suffix=''):
-    
     _, ext = os.path.splitext(path)
     ext = filename_suffix + ext
     c = 1
@@ -618,7 +642,8 @@ def get_unique_filename(path, filename_suffix=''):
     return new_path
 
 
-def prepare_track(track_path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, web_data_dir, db_columns):
+def prepare_track(track_path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes,
+                  attachment_dir, data_steward, web_data_dir, db_columns):
     '''Prepare the track file to be read by the editing web app (inpdenards.nps.doi.net/track-editor.html). It needs to
     be in format that both the web app and the rest of import_track functions will understand'''
 
@@ -654,16 +679,24 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
                                         **import_params)
     except Exception as e:
         tb_frame = get_traceback_frame()
-        html_li = ('<li>An error occurred while processing the file {track_path} on line {lineno} of {script}: {error}. AGOL flight table Object ID: {agol_id}</li>')\
-            .format(track_path=track_path, lineno=tb_frame.lineno, script=os.path.basename(tb_frame.filename), error=e, agol_id=attachment_info['objectid'])#, submitter_clause=submitter_error_clause)
+        html_li = (
+            '<li>An error occurred while processing the file {track_path} on line {lineno} of {script}: {error}. AGOL flight table Object ID: {agol_id}</li>') \
+            .format(track_path=track_path, lineno=tb_frame.lineno, script=os.path.basename(tb_frame.filename), error=e,
+                    agol_id=attachment_info['objectid'])  # , submitter_clause=submitter_error_clause)
         # Add a message per recipient so messages can be easily parsed per recipient later
-        MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
+        MESSAGES.append(
+            {'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks',
+             'level': 'error'})
         ERRORS.append(traceback.format_exc())
         return
 
     if not len(gdf):
-        html_li = ('<li>The file {track_path} did not contain any readable tracks. AGOL flight table Object ID: {agol_id}</li>').format(track_path=track_path, agol_id=attachment_info['objectid'])
-        MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
+        html_li = (
+            '<li>The file {track_path} did not contain any readable tracks. AGOL flight table Object ID: {agol_id}</li>').format(
+            track_path=track_path, agol_id=attachment_info['objectid'])
+        MESSAGES.append(
+            {'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks',
+             'level': 'error'})
         return
 
     # Drop any columns that aren't in the flights or flight_points tables
@@ -678,14 +711,13 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     attachment_info['operator_code'] = this_submission.tracks_operator
 
     if attachment_info['tracks_mission'] in mission_codes:
-        attachment_info['nps_mission_code'] = attachment_info['tracks_mission']  # , mission_codes[attachment_info['tracks_mission']]
+        attachment_info['nps_mission_code'] = attachment_info[
+            'tracks_mission']  # , mission_codes[attachment_info['tracks_mission']]
     else:
         attachment_info['nps_mission_code'] = ''
 
-    
-    attachment_info['nps_work_group'] = attachment_info['tracks_work_group'] 
+    attachment_info['nps_work_group'] = attachment_info['tracks_work_group']
     attachment_info['nps_work_group_other'] = attachment_info['tracks_other_work_group']
-
 
     attachment_info['source_file'] = get_unique_filename(os.path.join(import_track.ARCHIVE_DIR, fname))
 
@@ -693,10 +725,10 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     #   by the web app
     geojson_strs = track_to_json(gdf, attachment_info)
     basename, ext = os.path.splitext(fname)
-    basename = re.sub('\W', '_', basename) # strip chars for Javascript (i.e., escape and CSS selectors)
+    basename = re.sub('\W', '_', basename)  # strip chars for Javascript (i.e., escape and CSS selectors)
     json_path = os.path.join(web_data_dir, basename) + '_geojsons.json'
     # make sure an existing file doesn't get overwritten if it has same name
-    #if os.path.isfile(json_path):
+    # if os.path.isfile(json_path):
     json_path = get_unique_filename(json_path, filename_suffix='_geojsons')
 
     with open(json_path, 'w') as j:
@@ -712,14 +744,17 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
         # This won't throw an error, but it should only be executed if the above line succeeds
         delete_attachment()
     except:
-        html_li = ('<li>Unable to copy {track_path} to the track archive directory {archive_dir}. This file should be copied manually.</li>').format(track_path=track_path, archive_dir=import_track.ARCHIVE_DIR)
-        MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks', 'level': 'warning'})
+        html_li = (
+            '<li>Unable to copy {track_path} to the track archive directory {archive_dir}. This file should be copied manually.</li>').format(
+            track_path=track_path, archive_dir=import_track.ARCHIVE_DIR)
+        MESSAGES.append(
+            {'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks',
+             'level': 'warning'})
 
     return json_path
 
 
 def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
-
     import_params = param_dict['import_params'] if 'import_params' in param_dict else {}
     attachment_dir = os.path.join(download_dir, 'attachments')
     operator_codes = db_utils.get_lookup_table(table='operators', conn=tracks_conn)
@@ -727,8 +762,8 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
     data_steward = param_dict['track_data_stewards']
 
     db_columns = pd.concat([db_utils.get_db_columns('flights', conn=tracks_conn),
-                            db_utils.get_db_columns('flight_points', conn=tracks_conn)])\
-        .drop_duplicates()\
+                            db_utils.get_db_columns('flight_points', conn=tracks_conn)]) \
+        .drop_duplicates() \
         .to_list()
 
     # If for some reason the dir got removed, create it
@@ -739,12 +774,14 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
     geojson_paths = []
     # Unzip all zipped files and add the extracted files to the list of tracks to process
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
-
         try:
             attachment_info = get_attachment_info(zip_path)
         except Exception as e:
-            html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(file=zip_path, error=e)
-            MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
+            html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(
+                file=zip_path, error=e)
+            MESSAGES.append(
+                {'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks',
+                 'level': 'error'})
             ERRORS.append(traceback.format_exc())
             continue
         submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
@@ -754,19 +791,27 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                 try:
                     z.extract(fname, attachment_dir)
                 except Exception as e:
-                    html_li = ('<li>An error occurred while trying to extract {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(file=fname, zip=zip_path, error=e, agol_id=attachment_info['objectid'])
-                    MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
+                    html_li = (
+                        '<li>An error occurred while trying to extract {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(
+                        file=fname, zip=zip_path, error=e, agol_id=attachment_info['objectid'])
+                    MESSAGES.append(
+                        {'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,
+                         'type': 'tracks', 'level': 'error'})
                     ERRORS.append(traceback.format_exc())
                 unzipped_files.append(fname)
 
         for fname in unzipped_files:
             basename, ext = os.path.splitext(fname)
             if ext not in import_track.READ_FUNCTIONS:
-                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': '%s is not in an accepted file format' % fname, 'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
+                MESSAGES.append(
+                    {'ticket': attachment_info['ticket'], 'message': '%s is not in an accepted file format' % fname,
+                     'recipients': data_steward, 'type': 'tracks', 'level': 'error'})
                 continue
             path = os.path.join(attachment_dir, fname)
             try:
-                geojson_path = prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir'], db_columns)
+                geojson_path = prepare_track(path, attachment_info, import_params, submissions, submitter,
+                                             operator_codes, mission_codes, attachment_dir, data_steward,
+                                             param_dict['web_data_dir'], db_columns)
                 geojson_paths.append(geojson_path)
                 submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(zip_path)
             except Exception as e:
@@ -787,55 +832,58 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
             try:
                 attachment_info = get_attachment_info(path, ext)
             except Exception as e:
-                html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(file=path, error=e)
-                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
+                html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(
+                    file=path, error=e)
+                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,
+                                 'type': 'tracks', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
                 continue
 
             submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
             try:
-                geojson_path = prepare_track(path, attachment_info, import_params, submissions, submitter, operator_codes, mission_codes, attachment_dir, data_steward, param_dict['web_data_dir'], db_columns)
+                geojson_path = prepare_track(path, attachment_info, import_params, submissions, submitter,
+                                             operator_codes, mission_codes, attachment_dir, data_steward,
+                                             param_dict['web_data_dir'], db_columns)
                 geojson_paths.append(geojson_path)
                 submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(path)
             except Exception as e:
-                html_li = ('<li>An error occurred while trying to process {file}: {error}.</li>').format(file=path, error=e)
-                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,  'type': 'tracks', 'level': 'error'})
+                html_li = ('<li>An error occurred while trying to process {file}: {error}.</li>').format(file=path,
+                                                                                                         error=e)
+                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,
+                                 'type': 'tracks', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
 
     return geojson_paths, pd.Series(submitted_files)
 
 
 def get_track_receipt_email(submission, ticket, sender, agol_users):
-
-    _html_track_columns = ['Submission Time',  'Tail Number', 'NPS Mission Code', 'NPS Work Group', 'Filename', 'Notes']
+    _html_track_columns = ['Submission Time', 'Tail Number', 'NPS Mission Code', 'NPS Work Group', 'Filename', 'Notes']
 
     recipient = get_submitter_email(submission.submitter.iloc[0], agol_users)
     if not recipient:
         return {}
     start_time = submission.submission_time.min()
     end_time = submission.submission_time.max()
-    
-    submission = submission\
+
+    submission = submission \
         .rename(columns={
-            'tracks_tail_number': 'Tail Number',
-            'tracks_mission': 'NPS Mission Code',
-            'tracks_work_group': 'NPS Work Group',
-            'tracks_notes': 'Notes',
-            'submission_time': 'Submission Time'}
-        )\
-        .reset_index()\
+        'tracks_tail_number': 'Tail Number',
+        'tracks_mission': 'NPS Mission Code',
+        'tracks_work_group': 'NPS Work Group',
+        'tracks_notes': 'Notes',
+        'submission_time': 'Submission Time'}
+    ) \
+        .reset_index() \
         .reindex(columns=_html_track_columns)
-        
-    
+
     # If this was submitted by someone other than an NPS employee, drop the NPS columns
     nps_columns = pd.Series([c for c in submission if c.startswith('NPS')])
-    #null_nps_columns = nps_columns[submission.loc[:, nps_columns].isnull().all(axis=0).values]
-    if not recipient.endswith('@nps.gov'):#len(null_nps_columns):
+    # null_nps_columns = nps_columns[submission.loc[:, nps_columns].isnull().all(axis=0).values]
+    if not recipient.endswith('@nps.gov'):  # len(null_nps_columns):
         submission.drop(columns=nps_columns, inplace=True)
-    
-    
 
-    html = get_email_html(submission.fillna(''), start_time, end_time, column_widths={'Notes': '50px; max-width: 100px'})
+    html = get_email_html(submission.fillna(''), start_time, end_time,
+                          column_widths={'Notes': '50px; max-width: 100px'})
 
     message = {'subject': 'Flight track submission receipt - ticket #%s' % ticket,
                'message_body': html,
@@ -847,12 +895,10 @@ def get_track_receipt_email(submission, ticket, sender, agol_users):
 
 
 def compose_error_notifications(tickets, param_dict):
-
     messages = pd.DataFrame(MESSAGES)
     messages['recipient_str'] = messages.recipients.apply(str)
     html_emails = []
     for (ticket, _, submission_type), info in messages.groupby(['ticket', 'recipient_str', 'type']):
-        
         ul_template = r'''
         <h4>{type}:</h4>
         <ul>
@@ -864,7 +910,7 @@ def compose_error_notifications(tickets, param_dict):
         errors = info.loc[info.level == 'error', 'message']
         warning_html = ul_template.format(type='Warnings', li_elements=''.join(warnings))
         error_html = ul_template.format(type='Errors', li_elements=''.join(errors))
-        
+
         if ticket == -1:
             message = '''
             <html>
@@ -882,16 +928,17 @@ def compose_error_notifications(tickets, param_dict):
             '''.format(
                 warnings=warning_html if len(warnings) else '',
                 errors=error_html if len(errors) else '',
-                attachments_dir = os.path.join(param_dict['download_dir'], 'attachments')
+                attachments_dir=os.path.join(param_dict['download_dir'], 'attachments')
             )
             subject = 'Issues with recently submitted {} data files'.format(submission_type)
         else:
             submission_info = tickets.loc[
                 (tickets.ticket == int(ticket)) & (tickets.submission_type == submission_type)].squeeze()
-            email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[-1].strip('>')
-            #if submission_type == 'tracks':
+            email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[
+                -1].strip('>')
+            # if submission_type == 'tracks':
             concluding_message = r'<br><br><span>If you cannot resolve the issue(s), try contacting the submitter directly if they are an NPS employee. If the submitter is a commercial flight operator, notify Commercial Services of the problem and they will contact the submitter. </span>'
-            #else:
+            # else:
             #    concluding_message = ''
             message = '''
             <html>
@@ -913,7 +960,7 @@ def compose_error_notifications(tickets, param_dict):
                        errors=error_html if len(errors) else '',
                        concluding_message=concluding_message if submission_type == 'tracks' else '',
                        delete_url=param_dict['delete_features_url'])
-            subject = 'Issues with recent {submission_type} data submssion - ticket #{ticket:.0f}'\
+            subject = 'Issues with recent {submission_type} data submssion - ticket #{ticket:.0f}' \
                 .format(submission_type=submission_type, ticket=int(ticket))
         html_emails.append(dict(subject=subject,
                                 message_body=message,
@@ -927,19 +974,18 @@ def compose_error_notifications(tickets, param_dict):
 
 
 def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_conn, tracks_conn):
-
     timestamp = datetime.now().strftime(TIMESTAMP_FORMAT)
-    
+
     # Get the last time any data were downloaded
     script_name = os.path.basename(__file__).rstrip('.py')
     log_info = read_logs(log_dir, script_name)
-    
+
     # Set default time. If this is never reset, there are no logs because this is the first time the script is being
-    #	run (or the logs got deleted), so set the last_download_time to something that will return all records
+    #   run (or the logs got deleted), so set the last_download_time to something that will return all records
     last_download_time = '1970-1-1 09:00:00'
     if len(log_info):
         download_info = log_info.loc[log_info.data_downloaded]
-        if len(download_info): # there has been at least one download in the last LOG_CACHE_DAYS
+        if len(download_info):  # there has been at least one download in the last LOG_CACHE_DAYS
             last_download_time = download_info.timestamp.max()
 
     # Get last submission time
@@ -961,10 +1007,10 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     layer_info = pd.DataFrame(service_info['layers'] + service_info['tables']).set_index('id')
     layers = layer_info.index.tolist()
 
-    # last_download_time is stored in local (AK) time but datetimes are stored in UTC in feature layer   
+    # last_download_time is stored in local (AK) time but datetimes are stored in UTC in feature layer
     last_download_time_utc = TIMEZONE.localize(pd.to_datetime(last_download_time))
     last_download_time_utc -= last_download_time_utc.utcoffset()
-    
+
     try:
         result = download.query_after_timestamp(service_url, token, layers, last_download_time_utc, ssl_cert)
     except:
@@ -976,7 +1022,8 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                        'message_body_type': 'plain'
                        })
         return
-    submissions = pd.DataFrame([feature['attributes'] for feature in result['layers'][0]['features']]) # pretty sure the first layer is always the parent table for a survey123 survey with related tables
+    submissions = pd.DataFrame([feature['attributes'] for feature in result['layers'][0][
+        'features']])  # pretty sure the first layer is always the parent table for a survey123 survey with related tables
     if not len(submissions):
         log_and_exit(log_info, [log_dir, download_dir, timestamp, False, 'No new data to download'])
 
@@ -985,27 +1032,31 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         if 'fields' in layer:
             field_types[layer_info.loc[layer['id'], 'name']] = \
                 pd.Series({field['name']: field['type'] for field in layer['fields']})
-    last_submission_time = datetime.fromtimestamp(submissions.EditDate.max()/1000.0) # timestamps are in local tz, surprisingly
+    last_submission_time = datetime.fromtimestamp(
+        submissions.EditDate.max() / 1000.0)  # timestamps are in local tz, surprisingly
 
     # If the last_sumbission_time was before the last_download_time, these data have already been downloaded
     if last_submission_time < datetime.strptime(last_download_time, TIMESTAMP_FORMAT):
         log_and_exit(log_info, [log_dir, download_dir, timestamp, False, 'No submission since last download'])
 
-
     # If the last submission time was within SUBMISSION_TICKET_INTERVAL, exit in case a user is making multiple
-    #   submission at once that should be grouped into a single ticket. It's possible that two different users could 
-    #   be submitting within the SUBMISSION_TICKET_INTERVAL of one another, but it's not worth the overhead and 
+    #   submission at once that should be grouped into a single ticket. It's possible that two different users could
+    #   be submitting within the SUBMISSION_TICKET_INTERVAL of one another, but it's not worth the overhead and
     #   management to download data submitted by one user and not another. Their submissions will be assigned different
-    #   ticket numbers, but just wait until there's a gap of all submissions of SUBMISSION_TICKET_INTERVAL. 
+    #   ticket numbers, but just wait until there's a gap of all submissions of SUBMISSION_TICKET_INTERVAL.
     if (datetime.now() - last_submission_time).seconds < SUBMISSION_TICKET_INTERVAL:
         log_and_exit(log_info, [log_dir, download_dir, timestamp, False,
-                                'Last submission was within %d minutes' % (SUBMISSION_TICKET_INTERVAL/60)])#'''
+                                'Last submission was within %d minutes' % (SUBMISSION_TICKET_INTERVAL / 60)])  # '''
 
     # download the attachments
-    feature_service_name = os.path.basename(os.path.dirname(service_url)) if not service_info['description'] else service_info['description']
-    sqlite_path = os.path.join(download_dir, '{}_{}.db'.format(feature_service_name, datetime.now().strftime('%Y%m%d-%H%M%S')))
+    feature_service_name = os.path.basename(os.path.dirname(service_url)) if not service_info['description'] else \
+    service_info['description']
+    sqlite_path = os.path.join(download_dir,
+                               '{}_{}.db'.format(feature_service_name, datetime.now().strftime('%Y%m%d-%H%M%S')))
     try:
-        attachments = download.download_attachments(submissions.globalid, token, 0, layer_info, service_url, download_dir, ssl_cert=ssl_cert, additional_info={'sqlite_path': sqlite_path})
+        attachments = download.download_attachments(submissions.globalid, token, 0, layer_info, service_url,
+                                                    download_dir, ssl_cert=ssl_cert,
+                                                    additional_info={'sqlite_path': sqlite_path})
     except:
         EMAILS.append({'message_body': 'An unexpected error occurred while downloading attachments:\n%s'
                                        % traceback.format_exc(),
@@ -1030,14 +1081,17 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
             attachments.to_sql('attachments', conn, index=False)
 
     # Get operator codes from usernames/submitter
-    operator_codes = db_utils.get_lookup_table(table='operators', index_col='code', value_col='agol_username', conn=landings_conn)
+    operator_codes = db_utils.get_lookup_table(table='operators', index_col='code', value_col='agol_username',
+                                               conn=landings_conn)
 
     # Create separate tickets for each user for both landing and track data
-    submissions['submission_time'] = [datetime.fromtimestamp(round(ts/1000)) for _, ts in submissions['CreationDate'].iteritems()]
+    submissions['submission_time'] = [datetime.fromtimestamp(round(ts / 1000)) for _, ts in
+                                      submissions['CreationDate'].iteritems()]
     submissions.rename(columns={'Creator': 'submitter'}, inplace=True)
-    submissions.loc[submissions.submitter == '', 'submitter'] = [operator_codes[o] for _, o in submissions.loc[submissions.submitter == '', 'operator'].iteritems()]
+    submissions.loc[submissions.submitter == '', 'submitter'] = [operator_codes[o] for _, o in submissions.loc[
+        submissions.submitter == '', 'operator'].iteritems()]
 
-    connection_dict = {'tracks': tracks_conn, 'landings':landings_conn}
+    connection_dict = {'tracks': tracks_conn, 'landings': landings_conn}
     submissions = pd.concat([get_ticket(g, connection_dict)
                              for _, g in submissions.groupby(['submitter', 'submission_type'])])
 
@@ -1047,7 +1101,8 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     for table_name, data_types in field_types.items():
         df = tables[table_name]
         for field, _ in data_types.loc[data_types == 'esriFieldTypeDate'].iteritems():
-            df.loc[~df[field].isnull(), field] = [datetime.fromtimestamp(ts / 1000.0) if ts else pd.NaT for ts in df.loc[~df[field].isnull(), field]]
+            df.loc[~df[field].isnull(), field] = [datetime.fromtimestamp(ts / 1000.0) if ts else pd.NaT for ts in
+                                                  df.loc[~df[field].isnull(), field]]
 
         tables[table_name] = df
 
@@ -1058,9 +1113,10 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     all_landings = tables['landing_repeat']
 
     # Get operator emails from landings DB
-    operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email', conn=landings_conn)
+    operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email',
+                                                conn=landings_conn)
     param_dict['agol_users'] = operator_emails
-    submitter_emails = submissions.groupby(['ticket', 'submission_type']).first()\
+    submitter_emails = submissions.groupby(['ticket', 'submission_type']).first() \
         .apply(lambda r: get_submitter_email(r.submitter, param_dict['agol_users']), axis=1)
 
     submissions['tracks_operator'] = submissions.loc[submissions.submission_type == 'tracks', 'operator'].fillna('NPS')
@@ -1075,15 +1131,37 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     receipt_params = param_dict['landing_receipt']
     if (submissions.submission_type == 'landings').any():
         # Try to import 1 ticket at a time so submissions from all users aren't affected by an error from 1 submitter
-        _html_receipt_columns = ['departure_datetime', 'scenic_route', 'registration', 'aircraft_type', 'submission_time', 'objectid']
+        _html_receipt_columns = ['departure_datetime', 'scenic_route', 'registration', 'aircraft_type',
+                                 'submission_time', 'objectid']
         for ticket, flights in all_flights.loc[all_flights.submission_type == 'landings'].groupby('ticket'):
-            landings = all_landings.loc[all_landings.parentglobalid.isin(flights.globalid)]
-            html_table = get_html_table(flights.rename(columns=LANDINGS_FLIGHT_COLUMNS).reindex(columns=_html_receipt_columns))
+            # Create a blank df if there were no landings at all (but there was at least still one flight)
+            landings = all_landings.loc[all_landings.parentglobalid.isin(flights.globalid)] if len(all_landings) else pd.DataFrame()
+            html_table = get_html_table(
+                flights.rename(columns=LANDINGS_FLIGHT_COLUMNS).reindex(columns=_html_receipt_columns))
             if len(landings) == 0:
-                html_li = ('<li>There were no landings submitted for the following flights:<br>{table}<br></li>')\
+                html_li = ('<li>There were no landings submitted for the following flights:<br>{table}<br></li>') \
                     .format(table=html_table)
-                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['landing_data_stewards'], 'type': 'landings', 'level': 'warning'})
+                MESSAGES.append(
+                    {'ticket': ticket, 'message': html_li, 'recipients': param_dict['landing_data_stewards'],
+                     'type': 'landings', 'level': 'warning'})
+
+                # Try to delete these flights so they don't keep getting processed
+                agol_ids = flights.globalid
+                try:
+                    delete_from_feature_service(agol_ids, token, service_url, ssl_cert)
+                except Exception as e:
+                    html_li = (
+                        '<li>The following error occurred while trying to delete features with AGOL IDs {agol_ids}, "{error}", while processing the following flights:<br>{table}<br></li>') \
+                        .format(agol_ids=', '.join(agol_ids.astype(str)), error=e, table=html_table)
+                    MESSAGES.append(
+                        {'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                         'type': 'landings', 'level': 'error'})
+                    ERRORS.append(traceback.format_exc())
+                
+                # Then go to the next ticket
                 continue
+
+            # If there are landings, try to import them
             try:
                 excel_path, html_df, imported_flights = \
                     import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir,
@@ -1091,40 +1169,48 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                                     receipt_params['sheet_password'], param_dict['landing_data_stewards'])
             except Exception as e:
                 tb_frame = get_traceback_frame()
-                html_li = ('<li>An unexpected error, "{error}", occurred on line {lineno} of {script} while processing the following flights:<br>{table}<br></li>')\
-                        .format(error=e, lineno=tb_frame.lineno, script=os.path.basename(tb_frame.filename), table=html_table)
-                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['landing_data_stewards'], 'type': 'landings', 'level': 'error'})
+                html_li = (
+                    '<li>An unexpected error, "{error}", occurred on line {lineno} of {script} while processing the following flights:<br>{table}<br></li>') \
+                    .format(error=e, lineno=tb_frame.lineno, script=os.path.basename(tb_frame.filename),
+                            table=html_table)
+                MESSAGES.append(
+                    {'ticket': ticket, 'message': html_li, 'recipients': param_dict['landing_data_stewards'],
+                     'type': 'landings', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
-                continue#'''
+                continue  # '''
 
-            if not excel_path: # There weren't any new landings
+            if not excel_path:  # There weren't any new landings
                 continue
 
             agol_ids = imported_flights.agol_global_id
             try:
                 failed_object_ids = delete_from_feature_service(agol_ids, token, service_url, ssl_cert)
-            except Exception as e:
-                html_li = ('<li>The following error occurred while trying to delete features with AGOL IDs {agol_ids}, "{error}", while processing the following flights:<br>{table}<br></li>')\
-                        .format(agol_ids=', '.join(agol_ids.astype(str)), error=e, table=html_table)
-                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'], 'type': 'landings', 'level': 'error'})
-                ERRORS.append(traceback.format_exc())
-
-            if len(failed_object_ids):
-                html_li = ('<li>Unable to delete features with Object IDs {object_ids}<br></li>')\
+                if len(failed_object_ids):
+                    html_li = ('<li>Unable to delete features with Object IDs {object_ids}<br></li>') \
                         .format(object_ids=', '.join(failed_object_ids.astype(str)), table=html_table)
-                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'], 'type': 'landings', 'level': 'error'})
+                    MESSAGES.append(
+                        {'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                         'type': 'landings', 'level': 'error'})
+                    ERRORS.append(traceback.format_exc())
+            except Exception as e:
+                html_li = (
+                    '<li>The following error occurred while trying to delete features with AGOL IDs {agol_ids}, "{error}", while processing the following flights:<br>{table}<br></li>') \
+                    .format(agol_ids=', '.join(agol_ids.astype(str)), error=e, table=html_table)
+                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                                 'type': 'landings', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
 
             start_datetime = all_landings['CreationDate'].min()
             end_datetime = datetime.now()
             if submitter_emails[ticket].squeeze():
-                EMAILS.append({'message_body': get_email_html(html_df, start_datetime, end_datetime, column_widths={'Landing Locations': '100px'}),
-                                 'subject': 'Scenic/air taxi landing submission receipt - ticket #%s' % ticket,
-                                 'sender': param_dict['mail_sender'],
-                                 'recipients': submitter_emails[ticket].squeeze(),
-                                 'attachments': [excel_path],
-                                 'message_body_type': 'html'
-                                 })
+                EMAILS.append({'message_body': get_email_html(html_df, start_datetime, end_datetime,
+                                                              column_widths={'Landing Locations': '100px'}),
+                               'subject': 'Scenic/air taxi landing submission receipt - ticket #%s' % ticket,
+                               'sender': param_dict['mail_sender'],
+                               'recipients': submitter_emails[ticket].squeeze(),
+                               'attachments': [excel_path],
+                               'message_body_type': 'html'
+                               })
 
     # Pre-process track data
     track_submissions = submissions.loc[submissions.submission_type == 'tracks']
@@ -1133,25 +1219,28 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
 
         try:
             failed_object_ids = delete_from_feature_service(submitted_files.index, token, service_url, ssl_cert)
+            if len(failed_object_ids):
+                EMAILS.append({
+                                  'message_body': 'Unable to delete the following features: %s. These should be manually deleted.' % failed_object_ids.astype(
+                                      str),
+                                  'subject': 'Error while attempting to delete features',
+                                  'sender': param_dict['mail_sender'],
+                                  'recipients': param_dict['admin_email_address'],
+                                  'message_body_type': 'plain'
+                                  })
         except Exception as e:
-            EMAILS.append({'message_body': 'Unable to delete the following features: %s. These should be manually deleted.' % submitted_files.index.tolist(),
-              'subject': 'Error while attempting to delete features',
-              'sender': param_dict['mail_sender'],
-              'recipients': param_dict['admin_email_address'],
-              'message_body_type': 'plain'
-              })
-        if len(failed_object_ids):
-            EMAILS.append({'message_body': 'Unable to delete the following features: %s. These should be manually deleted.' % failed_object_ids.astype(str),
-                          'subject': 'Error while attempting to delete features',
-                          'sender': param_dict['mail_sender'],
-                          'recipients': param_dict['admin_email_address'],
-                          'message_body_type': 'plain'
-                          })
+            EMAILS.append({
+                              'message_body': 'Unable to delete the following features: %s. These should be manually deleted.' % submitted_files.index.tolist(),
+                              'subject': 'Error while attempting to delete features',
+                              'sender': param_dict['mail_sender'],
+                              'recipients': param_dict['admin_email_address'],
+                              'message_body_type': 'plain'
+                              })
 
         # Compose email to track editors
         if len(geojson_paths):
             msg = ('There are new track data to edit and import into the overflights database as of {timestamp}. Go to '
-                   '{url} in a Google Chrome window to view and edit the tracks.')\
+                   '{url} in a Google Chrome window to view and edit the tracks.') \
                 .format(url=param_dict['track_editor_url'], timestamp=timestamp)
             subject = 'New track data submitted on %s' % datetime.now().strftime('%b %d, %Y')
             recipients = param_dict['track_data_stewards']
@@ -1166,13 +1255,13 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
             message_info = get_track_receipt_email(s, ticket, param_dict['mail_sender'], param_dict['agol_users'])
             if len(message_info):
                 EMAILS.append(message_info)
-        #EMAILS.extend([get_track_receipt_email(s, ticket, param_dict['mail_sender'], param_dict['agol_users']) for ticket, s in track_submissions.groupby('ticket')])
+        # EMAILS.extend([get_track_receipt_email(s, ticket, param_dict['mail_sender'], param_dict['agol_users']) for ticket, s in track_submissions.groupby('ticket')])
 
     # Reduce submissions df to one per ticket
     if len(MESSAGES):
-        tickets = submissions.sort_values('submission_time')\
-            .groupby(['ticket', 'submission_type'])\
-            .first()\
+        tickets = submissions.sort_values('submission_time') \
+            .groupby(['ticket', 'submission_type']) \
+            .first() \
             .reset_index()
         EMAILS.extend(compose_error_notifications(tickets, param_dict))
 
@@ -1193,14 +1282,14 @@ def send_email_per_recipient(message_params):
 
     failed_mail = []
     for address in recipients:
-        params = message_params
-        params['recipients'] = [address] # send_mail() still expects an iterable
+        params = message_params.copy()
+        params['recipients'] = [address]  # send_mail() still expects an iterable
         try:
             process_emails.send_email(**params)
         except Exception as e:
             params['error'] = traceback.format_exc()
             failed_mail.append(params)
-        time.sleep(1) # not sure if the issue is that messages are sent at the exact same time, but this seems to work
+        time.sleep(1)  # not sure if the issue is that messages are sent at the exact same time, but this seems to work
 
     return failed_mail
 
@@ -1234,24 +1323,25 @@ def main(config_json):
                              'full_traceback': traceback.format_exc()
                              }
         EMAILS.append({'message_body': 'An unexpected error occurred while polling the flight data feature layer or '
-                                     'processing submissions:\n%s' % traceback_details['full_traceback'],
+                                       'processing submissions:\n%s' % traceback_details['full_traceback'],
                        'subject': 'Error while running %s' % __file__,
                        'sender': params['mail_sender'],
                        'recipients': params['admin_email_address'],
                        'message_body_type': 'plain'
                        })
-    #'''
+    # '''
 
     # send emails here so that all DB transactions are committed before actually sending anything
     # still wrap in try/except block so if any emails fail, someone can be notified (and the log can be amended)
     # Start the mail server
     server = smtplib.SMTP(params['mail_server_credentials']['server_name'], params['mail_server_credentials']['port'])
     server.starttls()
-    server.ehlo()#'''
+    server.ehlo()  # '''
 
     script_name = os.path.basename(__file__).rstrip('.py')
     log_info = read_logs(params['log_dir'], script_name)
-    previous_emails = pd.DataFrame(log_info['emails'].explode().dropna().tolist()) if 'emails' in log_info else pd.DataFrame()
+    previous_emails = pd.DataFrame(
+        log_info['emails'].explode().dropna().tolist()) if 'emails' in log_info else pd.DataFrame()
     if len(previous_emails):
         try:
             previous_emails['recipients'] = previous_emails.recipients.apply(sorted).astype(str)
@@ -1259,17 +1349,18 @@ def main(config_json):
             pass
 
     failed_emails = []
-    for msg_info in EMAILS:# + steward_notifications:
+    for msg_info in EMAILS:  # + steward_notifications:
         # If this message has not been sent before, send it. Don't use the subject line to determine this because it
         #   contains a ticket number, which changes every time there's an attempt to process the data
         sent = False
         if len(previous_emails):
             try:
                 sent = ((previous_emails.message_body == msg_info['message_body']) &
-                        (previous_emails.recipients == str(sorted(msg_info['recipients'])))
-                       ).any()
+                        (previous_emails.recipients.str.contains(str(sorted(msg_info['recipients'])), regex=False))
+                        ).any()
             except:
                 pass
+
         if not sent:
             msg_info['server'] = server
             failed = send_email_per_recipient(msg_info)

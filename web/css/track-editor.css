@@ -65,7 +65,7 @@ body {
 }
 
 g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
-	cursor: url('../imgs/cut_cursor_icon.png'), auto;
+	cursor: url('../imgs/cut_cursor_icon.png') 15 15, auto;
 }
 
 /*.card-header {
