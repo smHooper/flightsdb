@@ -47,7 +47,7 @@ import pandas as pd
 import geopandas as gpd
 
 import db_utils
-from import_track import get_cl_args
+from utils import get_cl_args
 
 FIONA_DRIVERS = {'.geojson': 'GeoJSON',
                  '.json': 'GeoJSON',
@@ -94,6 +94,42 @@ def get_mask_wkt(mask_gdf, buffer_distance=None):
 
 
 def query_tracks(start_date, end_date, connection_txt=None, engine=None, table='flight_points', start_time='00:00', end_time='23:59', bbox=None, mask=None, mask_buffer_distance=None, clip_output=False, aircraft_info=False, sql_criteria=''):
+    '''
+    Query the overflights database with specified parameters. Results are returned as a GeoPandas.GeoDataFrame instance.
+
+    :param start_date:      ISO date string (YYYY-mm-dd) indicating the beginning of the date range to query within 
+    :param end_date:        ISO date string (YYYY-mm-dd) indicating the end of the date range to query within
+    :param connection_txt:  [optional] path to a text file containing postgres connection params for the overflights DB.
+                            The text file must be readable by db_utils.connect_db(). If engine is not given,
+                            connection_txt must be specified.
+    :param engine:          [optional] SQLAlchemy Engine instance for connecting to the overflights DB. If
+                            connection_txt is not given, engine must be specified.
+    :param table:           [optional] string representing the name of the table to return geometries from overflights
+                            DB. Options are either 'flight_points' (the default) or 'flight_lines'
+    :param start_time:      [optional] string representing the earliest time of day on a 24-hour clock to return data
+                            from. Must be in the format HH:MM or H:MM (e.g., 09:30 or 9:30) [Default: '00:00']
+    :param end_time:        [optional] string representing the latest time of day on a 24-hour clock to return data
+                            from. Must be in the format HH:MM or H:MM (e.g., 09:30 or 9:30) [Default: '23:59']
+    :param bbox:            [optional] WGS84 bounding box coordinates to query records within in the format 'xmin, ymin,
+                            xmax, ymax'. If a mask is specified, the bounding box will be ignored [Default: None]
+    :param mask:            [optional] Geopandas.GeoDataframe instance to to spatially filter query results. If you
+                            specify a mask with Point or Line geometries, you must also specify a mask_buffer_distance.
+                            [Default: None]
+    :param mask_buffer_distance: [optional] Integer distance in meters (as measured in Alaska Albers Equal Area Conic
+                                 projection) to buffer around all features in mask_file. [Default: None]
+    :param clip_output:     [optional] boolean to indicate that the result should be the intersection of mask_file and
+                            the result of the non-spatial query criteria. If this option is not given, all features
+                            that touch mask_file will be returned, but they will not be clipped to its shape
+                            [Default: False]
+    :param aircraft_info:   [optional] boolean to return information about the aircraft (manufacturer, model, engine
+                            model, aircraft type, etc.) appended to each row of the query result. These additional
+                            fields can also be used in the sql_criteria to aspatially filter results based on aircraft information
+                            (e.g., "type_aircraft = 'Fixed Wing Single-Engine'") [Default: False]
+    :param sql_criteria:    [optional] string representing additional SQL criteria to append to a WHERE statement (e.g.,
+                            'flights.id IN (104, 105, 106)' to limit results to records with those flight IDs)
+
+    :return:                GeoPandas.GeoDataFrame instance of query results.
+    '''
 
     if not engine:
         if not connection_txt:
@@ -107,8 +143,8 @@ def query_tracks(start_date, end_date, connection_txt=None, engine=None, table='
             [f'{table}.{c}' for c in db_utils.get_db_columns(table, engine)
              if c not in ['flight_id', 'id']])
         if aircraft_info:
-            query_columns = query_columns.append(
-                ['aircraft_info.' + c for c in db_utils.get_db_columns('aircraft_info', engine)])
+            query_columns = query_columns.append(pd.Series(['aircraft_info.*']))
+                #['aircraft_info.' + c for c in db_utils.get_db_columns('aircraft_info', engine)])
 
     mask_specified = isinstance(mask, gpd.geodataframe.GeoDataFrame)
     if mask_specified:
