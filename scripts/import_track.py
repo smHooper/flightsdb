@@ -59,10 +59,10 @@ from geoalchemy2 import Geometry, WKTElement
 from shapely.geometry import LineString as shapely_LineString, Point as shapely_Point
 
 import db_utils
-import get_missing_aircraft_info as ainfo
+import update_aircraft_info as ainfo
 import process_emails
 import kml_parser
-
+from utils import get_cl_args
 
 CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
                     'gsat': ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts'],
@@ -799,29 +799,6 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
     if not silent:
         sys.stdout.write('%d flight %s imported:\n\t-%s' % (len(flights), 'tracks' if len(flights) > 1 else 'track', '\n\t-'.join(flight_ids.flight_id)))
         sys.stdout.flush()
-
-
-def get_cl_args(doc):
-    """
-    Get command line arguments as a dictionary
-    :return: dictionary of arguments
-    """
-    # Any args that don't have a default value and weren't specified will be None
-    cl_args = {k: v for k, v in docopt.docopt(doc).items() if v is not None}
-
-    # get rid of extra characters from doc string and 'help' entry
-    args = {re.sub('[<>-]*', '', k): v for k, v in cl_args.items() if k != '--help' and k != '-h'}
-
-    # convert numeric values
-    for k, v in args.items():
-        if type(v) == bool or v == None:
-            continue
-        elif re.fullmatch('\d*', v):
-            args[k] = int(v)
-        elif re.fullmatch('\d*\.\d*', v):
-            args[k] = float(v)
-
-    return args
 
 
 def print_operator_codes(connection_txt):
