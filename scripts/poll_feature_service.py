@@ -11,6 +11,7 @@ import smtplib
 import openpyxl
 import traceback
 import requests
+import inspect
 import pandas as pd
 import numpy as np
 from glob import glob
@@ -302,7 +303,7 @@ def get_attachment_info(file_path, ext='.zip'):
 
 
 def track_to_json(gdf, attachment_info):
-    unserializable_fields = ~gdf.dtypes.astype(str).isin(['int64', 'int32', 'float64', 'object'])
+    unserializable_fields = ~gdf.dtypes.astype(str).isin(['int64', 'int32', 'float64', 'object', 'geometry'])
     gdf.loc[:, unserializable_fields] = gdf.loc[:, unserializable_fields].astype(str)
     geojson_strs = {}  # seg_id: json.loads(df.to_json()) for seg_id, df in gdf.groupby('segment_id')}
     for seg_id, df in gdf.groupby('segment_id'):  # .apply(lambda df: df.index.min())
@@ -755,6 +756,7 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
 
 
 def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
+
     import_params = param_dict['import_params'] if 'import_params' in param_dict else {}
     attachment_dir = os.path.join(download_dir, 'attachments')
     operator_codes = db_utils.get_lookup_table(table='operators', conn=tracks_conn)
