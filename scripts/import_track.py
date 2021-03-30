@@ -47,12 +47,13 @@ import shutil
 import warnings
 import subprocess
 import smtplib
+import chardet.universaldetector
 import docopt
 import requests
 import bs4
 import numpy as np
 import pandas as pd
-import gdal # this import is unused, but for some reason geopandas (shapely, actually) won't load unless gdal is imported first
+#import gdal # this import is unused, but for some reason geopandas (shapely, actually) won't load unless gdal is imported first
 import geopandas as gpd
 from datetime import datetime, timedelta
 from geoalchemy2 import Geometry, WKTElement
@@ -64,13 +65,16 @@ import process_emails
 import kml_parser
 from utils import get_cl_args
 
-CSV_INPUT_COLUMNS = {'aff': ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)'],
-                    'gsat': ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts'],
-                    'spy': ['Registration', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Speed(knots)', 'Bearing', 'PointType', 'Description'],
-                    'tms': ['Serial No.', 'UTC', 'Latitude', 'HemNS', 'Longititude', 'HemEW', 'Knots', 'Heading', 'Altitude (m)', 'HDOP', 'New Conn', 'Entered', 'Event', 'ESN', 'Latitude (DDMM.MMMM)', 'Longititude (DDMM.MMMM)',
-       'Heading (True)', 'Server Time (PDT)'],
-                     'foreflight': ['Pilot', 'Tail Number', 'Derived Origin', 'Start Latitude', 'Start Longitude', 'Derived Destination', 'End Latitude', 'End Longitude', 'Start Time', 'End Time', 'Total Duration', 'Total Distance', 'Initial Attitude Source', 'Device Model', 'Device Model Detailed', 'iOS Version', 'Battery Level', 'Battery State', 'GPS Source', 'Maximum Vertical Error', 'Minimum Vertical Error', 'Average Vertical Error', 'Maximum Horizontal Error', 'Minimum Horizontal Error', 'Average Horizontal Error', 'Imported From', 'Route Waypoints']
-               }
+# Patterns of column names for different csv sources
+CSV_INPUT_COLUMNS = [
+    ['aff', ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)']],
+    ['gsat', ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts']],
+    ['gsat', ['Events', 'Date', 'Address', 'Lat/Lng', 'Speed', 'Heading', 'Altitude', 'Via']],
+    ['spy', ['Registration', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Speed(knots)', 'Bearing', 'PointType', 'Description']],
+    ['tms', ['Serial No.', 'UTC', 'Latitude', 'HemNS', 'Longititude', 'HemEW', 'Knots', 'Heading', 'Altitude (m)', 'HDOP', 'New Conn', 'Entered', 'Event', 'ESN', 'Latitude (DDMM.MMMM)', 'Longititude (DDMM.MMMM)',
+       'Heading (True)', 'Server Time (PDT)']],
+    ['foreflight', ['Pilot', 'Tail Number', 'Derived Origin', 'Start Latitude', 'Start Longitude', 'Derived Destination', 'End Latitude', 'End Longitude', 'Start Time', 'End Time', 'Total Duration', 'Total Distance', 'Initial Attitude Source', 'Device Model', 'Device Model Detailed', 'iOS Version', 'Battery Level', 'Battery State', 'GPS Source', 'Maximum Vertical Error', 'Minimum Vertical Error', 'Average Vertical Error', 'Maximum Horizontal Error', 'Minimum Horizontal Error', 'Average Horizontal Error', 'Imported From', 'Route Waypoints']]
+]
 
 CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                               'Longitude':          'longitude',
@@ -321,9 +325,9 @@ def read_kml(path, seg_time_diff=15):
         raise RuntimeError('Could not understand KML format of file %s' % path)
 
 
-def format_aff(path):
+def format_aff(path, encoding='ISO-8859-1', **kwargs):
 
-    df = pd.read_csv(path, encoding='ISO-8859-1')
+    df = pd.read_csv(path, encoding=encoding)
     df.rename(columns=CSV_OUTPUT_COLUMNS['aff'], inplace=True)
 
     df.utc_datetime = pd.to_datetime(df.utc_datetime, errors='coerce')
@@ -350,16 +354,22 @@ def parse_gsat_coordinates(coordinates):
     return dms_to_dd(*lat_dms), dms_to_dd(*lon_dms)
 
 
-def format_gsat(path):
+def format_gsat(path, encoding='ISO-8859-1', skip_rows=0):
 
     # Try to get the registration number. It's stored in the third row, even though the metadata header is the first row
     try:
-        registration = 'N' + pd.read_csv(path, encoding='ISO-8859-1').loc[2, 'Asset']
+        registration = 'N' + pd.read_csv(path, encoding=encoding).loc[2, 'Asset']
     except:
         registration = ''
 
-    df = pd.read_csv(path, encoding='ISO-8859-1', skiprows=5)
+    df = pd.read_csv(path, encoding=encoding, skiprows=skip_rows)
+    for i in range(1, 6):
+        if 'lat/lng' in df.columns.str.lower():
+            break
+        df = pd.read_csv(path, encoding=encoding, skiprows=i)
+    df.dropna(subset=['Lat/Lng'], inplace=True)
 
+    #df = pd.read_csv(path, encoding='ISO-8859-1', skiprows=5)
     # If this didn't fail, add a registration column
     if registration:
         df['registration'] = registration
@@ -367,17 +377,34 @@ def format_gsat(path):
     # Convert coordinates to separate decimal degree lat and lon fields
     df['latitude'], df['longitude'] = list(zip(*df['Lat/Lng'].apply(parse_gsat_coordinates)))
 
-    df['knots'] = df['Speed'].str.split(' ').str[0].astype(float) # Replace "knots" in speed field
-    df['heading'] = df['Heading'].str.replace('°', '').astype(int) # Replace degree symbol in heading
+    # Remove "knots" in speed field
+    df['knots'] = df['Speed'].astype(str).str.split(' ').str[0].astype(float)
+
+    # Replace degree symbol in heading. For some GSAT files, it's not there in which case pandas reads the column as
+    #   as floats. So first,
+    #       convert to string,
+    #       then try to remove the degree symbol,
+    #       then convert back to float because the decimal will cause .astype(int) to throw an error,
+    #       then to int
+    df['heading'] = df['Heading']\
+        .astype(str)\
+        .str.replace('°', '')\
+        .astype(float)\
+        .astype(int)
+
     df['altitude_ft'] = df['Altitude'].str.split(' ').str[0].astype(float).round().astype(int) # Replace "ft" and convert to int
-    df['utc_datetime'] = pd.to_datetime(df['Date'], errors='coerce')
+
+    # GSAT datetimes are in local time, so calculate UTC so that
+    df['ak_datetime'] = pd.to_datetime(df['Date'], errors='coerce')
+    timezone = pytz.timezone('US/Alaska')
+    df['utc_datetime'] = df.ak_datetime - df.ak_datetime.apply(timezone.utcoffset)
 
     return df
 
 
-def format_spy(path):
+def format_spy(path, encoding='ISO-8859-1', **kwargs):
 
-    df = pd.read_csv(path, encoding='ISO-8859-1')
+    df = pd.read_csv(path, encoding=encoding)
 
     if 'Speed(mph)' in df:
         df['knots'] = df['Speed(mph)'] / 1.151
@@ -403,9 +430,9 @@ def format_spy(path):
     return df
 
 
-def format_tms(path):
+def format_tms(path, encoding='ISO-8859-1', **kwargs):
 
-    df = pd.read_csv(path, encoding='ISO-8859-1')
+    df = pd.read_csv(path, encoding=encoding)
 
     # some of the time TMS columns names have spaces on either end
     df.columns = df.columns.str.strip()
@@ -431,13 +458,13 @@ def format_tms(path):
     return df
 
 
-def format_foreflight_csv(path):
+def format_foreflight_csv(path, encoding='ISO-8859-1', **kwargs):
 
     try:
-        registration = pd.read_csv(path, encoding='ISO-8859-1', nrows=5).loc[0, 'Tail Number']
+        registration = pd.read_csv(path, encoding=encoding, nrows=5).loc[0, 'Tail Number']
     except:
         registration = ''
-    df = pd.read_csv(path, encoding='ISO-8859-1', skiprows=2)
+    df = pd.read_csv(path, encoding=encoding, skiprows=2)
     df['registration'] = registration
 
     # Timestamp are in local time. The rest of the read functions all return UTC time, so calcualte that, even though
@@ -458,6 +485,40 @@ def format_foreflight_csv(path):
     return df
 
 
+def get_csv_type(path, encoding):
+    """
+    Helper function to try to determine the CSV source
+    :param path:
+    :param encoding:
+    :return:
+    """
+    column_match_scores = pd.Series([0])
+    skip_rows = 0
+    best_match = None
+    while skip_rows < 10:
+        df = pd.read_csv(path, encoding=encoding, nrows=2, skiprows=skip_rows)
+        df.columns = df.columns.str.strip()
+        # Figure out which file type it is (aff, gsat, spy, or tms) by selecting the file type that most closely matches
+        #   the expected columns per type
+        named_columns = df.columns[~df.columns.str.startswith('Unnamed')].str.strip()
+
+        if len(named_columns):
+            # This row doesn't have any recognized column names so skip it
+
+            column_match_scores = pd.Series({
+                file_type: len(named_columns[named_columns.isin(pd.Series(columns).str.strip())]) / float(len(named_columns))
+                for file_type, columns in CSV_INPUT_COLUMNS
+            })
+
+            if column_match_scores.any():
+                best_match = column_match_scores.idxmax() #index is file_type
+                break
+
+        skip_rows += 1
+
+    return best_match, skip_rows
+
+
 def read_csv(path, seg_time_diff=None):
     """
     Read and format a CSV of track data. CSVs can come from 4 different sources, so figure out which source it comes
@@ -466,15 +527,18 @@ def read_csv(path, seg_time_diff=None):
     :param path: path to track CSV
     :return: GeoDataframe of points
     """
-
-    df = pd.read_csv(path, encoding='ISO-8859-1', nrows=2)#ISO encoding handles symbols like '°'
-    df.columns = df.columns.str.strip()
-    # Figure out which file type it is (aff, gsat, spy, or tms) by selecting the file type that most closely matches
-    #   the expected columns per type
-    named_columns = df.columns[~df.columns.str.startswith('Unnamed')].str.strip()
-    column_match_scores = {file_type: len(named_columns[named_columns.isin(pd.Series(columns).str.strip())]) / float(len(named_columns)) for
-                           file_type, columns in CSV_INPUT_COLUMNS.items()}
-    best_match = pd.Series(column_match_scores).idxmax() #index is file_type
+    # Try to determine the file's encoding
+    detector = chardet.universaldetector.UniversalDetector()
+    encoding = ''
+    with open(path, 'rb') as f:
+        for line in f.readlines():
+            detector.feed(line)
+            if detector.done:
+                encoding = detector.result['encoding']
+                break
+    detector.close()
+    if not encoding:
+        raise RuntimeError('Could not determine encoding of file ' + path)
 
     CSV_FUNCTIONS = {'aff': format_aff,
                      'gsat': format_gsat,
@@ -482,10 +546,17 @@ def read_csv(path, seg_time_diff=None):
                      'tms': format_tms,
                      'foreflight': format_foreflight_csv
                      }
+
+    best_match, skip_rows = get_csv_type(path, encoding)
+
     if not best_match in CSV_FUNCTIONS:
         sorted_types = sorted(CSV_FUNCTIONS.keys())
-        raise IOError('The data source could not be interpreted from the column names. Only %s, and %s currently accepted.' % (sorted_types[:-1], sorted_types[-1]))
-    df = CSV_FUNCTIONS[best_match](path)
+        raise IOError(
+            'The data source could not be interpreted from the column names. ' +
+            ('Only %s, and %s currently accepted.' % (', '.join(sorted_types[:-1]), sorted_types[-1]))
+        )
+
+    df = CSV_FUNCTIONS[best_match](path, encoding, skip_rows)
     df.heading = df.heading.round().astype(int)
     df.knots = df.knots.round().astype(int)
 
@@ -557,7 +628,7 @@ def check_duplicate_flights(registration, connection, start_time, end_time):
     return matching_flights
 
 
-def format_track(path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, force_registration=True):
+def format_track(path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, force_registration=True, **kwargs):
 
     _, extension = os.path.splitext(path)
 
@@ -588,11 +659,16 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
                              (extension.replace('.', '').upper(), ', '.join(sorted_extensions[:-1]), sorted_extensions[-1])
         raise IOError(error_message)
 
-
     # Calculate local (AK) time
     timezone = pytz.timezone('US/Alaska')
-    gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
-    gdf = gdf.sort_values('ak_datetime') # track points are *usually* in chronological order, but not all
+    if 'ak_datetime' not in gdf.columns:
+        # If the timezone is defined (because it was included in the timestamp given by the file), convert to local time
+        #   to get AK time
+        if gdf.utc_datetime.dt.tz:
+            gdf['ak_datetime'] = gdf.utc_datetime.dt.tz_convert(timezone)
+        else: # otherwise, calculate by adding the offset
+            gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
+    gdf = gdf.sort_values('ak_datetime') # track points are *usually* in chronological order, but not always
 
     # Validate the registration
     if 'registration' in gdf.columns and not force_registration: # Already in a column in the data
@@ -651,7 +727,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
     return gdf
 
 
-def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None, engine=None, force_registration=False, ignore_duplicate_flights=False):
+def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, silent=False, force_import=False, ssl_cert_path=None, engine=None, force_registration=False, ignore_duplicate_flights=False, **kwargs):
 
 
     if type(data) == gpd.geodataframe.GeoDataFrame:
