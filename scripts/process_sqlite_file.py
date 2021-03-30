@@ -2,7 +2,7 @@
 Manual entry point into workflow to process/import flight data that were downloaded, but
 '''
 
-
+import sqlalchemy
 from poll_feature_service import * # all modules and constants impored in poll_feature_service
 
 def main(sqlite_path, config_json):
@@ -18,7 +18,7 @@ def main(sqlite_path, config_json):
     with engine.connect() as conn:
         all_flights = pd.read_sql_table('flights', conn)
         attachments = pd.read_sql_table('attachments', conn)
-        if 'landing_repeat' in engine.table_names():
+        if 'landing_repeat' in sqlalchemy.inspect(engine).get_table_names():
             all_landings = pd.read_sql_table('landing_repeat', conn)
 
         all_flights.landing_datetime = (all_flights.landing_datetime/1000).dropna().apply(datetime.fromtimestamp)
