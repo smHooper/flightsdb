@@ -112,6 +112,7 @@ def main(sqlite_path, config_json):
                     continue
 
                 agol_ids = imported_flights.agol_global_id
+                failed_object_ids = pd.Series(dtype=int)
                 try:
                     if 'token' not in locals():
                         token = download.get_token(ssl_cert=ssl_cert, **agol_credentials)
