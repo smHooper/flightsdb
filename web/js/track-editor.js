@@ -569,8 +569,8 @@ function showLoadingIndicator(timeout=15000) {
 
     var thisCaller = showLoadingIndicator.caller.name;
 
-	var indicator = $('#loading-indicator').css('display', 'block')
-	$('#loading-indicator-background').css('display', 'block');
+	var indicator = $('#loading-indicator').removeClass('hidden');
+	//$('#loading-indicator-background').css('display', 'block');
 
     // check the .data() to see if any other functions called this
     indicator.data('callers', indicator.data('callers') === undefined ? 
@@ -596,8 +596,8 @@ function hideLoadingIndicator(caller) {
 
     // Hide the indicator if there are no more callers
     if (!indicator.data('callers').length) {
-        $('#loading-indicator-background').css('display', 'none');
-        indicator.css('display', 'none');
+        //$('#loading-indicator-background').addClass('hidden');
+        indicator.addClass('hidden');
     }
 
 }
@@ -752,7 +752,7 @@ function onLineClick(e) {
 
 function showNoFileMessage() {
 	
-	$('#no-files-message').css('display', 'block');
+	$('#no-files-message').removeClass('hidden');
 	$('#no-files-gif').attr('src', noFileGIFS[Math.floor(Math.random() * noFileGIFS.length)]);
 }
 

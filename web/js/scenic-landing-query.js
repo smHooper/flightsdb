@@ -1161,7 +1161,7 @@ function onSaveEditsButtonClick() {
 
 
 function onEditButtonClick() {
-	let thisCard = $(this).closest('.card')
+	let thisCard = $(this).closest('.card');
 	let thisCardHeader = thisCard.find('.card-header');
 	let deferred;
 	// If there are any disabled inputs, they're all disabled and this row is not currently editable
@@ -1697,17 +1697,17 @@ function onCheckboxClick() {
 }
 
 
-function showLoadingIndicator() {
+function showLoadingIndicator(timeout=15000) {
 
     //set a timer to turn off the indicator after a max of 15 seconds because 
     //  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
     //  with who called it
-    setTimeout(hideLoadingIndicator, 15000);
+    if (timeout) setTimeout(hideLoadingIndicator, timeout);
 
     var thisCaller = showLoadingIndicator.caller.name;
 
-	var indicator = $('#loading-indicator').css('display', 'block')
-	$('#loading-indicator-background').css('display', 'block');
+	var indicator = $('#loading-indicator').removeClass('hidden');
+	//$('#loading-indicator-background').css('display', 'block');
 
     // check the .data() to see if any other functions called this
     indicator.data('callers', indicator.data('callers') === undefined ? 
@@ -1733,8 +1733,8 @@ function hideLoadingIndicator(caller) {
 
     // Hide the indicator if there are no more callers
     if (!indicator.data('callers').length) {
-        $('#loading-indicator-background').css('display', 'none');
-        indicator.css('display', 'none');
+        //$('#loading-indicator-background').addClass('hidden');
+        indicator.addClass('hidden');
     }
 
 }

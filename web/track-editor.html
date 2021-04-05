@@ -4,16 +4,19 @@
   <meta charset='utf-8'>
   <meta name="viewport" content="width=device-width,height=device-height, user-scalable=no" />
   <title>Overflight editor</title>
+  
   <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.2.0/dist/leaflet.css" />
   <script src="./node_modules/leaflet/dist/leaflet.js"></script>
   <script src="node_modules/leaflet-toolbar/dist/leaflet.toolbar.js"></script>
   <link rel="stylesheet" href="node_modules/leaflet-toolbar/dist/leaflet.toolbar.css"/>
   <script src="./js/leaflet-providers.js"></script>
+  
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
-  <link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
-  <script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+  
+  <link href="packages/bootstrap/bootstrap.4.0.0.min.css" rel="stylesheet" id="bootstrap-css"/>
+  <script src="packages/bootstrap/bootstrap.4.0.0.min.js"></script>
 
-  <link rel="stylesheet" href="css/track-editor.css"/>
+  <link rel="stylesheet" href="css/track-editor_.css"/>
   <link rel="stylesheet" href="css/flights.css"/>
 
 </head>
@@ -21,51 +24,52 @@
 <body>
 
   <!-- loading indicator should be hidden and will only be shown when loading a file -->
-  <div id="loading-indicator-background" style="display: none;"></div>
-  <div id="loading-indicator" style="display: none;"></div>
+  <div id="loading-indicator">
+    <div id="loading-indicator-background"></div>
+    <div id="loading-indicator-spinner"></div>
+  </div>
 
     <!-- message for when there are no files to import -->
-  <div id="no-files-message" style="display: none;">
-    <div style="position:absolute; left: 50%; top: 30%; transform: translateX(-50%);">
-      <h3 style="color: rgb(125, 125, 125); text-align: center; padding-bottom: 20px;">Dang, no flight data to import right now</h3>
+  <div id="no-files-message" class="hidden">
+    <div id="no-file-message-content">
+      <h3>Dang, no flight data to import right now</h3>
       <img id="no-files-gif" width="480" height="270" frameBorder="0"></img>
     </div>
   </div>
 
-  <div id="dashboard-container" class="container-fluid">
+  <div  id="dashboard-container">
 
-    <div class="row col-12" id="file-menu-title" style="width:100%; display: block; margin-top: 10px">
-      <h4 style="color: rgb(125, 125, 125);">Files to import</h4>
+    <div id="file-menu-title" class="col-12">
+      <h4>Files to import</h4>
     </div>
-    <div class="row h-90" style="display: flex; width:100%; float:left;">
+    <div id="main-content-container">
       
-      <div id='menu-container' class="col-sm-6 col-md-4 col-lg-4" style="">
-        <div>
-          <!-- File menu and legend-->
-          <div style="height:100%; overflow:auto; align-items:stretch;" >
-            <div class='accordion' id='file-list'>
-              <!--items added dynamically on load -->
-            </div>
+      <div id="menu-container" class="col-sm-6 col-md-4 col-lg-4">
+
+        <!-- File menu and legend-->
+        <div id="menu-content-container" >
+          <div class='accordion' id='file-list'>
+            <!--items added dynamically on load -->
           </div>
         </div>
 
-        <div class="dark-scrollbar" id="track-info-panel" style="width:100%; display: flex; flex-direction: column; flex:1; background-color: rgb(60, 60, 60); padding: 20px;">
-          <!-- Info about each track-->
-          <div style="display:flex;">
-            <div style="color: rgb(125, 125, 125); width:100%">
-              <!--<div style="display: block; width: 100%">-->
-              <h4 style="display: inline-block; float: left; color: inherit">Track info</h4>
-              <button id="button-track-info-lock" title="Toggle lock on track info" style="display: inline-block;" onclick="lockButtonClick()"></button>
 
-            <div style="float: left; width:100%">
-              <p id="p-submitted-at" style="color: inherit; font-size:14px; padding: 0px; margin-bottom:4px;"> </p>
-              <p id="p-submitted-by" style="color: inherit; font-size:14px; padding: 0px;"> </p>
+        <div class="track-info-panel dark-scrollbar" id="track-info-panel">
+          <!-- Info about each track-->
+          <div class="row track-info-header-container">
+            <div class="track-info-header-title-container">
+              <h4>Track info</h4>
+              <button class="button-track-info-lock" id="button-track-info-lock" title="Toggle lock on track info" onclick="lockButtonClick()"></button>
             </div>
+            <div class="submission-info-container" style="">
+              <p class="submission-info" id="p-submitted-at"> </p>
+              <p class="submission-info" id="p-submitted-by"> </p>
             </div>
           </div>
-          <form id="form-track-info" style="width: 100%; position: relative;">
+
+          <form class="track-info-form" id="form-track-info">
             
-            <div class="row" style="display: flex;">
+            <div class="row">
               <div class="input-container">
                 <label class="track-info-label">Tail number</label>
                 <input type="text" class="track-info-textbox locked" id="textbox-registration" name="registration" spellcheck="false" disabled="true">
@@ -76,7 +80,7 @@
               </div>
             </div>
             
-            <div class="row" style="display: flex;">
+            <div class="row">
               <div class="input-container">
                 <label class="track-info-label">Operator code</label>
                 <select class="track-info-textbox locked" id="select-operator_code" name="operator_code" disabled="true">
@@ -91,11 +95,11 @@
               </div>
             </div>
 
-            <div class="row" style="display: flex;">
-              <div class="input-container" style="width:100%;">
+            <div class="row">
+              <div class="input-container input-container-large input-container-submitter-notes">
                 <label class="track-info-label">Submitter notes</label>
-                <div class="track-info-textbox locked" id="div-submitter_notes"style="height:80px; overflow-y:auto; padding:7px;">
-                  <p id="p-submitter_notes" style="width:100%"></p>
+                <div class="track-info-textbox locked" id="div-submitter_notes">
+                  <p id="p-submitter_notes"></p>
                 </div>
               </div>
             </div>
@@ -104,17 +108,17 @@
         </div>
       </div>
       
-      <div id='map-container' class="col-sm-6 col-md-8 col-lg-8" style="display: inline-block; height:100%;">
-        <div id='map'style="position: relative; min-height: 600px; margin-bottom: 0; margin-top: 0; width: 100%; height:90%;">
+      <div id="map-container" class="col-sm-6 col-md-8 col-lg-8">
+        <div id="map">
         </div>
 
-        <div class="row" style="top: 10px; width:100%; height: 30px; display:flex; flex-direction:column; margin:0;">
+        <div id="map-footer">
           <!--<div class="col-sm-2 mx-0 px-0" style="display:inline-block;">
             <button class="button data-button" id="save-button" onclick="onImportDataClick()" style="float:left;">Import tracks</button>
           </div>-->
-          <div style="float:right; display:inline-block; color:rgb(125, 125, 125); flex:1; height:100%; margin-left:0;">
-            <p style="width:100%; float:right; font-size:14px; display:inline-block; margin-top:10px; text-align:right;">Questions? Contact the flight data steward at <a id="contact-link" style="color:hsl(195, 85%, 50%); display:inline;"></a></p>
-          </div>         
+          <!--<div style="float:right; display:inline-block; color:rgb(125, 125, 125); flex:1; height:100%; margin-left:0;">-->
+          <p style="">Questions? Contact the flight data steward at <a id="contact-link"></a></p>
+          <!--</div>  -->       
         </div>
       </div>
     
@@ -122,7 +126,7 @@
 
   </div>
 
-  <script src="js/track-editor.js"></script>
+  <script src="js/track-editor_.js"></script>
   <script type="text/javascript">
 
     var map = L.map('map', {editable: true})

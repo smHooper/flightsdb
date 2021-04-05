@@ -5,21 +5,69 @@ body {
 }
 
 
+#file-menu-title {
+	width:100%; 
+	display: block; 
+	margin-top: 10px
+}
+#file-menu-title > h4 {
+	color: rgb(125, 125, 125);
+}
+
+#main-content-container {
+	display: flex; 
+	width:100%; 
+	float:left;
+	height: calc(100% - 80px);
+	flex-wrap: nowrap;
+}
+
 #menu-container {
 	position: relative;
 	border: 5px;
 	border-color: rgb(100, 100, 100);
 	height: 100%;
+	overflow-y: auto;
+}
+#menu-content-container {
+	overflow-x: auto; 
+	align-items:stretch;
 }
 
-/*#map { 
-	position: relative; 
-	min-height: 650px;
-	margin-bottom: 0;
-	margin-top: 0;
-	width: 100%;
-}*/
 
+#map-container {
+	display: inline-block; 
+	height:100%;
+}
+#map { 
+	position: relative; 
+	min-height: 600px; 
+	margin-bottom: 0; 
+	margin-top: 0; 
+	width: 100%; 
+	height:90%;
+}
+#map-footer {
+	top: 10px; 
+	width:100%; 
+	height: 30px; 
+	display:flex; 
+	flex-direction:column; 
+	margin:0;
+}
+#map-footer > p {
+	width:100%; 
+	float:right; 
+	font-size:14px; 
+	display:inline-block; 
+	margin-top:10px; 
+	text-align:right;
+	color:rgb(125, 125, 125);
+}
+#contact-link {
+	color:hsl(195, 85%, 50%); 
+	display:inline;
+}
 
 /***** No-files message ****/
 #no-files-message {
@@ -29,6 +77,18 @@ body {
 	z-index: 9999;
 	height: 100%;
 	width: 100%;
+}
+
+#no-file-message-content {
+	position:absolute; 
+	left: 50%; 
+	top: 30%; 
+	transform: translateX(-50%);
+}
+#no-file-message-content > h3 {
+	color: rgb(125, 125, 125); 
+	text-align: center; 
+	padding-bottom: 20px;
 }
 
 /***** Leaflet map stuff*****/
@@ -251,6 +311,51 @@ div.dark-scrollbar::-webkit-scrollbar-thumb:hover {
 }*/
 
 
+.track-info-panel {
+	width: 100%; 
+	display: flex; 
+	flex: 1; 
+	flex-direction: column; 
+	background-color: rgb(60, 60, 60); 
+	padding: 20px;
+}
+.track-info-header-container {
+	display: flex;
+	color: rgb(125, 125, 125); 
+	width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+}
+.track-info-header-title-container {
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+}
+.submission-info-container {
+	width: 100%;
+	display: flex;
+	justify-content: flex-start;
+	flex-wrap: wrap;
+	margin-bottom: 1rem;
+}
+.submission-info {
+	width: 100%;
+	color: inherit; 
+	font-size:14px; 
+	padding: 0px;
+	margin-bottom: 4px;
+}
+.submission-info:last-of-type {
+	margin-bottom: 0px;
+}
+
+
+.track-info-form {
+	width: 100%; 
+	position: relative;
+}
+
+
 /* Customize all scroll bars*/
 ::-webkit-scrollbar {
   width: 15px;
@@ -345,7 +450,7 @@ input {
 
 }
 
-#button-track-info-lock {
+.button-track-info-lock {
 	float: right; 
 	border: none; 
 	background: url('../imgs/lock_icon_25px.svg') no-repeat; 
@@ -355,20 +460,13 @@ input {
 	transition: 0.3s; 
 	cursor: pointer;
 }
-
-#button-track-info-lock:focus {
+.button-track-info-lock:focus {
 	outline: 0;
 } 
-/*#button-track-info-lock:hover {
-	opacity: 0.55;
-}*/
-
-#button-track-info-lock.unlocked {
+.button-track-info-lock.unlocked {
 	background: url('../imgs/unlock_icon_25px.svg') no-repeat; 
 }
-
-
-#button-track-info-lock:hover, #button-track-info-lock.unlocked:hover {
+.button-track-info-lock:hover, .button-track-info-lock.unlocked:hover {
 	opacity: 0.5;
 }
 
@@ -399,6 +497,18 @@ input[type="text"]:focus {
 	display: inline-block; 
 	width: 50%; 
 	padding: 15px;
+}
+.input-container.input-container-large {
+	width: 100%;
+}
+
+.input-container.input-container-large p {
+	width: 100%;
+}
+.input-container-submitter-notes .track-info-textbox {
+	height:80px; 
+	overflow-y:auto; 
+	padding:7px;
 }
 
 select {
@@ -442,3 +552,4 @@ select option:selected {
 .select-disabled-label {
 	color: rgb(90, 90, 90);
 }
+
