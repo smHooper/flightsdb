@@ -52,60 +52,6 @@
             <!--items added dynamically on load -->
           </div>
         </div>
-
-
-        <div class="track-info-panel dark-scrollbar" id="track-info-panel">
-          <!-- Info about each track-->
-          <div class="row track-info-header-container">
-            <div class="track-info-header-title-container">
-              <h4>Track info</h4>
-              <button class="button-track-info-lock" id="button-track-info-lock" title="Toggle lock on track info" onclick="lockButtonClick()"></button>
-            </div>
-            <div class="submission-info-container" style="">
-              <p class="submission-info" id="p-submitted-at"> </p>
-              <p class="submission-info" id="p-submitted-by"> </p>
-            </div>
-          </div>
-
-          <form class="track-info-form" id="form-track-info">
-            
-            <div class="row">
-              <div class="input-container">
-                <label class="track-info-label">Tail number</label>
-                <input type="text" class="track-info-textbox locked" id="textbox-registration" name="registration" spellcheck="false" disabled="true">
-              </div>
-              <div class="input-container">
-                <label class="track-info-label">Editor</label>
-                <input type="text" class="track-info-textbox locked" id="textbox-track_editor" name="editor" spellcheck="false" disabled="true">
-              </div>
-            </div>
-            
-            <div class="row">
-              <div class="input-container">
-                <label class="track-info-label">Operator code</label>
-                <select class="track-info-textbox locked" id="select-operator_code" name="operator_code" disabled="true">
-                  <option class="track-info-option" value=""></option><!--make first option blank-->
-                </select>
-              </div>
-              <div class="input-container">
-                <label class="track-info-label" id="label-nps_mission_code">NPS mission code</label>
-                <select class="track-info-textbox locked" id="select-nps_mission_code" name="mission_code" disabled="true">
-                  <option class="track-info-option" value=""></option>
-                </select>
-              </div>
-            </div>
-
-            <div class="row">
-              <div class="input-container input-container-large input-container-submitter-notes">
-                <label class="track-info-label">Submitter notes</label>
-                <div class="track-info-textbox locked" id="div-submitter_notes">
-                  <p id="p-submitter_notes"></p>
-                </div>
-              </div>
-            </div>
-
-          </form>
-        </div>
       </div>
       
       <div id="map-container" class="col-sm-6 col-md-8 col-lg-8">
@@ -154,14 +100,9 @@
     // Make sure files are read from disk every time
     $(document).ready(function() {
       $.ajaxSetup({ cache: false });
-      //
-      $('#dashboard-container').css('height', $(window).height())
-      $('#map-container').css('height', $(window).height() - 30);
       $('#contact-link')
         .attr('href', `mailTo:${dataSteward}`)
         .text(dataSteward);
-
-      //$('#menu-container').css('height', $('#map').height() + $('#save-button').height() + 10);
     });
 
     $.ajax({
@@ -183,7 +124,8 @@
           addFileToMenu(filePath);
         })
 
-        fileWasSelected(files[0].replace('data/', '').replace('_geojsons.json', ''));
+        var fileName = files[0].replace('data/', '').replace('_geojsons.json', '')
+        fileWasSelected(fileName);
         var deferred = loadTracksFromJSON(files[0]); // load any file, doesn't matter which
         
         // When the tracks have finished loading, get track info
@@ -196,7 +138,7 @@
             success: function(username){
               // If authentication failed, do nothing
               if (username) {
-                $('#textbox-track_editor').val(username);
+                $('.track-info-textbox.track-editor').val(username);
               }
 
               // register change event on all track info inputs. Do this here so that the ajax call 
@@ -208,8 +150,32 @@
                   if (fileName.length) isEditing[fileName] = true;
                 })
               })
+
+              $('select.operator-code').change(function() {onOperatorChange($(this).val())})
+
+              $('select.nps-mission-code').click(function() {
+                var fileName = getSelectedFileName();
+                if (trackInfo[fileName]) {
+                  console.log($(this.val))
+                  for (segmentID in trackInfo[fileName]) {
+                    trackInfo[fileName][segmentID]['nps_mission_code'] = $(this).val();
+                  }
+                }
+              })
+
             }
           })
+
+          // Add options to the select elements. 
+          $.when(
+            // Fill operator code select with just names (and no differing values) because the data come from the Survey123 with names, not code values
+            fillSelectOptions('select.operator-code', "SELECT code AS value, name FROM operators ORDER BY sort_order;", 'overflights'),
+            fillSelectOptions('select.nps-mission-code', "SELECT code || ' - ' || name AS name, code AS value FROM nps_mission_codes ORDER BY code;", 'overflights')
+          ).then(function() {
+            //fillTrackInfo(); // Fill track info here because select options weren't available to fill before
+            $('select.operator-code').change(); // disable the mission code select if necessary after track info is filled in 
+            hideLoadingIndicator('fillSelectOptions');
+          }) 
 
           // Add map navigation toolbar. Must be added after tracks are 
           //  loaded because the map view has to be set first
@@ -225,29 +191,6 @@
     map
       .addEventListener('click', onMapClick)
       .addEventListener('moveend', onMapZoom);// {
-    
-    // Add options to the select elements. 
-    $.when(
-      // Fill operator code select with just names (and no differing values) because the data come from the Survey123 with names, not code values
-      fillSelectOptions('select-operator_code', "SELECT code AS value, name FROM operators ORDER BY sort_order;", 'overflights'),
-      fillSelectOptions('select-nps_mission_code', "SELECT code || ' - ' || name AS name, code AS value FROM nps_mission_codes ORDER BY code;", 'overflights')
-    ).then(function() {
-      fillTrackInfo(); // Fill track info here because select options weren't available to fill before
-      $('#select-operator_code').change(); // disable the mission code select if necessary after track info is filled in 
-      hideLoadingIndicator('fillSelectOptions');
-    }) 
-
-    $('#select-operator_code').change(function() {onOperatorChange($(this).val())})
-
-    $('#select-nps_mission_code').click(function() {
-      var fileName = getSelectedFileName();
-      if (trackInfo[fileName]) {
-        console.log($(this.val))
-        for (segmentID in trackInfo[fileName]) {
-          trackInfo[fileName][segmentID]['nps_mission_code'] = $(this).val();
-        }
-      }
-    })
 
     $(window).on('beforeunload', function(event) {
       for (fileName in isEditing) {

@@ -142,9 +142,11 @@ g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
 	background-color: rgb(75, 75, 75);
 
 }
+.card.selected {
+	background-color: rgb(95, 95, 95);
+}
 
 .card-header a{
-	transition: 0.3s;
 	color: rgb(145, 145, 145);
 }
 
@@ -154,13 +156,16 @@ g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
 	cursor: pointer;
 }
 
-.card-header-anchor-selected {
+.card.selected .card-header a {
 	color: rgb(180, 180, 180);
+	color: hsl(195, 84%, 61%);
 }
 
-.card-header a.card-header-anchor-selected{
-	transition: 0.3s;
-	color: hsl(195, 84%, 61%);
+.card:not(.selected) .card-header .file-card-button {
+	display: none;
+}
+.card.selected .card-header .file-card-button {
+	display: inline-block
 }
 
 .show, .collapsing {
@@ -171,7 +176,8 @@ g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
 }
 
 .card-footer {
-	height: 30px;
+	/*height: 30px;*/
+	padding: 0px;
 	background-color: rgb(60, 60, 60);
 }
 /*.show:hover {
@@ -259,10 +265,24 @@ g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
 	padding-right: 5px;*/
 	transition: 0.3s;
 	cursor: pointer;
+	margin-left:0; 
+	float: left;
+	display: inline-block;
 }
 
 .file-card-button:hover{
 	opacity: 0.65;
+}
+
+.file-card-button.delete {
+	background: url(../imgs/delete_file_icon_30px.svg) no-repeat;
+}
+.file-card-button.import {
+	margin-left: 10%; 
+	margin-right: 5%; 
+	float: right; 
+	width:40px; 
+	background: url(../imgs/import_data_icon_30px.svg) no-repeat;
 }
 
 .line-color-picker {
@@ -270,7 +290,12 @@ g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
 }
 
 #dashboard-container {
-	padding: 20;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1rem;
 }
 
 .data-button {
@@ -344,17 +369,19 @@ div.dark-scrollbar::-webkit-scrollbar-thumb:hover {
 	font-size:14px; 
 	padding: 0px;
 	margin-bottom: 4px;
+	text-align: left;
 }
 .submission-info:last-of-type {
 	margin-bottom: 0px;
 }
 
-
 .track-info-form {
 	width: 100%; 
 	position: relative;
 }
-
+.track-info-form p {
+	text-align: left;
+}
 
 /* Customize all scroll bars*/
 ::-webkit-scrollbar {
@@ -494,7 +521,8 @@ input[type="text"]:focus {
 }
 
 .input-container {
-	display: inline-block; 
+	display: flex;
+	flex-wrap: wrap; 
 	width: 50%; 
 	padding: 15px;
 }

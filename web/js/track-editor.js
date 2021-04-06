@@ -6,7 +6,6 @@ const noFileGIFS = [
     "https://media.tenor.com/images/18bc79d054124aa3d8c594f6555383ed/tenor.gif" 
 ];
 
-
 /*
 Modify the default boxzoom Leaflet.Handler to use the same functionality for selection
 */
@@ -141,7 +140,7 @@ function getColor() {
 
 function getSelectedFileName() {
 	try {
-		return $('.card-header-anchor-selected.card-link > .card-title').text();
+		return $('.card.selected .card-header .card-link > .card-title').text();
 	} catch {
 		return '';
 	}
@@ -603,7 +602,7 @@ function hideLoadingIndicator(caller) {
 }
 
 
-function fillSelectOptions(selectElementID, queryString, dbname, optionClassName='track-info-option') {
+function fillSelectOptions(selector, queryString, dbname, optionClassName='track-info-option') {
     
 
     var deferred = $.ajax({
@@ -615,7 +614,7 @@ function fillSelectOptions(selectElementID, queryString, dbname, optionClassName
             var queryResult = queryResultString.startsWith('ERROR') ? false : $.parseJSON(queryResultString);
             if (queryResult) {
                 queryResult.forEach(function(object) {
-                    $('#' + selectElementID).append(
+                    $(selector).append(
                         `<option class="${optionClassName}" value="${object.value}">${object.name === undefined ? object.value : object.name}</option>`
                     );
                 })
@@ -1043,17 +1042,18 @@ function onMapClick(e) {
 
 function addFileToMenu(filePath) {
 	 
-	 var fileName = filePath.replace('data/', '').replace('_geojsons.json', '');
-	 //$('<tr><td class="file-list-row">' + fileName + '</td></tr>')
-	 //.appendTo('#files-table')
-	 var cardID = 'card-' + fileName;
-	 var cardHeaderID = 'cardHeader-' + fileName;
-	 var contentID = 'cardContent-' + fileName;
-	 // add the card
-	 $('<div class="card" id="' + cardID + '">' + 
-				'<div class="card-header px-0" id="' + cardHeaderID + '" style="width:100%;"></div>' +
-			'</div>'
-		).appendTo('#file-list');
+	var fileName = filePath.replace('data/', '').replace('_geojsons.json', '');
+	//$('<tr><td class="file-list-row">' + fileName + '</td></tr>')
+	//.appendTo('#files-table')
+	var cardID = 'card-' + fileName;
+	var cardHeaderID = 'cardHeader-' + fileName;
+	var contentID = 'cardContent-' + fileName;
+	// add the card
+	var $card = $(
+		'<div class="card" id="' + cardID + '">' + 
+			'<div class="card-header px-0" id="' + cardHeaderID + '" style="width:100%;"></div>' +
+		'</div>'
+	).appendTo('#file-list');
 
 	 // add an anchor to the card header
 	$(
@@ -1062,14 +1062,14 @@ function addFileToMenu(filePath) {
 			<p class="card-title">${fileName}</p>
 		</a>
 		<div style="display:inline-block; float:right; width: 100px;">
-			<button class="file-card-button" title="Delete file" id="delete-${fileName}" style="margin-left:0; float: left; display:none; background: url(../imgs/delete_file_icon_30px.svg) no-repeat;"></button>
-			<button class="file-card-button" title="Import tracks from file" id="import-${fileName}" style="display:none; margin-left:10%; margin-right:5%; float:right; width:40px; background: url(../imgs/import_data_icon_30px.svg) no-repeat;"></button>
+			<button class="file-card-button delete" title="Delete file" id="delete-${fileName}"></button>
+			<button class="file-card-button import" title="Import tracks from file" id="import-${fileName}"></button>
 		</div>
 	</div>`
 	)
 	.appendTo('#' + cardHeaderID)
 	.find('a').on('click', function(event) {
-		if (!$(this).hasClass('card-header-anchor-selected')){
+		if (!$(this).closest('.card').hasClass('selected')){
 			
 			// Make sure the new card is given the selected class before trying to load data
 			fileWasSelected(fileName);
@@ -1097,16 +1097,71 @@ function addFileToMenu(filePath) {
 		event.stopPropagation();
 	})
 
-	 // Add the card content to the card
-	 $('<div id="' + contentID + '" class="collapse" aria-labeledby="' + cardHeaderID + '" data-parent="#file-list">' + 
+	// Add the card content to the card
+	const cardFooterHTML = `
+    <div class="track-info-panel dark-scrollbar" id="track-info-panel-${fileName}">
+      <!-- Info about each track-->
+      <div class="row track-info-header-container">
+        <div class="track-info-header-title-container">
+          <h5>Track info</h5>
+          <button class="button-track-info-lock" id="button-track-info-lock-${fileName}" title="Toggle lock on track info" onclick="lockButtonClick('${fileName}')"></button>
+        </div>
+        <div class="submission-info-container" style="">
+          <p class="submission-info" id="p-submitted-at-${fileName}"> </p>
+          <p class="submission-info" id="p-submitted-by-${fileName}"> </p>
+        </div>
+      </div>
+
+      <form class="track-info-form" id="form-track-info-${fileName}">
+        
+        <div class="row">
+          <div class="input-container">
+            <label class="track-info-label">Tail number</label>
+            <input type="text" class="track-info-textbox locked" id="textbox-registration-${fileName}" name="registration" spellcheck="false" disabled="true">
+          </div>
+          <div class="input-container">
+            <label class="track-info-label">Editor</label>
+            <input type="text" class="track-info-textbox locked track-editor" id="textbox-track_editor-${fileName}" name="editor" spellcheck="false" disabled="true">
+          </div>
+        </div>
+        
+        <div class="row">
+          <div class="input-container">
+            <label class="track-info-label">Operator code</label>
+            <select class="track-info-textbox locked operator-code" id="select-operator_code-${fileName}" name="operator_code" disabled="true">
+              <option class="track-info-option" value=""></option><!--make first option blank-->
+            </select>
+          </div>
+          <div class="input-container">
+            <label class="track-info-label" id="label-nps_mission_code-${fileName}">NPS mission code</label>
+            <select class="track-info-textbox locked nps-mission-code" id="select-nps_mission_code-${fileName}" name="mission_code" disabled="true">
+              <option class="track-info-option" value=""></option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="input-container input-container-large input-container-submitter-notes">
+            <label class="track-info-label">Submitter notes</label>
+            <div class="track-info-textbox locked" id="div-submitter_notes-${fileName}">
+              <p id="p-submitter_notes-${fileName}"></p>
+            </div>
+          </div>
+        </div>
+
+      </form>
+    </div>
+	`;
+	$('<div id="' + contentID + '" class="collapse" aria-labeledby="' + cardHeaderID + '" data-parent="#file-list">' + 
 			'<div class="card-body p-0" id="' + contentID + '-body">' +
 				'<div class="dark-scrollbar" id="legend-' + fileName + '" style="display:block; width:100%; overflow:auto; max-height:250px;"></div>' +
 			'</div>' +
-			'<div class="card-footer"></div>' +
+			'<div class="card-footer">' + cardFooterHTML + '</div>' +
 		'</div>'
 		).appendTo('#' + cardID);
 
-	 isEditing[fileName] = false;
+	isEditing[fileName] = false;
+
 
 }
 
@@ -1216,46 +1271,43 @@ function removeAllLayers() {
 
 function fileWasSelected(filePath) {
 
-	// remove selection if this is not the currently selected file.
-	//  otherwise, add -selected style
-	$('.collapse.show').collapse('hide')
-
-	var fileName = filePath.replace('data/', '').replace('_geojsons.json', '');
+	var newFileName = filePath.replace('data/', '').replace('_geojsons.json', '');
 	
 	// remove selected class styling from the .card-header anchor
 	var oldFileName = getSelectedFileName();//currentFile
-	$('#card-' + oldFileName)
-		.css('background-color', 'rgb(75, 75, 75')
-			.find('a')
-				//.css('color', 'rgb(125, 125, 125)')
-				.removeClass('card-header-anchor-selected')
-				/*.hover(function() {
-					$(this).css('color', 'rgb(125, 125, 125)')
-				});*/
-	$('#card-' + oldFileName).find('button').css('display', 'none');
+	var $oldCard = $('#card-' + oldFileName).removeClass('selected');
+	var $oldCollapse = $('#cardContent-' + oldFileName);
+	var $newCard = $('#card-' + newFileName).addClass('selected');
+	var $newCollapse = $('#cardContent-' + newFileName);
+	
+	
+	// Fill track info if the trackInfo exists already. If it doesn't exist,
+	//	it'll be filled later
+	if (oldFileName != newFileName && trackInfo[newFileName] != undefined) {
+		
+		fillTrackInfo(newFileName);
 
-	$('.collapse').each(function(){
-		var thisFileName = $(this)[0].id.replace('cardContent-', '');
-		if (thisFileName == fileName) {
-			$(this).collapse('show');
+		// Even though the oeprator_code select's value changes, for some reason 
+		//  the onchange event isn't fired, so just do so manually
+		$(`#select-operator_code-${newFileName}`).change();
+		
+	}
 
-			// Style the card to look selected
-			$('#card-' + thisFileName)
-				.css('background-color', 'rgb(95, 95, 95)')
-				.find('a')
-					//.css('color', 'rgb(150, 150, 150)')
-					.addClass('card-header-anchor-selected');
-			$('#card-' + thisFileName).find('button').css('display', 'inline-block');
-			if (oldFileName != thisFileName && trackInfo[thisFileName] != undefined) {
-				fillTrackInfo();
-
-				// Even though the oeprator_code select's value changes, for some reason 
-				//  the onchange event isn't fired, so just do so manually
-				$('#select-operator_code').change();
-				
-			}
-		}
-	});
+	// When the old collapse collapses, scroll to the new card
+	if ($oldCollapse.hasClass('show')) {
+		$oldCollapse.on('hidden.bs.collapse', function() {
+			// Make sure the card takes up as much of the menu scrollview as possible
+			$newCard[0].scrollIntoView({behavior: 'smooth', block: 'start'})
+			if (!$newCollapse.hasClass('show')) $newCollapse.collapse('show');
+			
+			// Remove the event listener for this collapse so it doesn't continue to fire whenever the old collapse is 
+			$oldCollapse.off('hidden.bs.collapse');
+		}).collapse('hide');
+	} else {
+		// Make sure the card takes up as much of the menu scrollview as possible
+		$newCard[0].scrollIntoView({behavior: 'smooth', block: 'start'})
+		if (!$newCollapse.hasClass('show')) $newCollapse.collapse('show');
+	}
 
 }
 
@@ -1351,7 +1403,7 @@ function loadTracksFromJSON(filePath) {
 		updateLegend(fileName);
 
 		// Fill in the rest of the track info (from reading the geojsons)
-		fillTrackInfo();
+		fillTrackInfo(fileName);
 
 	}).fail(function(d, textStatus, error) {
         alert(`failed to read track data for "${fileName}" because of the following error: ${error}`);
@@ -1401,9 +1453,9 @@ async function loadTracksFromMemory(fileName) {
 }
 
 
-function fillTrackInfo(){
+function fillTrackInfo(fileName){
 
-	var fileName = getSelectedFileName();
+	//var fileName = getSelectedFileName();
 	var currentSegmentID = selectedLines[fileName];
 	var thisInfo = trackInfo[fileName][currentSegmentID];
 
@@ -1419,21 +1471,22 @@ function fillTrackInfo(){
 
 	for (key in thisInfo) {
 		//console.log(key + ': ' + thisInfo[key])
-		$('#textbox-' + key).val(thisInfo[key]);
-		$('#p-' + key).text(thisInfo[key])//for the submitter comments
-		$('#select-' + key).val(thisInfo[key])//for the select dropdowns
+		$(`#textbox-${key}-${fileName}`).val(thisInfo[key]);
+		$(`#p-${key}-${fileName}`).text(thisInfo[key])//for the submitter comments
+		$(`#select-${key}-${fileName}`).val(thisInfo[key])//for the select dropdowns
 	}
 
-	if ($('#select-operator_code').val() !== 'NPS') {
-		$('#select-nps_mission_code').addClass('select-disabled')
+	if ($(`#select-operator_code-${fileName}`).val() !== 'NPS') {
+		$(`#select-nps_mission_code-${fileName}`).addClass('select-disabled')
 	}
 	//$('#track-info-subtitle').text(`Submitted at ${thisInfo.submission_time}\nby ${thisInfo.submitter}`)
-	$('#p-submitted-at').text(`Submitted at ${thisInfo.submission_time}`);
-	$('#p-submitted-by').text(`by ${thisInfo.submitter}`);
+	$('#p-submitted-at-' + fileName).text(`Submitted at ${thisInfo.submission_time}`);
+	$('#p-submitted-by-' + fileName).text(`by ${thisInfo.submitter}`);
 
 	// Change the state of the lock button (and the form) if necessary
-	if ($('#button-track-info-lock').hasClass('unlocked') != thisInfo.trackInfoUnlocked) {
-		lockButtonClick();	
+	var $lockButton = $(`#button-track-info-lock-${fileName}`);
+	if ($lockButton.hasClass('unlocked') != thisInfo.trackInfoUnlocked) {
+		lockButtonClick(fileName);	
 	}
 }
 
@@ -1441,7 +1494,7 @@ function fillTrackInfo(){
 function onTrackInfoElementChange(target) {
     var fileName = getSelectedFileName();
     var thisValue = $(target).val();
-    var propertyName = $(target)[0].id.replace('textbox-', '').replace('select-', '');
+    var propertyName = $(target).attr('id').replace('textbox-', '').replace('select-', '').replace(`-${fileName}`, '');
     for (segmentID in trackInfo[fileName]) {
         trackInfo[fileName][segmentID][propertyName] = thisValue; 
     }
@@ -1449,11 +1502,12 @@ function onTrackInfoElementChange(target) {
 
 
 function onOperatorChange(selectedOperator){
+	// **** change to be compatible with info/file *** //
 
 	//var selectedOperator = $(target).val();
-	var selectedMission = $('#select-nps_mission_code').val();
 	var fileName = getSelectedFileName();
-
+	var selectedMission = $('#select-nps_mission_code-' + fileName).val();
+	
 	// Update track info
 	if (trackInfo[fileName] !== undefined && selectedOperator != null) {
 		for (segmentID in trackInfo[fileName]) {
@@ -1464,7 +1518,7 @@ function onOperatorChange(selectedOperator){
 
 	// If the operator isn't the NPS, disable mission_code select
 	if (selectedOperator !== 'NPS') {
-		$('#label-nps_mission_code').addClass('select-disabled-label');
+		$('#label-nps_mission_code-' + fileName).addClass('select-disabled-label');
 		// Record the currently selected mission code
 		if (trackInfo[fileName] !== undefined) {
 			for (segmentID in trackInfo[fileName]) {
@@ -1472,21 +1526,21 @@ function onOperatorChange(selectedOperator){
 			}
 		}
 		// Disable it and set the value as null
-		$('#select-nps_mission_code')
+		$('#select-nps_mission_code-' + fileName)
 			.addClass('select-disabled')
 			.attr('disabled', 'true')
 			.val('');
 	// If it is NPS, make sure mission_code select is enabled
 	} else {
-		$('#label-nps_mission_code').removeClass('select-disabled-label');
-		$('#select-nps_mission_code')
+		$('#label-nps_mission_code-' + fileName).removeClass('select-disabled-label');
+		$('#select-nps_mission_code-' + fileName)
 			.removeClass('select-disabled')
 			.removeAttr('disabled');
 		// Set the value to whatever was recorded before disabling
 		var thisInfo = trackInfo[fileName];
 		if (thisInfo !== undefined) {
 			for (segmentID in thisInfo) {
-				$('#select-nps_mission_code').val(thisInfo[segmentID]['nps_mission_code'].length ? thisInfo[segmentID]['nps_mission_code'] : '');
+				$('#select-nps_mission_code-' + fileName).val(thisInfo[segmentID]['nps_mission_code'].length ? thisInfo[segmentID]['nps_mission_code'] : '');
 				break // just assign with the first one
 			}
 			
@@ -1496,32 +1550,31 @@ function onOperatorChange(selectedOperator){
 }
 
 
-function lockButtonClick() {
+function lockButtonClick(fileName) {
 
-	var lockButton = $('#button-track-info-lock')
-	var infoForm = $('#form-track-info')
+	var lockButton = $('#button-track-info-lock-' + fileName);
+	var infoForm = $('#form-track-info-' + fileName);
 	if (lockButton.hasClass('unlocked')) {
 		lockButton.removeClass('unlocked')
-		infoForm.find('input[type="text"]')
+		infoForm.find('input[type="text"], select')
 			.addClass('locked')
 			.attr('disabled', 'true');
-		infoForm.find('select')
+		/*infoForm.find('select')
 			.addClass('locked')
-			.attr('disabled', 'true');
+			.attr('disabled', 'true');*/
 	} else {
 		lockButton.addClass('unlocked');
-		infoForm.find('input[type="text"]')
+		infoForm.find('input[type="text"], select')
 			.removeClass('locked')
 			.removeAttr('disabled');
-		infoForm.find('select').removeClass('locked')
+		/*infoForm.find('select').removeClass('locked')
 			.removeClass('locked')
-			.removeAttr('disabled');
+			.removeAttr('disabled');*/
 	}
 
 	// Check to see if mission code should be .disabled
-	onOperatorChange($('#select-operator_code').val());
+	onOperatorChange($('#select-operator_code-' + fileName).val());
 
-	var fileName = getSelectedFileName();
 	if (trackInfo[fileName] !== undefined) {
 		for (segmentID in trackInfo[fileName]) {
 			trackInfo[fileName][segmentID]['trackInfoUnlocked'] = lockButton.hasClass('unlocked');
@@ -1654,8 +1707,8 @@ function addMapToolbars() {
 
 function validateTrackInfo() {
 
-
-    var trackInfoInputs = $('.track-info-textbox, .track-info-textbox.locked').toArray();
+	var fileName = getSelectedFileName()
+    var trackInfoInputs = $('#form-track-info-' + fileName).find('.track-info-textbox, .track-info-textbox.locked').toArray();
     for (elementID in trackInfoInputs) {
         var thisElement = $(trackInfoInputs[elementID]);
         var thisLabel = $(thisElement.siblings()[0]).text();
@@ -1668,15 +1721,17 @@ function validateTrackInfo() {
         }
     }
 
-    if (!$('#textbox-registration').val().match(/N\d{2,5}[A-Z]{0,2}/gi)) {
+    var $registrationInput = $('#textbox-registration-' + fileName);
+    if (!$registrationInput.val().match(/N\d{2,5}[A-Z]{0,2}/gi)) {
         alert(`The "Tail number" field entry isn't valid.`);
-        $('#textbox-registration').focus();
+        $registrationInput.focus();
         return false;
     }
 
-    if ($('#select-operator_code').val() === 'NPS' && !$('#select-nps_mission_code').val().length){
+    var $missionCodeInput = $('#select-operator_code-' + fileName);
+    if ($missionCodeInput.val() === 'NPS' && !$('#select-nps_mission_code').val().length){
         if (!confirm(`Are you sure you want to import this file without an NPS mission code selected?`)) {
-	        $('#select-nps_mission_code').focus();
+	        $missionCodeInput.focus();
 	        return false;
         }
     }
@@ -1817,9 +1872,10 @@ function onImportDataClick(fileName=undefined){
         }
     }
 
+    // Create a proper geojson object for the import script to read
 	var thisGeojson = {
 		type: "FeatureCollection",
-		crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+		crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },//wgs84
 		features: features
 	}
 
@@ -1830,8 +1886,16 @@ function onImportDataClick(fileName=undefined){
 		jsonString: JSON.stringify(thisGeojson)
 	};
 
-    var thisTrackInfo = {...trackInfo[fileName][Object.keys(trackInfo[fileName])[0]]}
-    thisTrackInfo['track_editor'] = $('#textbox-track_editor').val()//set here because it might not have been
+	var info = trackInfo[fileName][Object.keys(trackInfo[fileName])[0]];
+	var thisTrackInfo = {};
+	for (key in info) {
+		var val = info[key];
+		if (val != '') {
+			thisTrackInfo[key] = val;
+		}
+	}
+    //var thisTrackInfo = {...trackInfo[fileName][]}
+    thisTrackInfo['track_editor'] = $('#textbox-track_editor-' + fileName).val()//set here because it might not have been
 	
 	showLoadingIndicator(timeout=false);
 	$.when(
