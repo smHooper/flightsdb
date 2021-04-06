@@ -41,7 +41,8 @@ def main(geojson_path, track_info_json, config_json):
     for time_column in gdf.columns[gdf.columns.str.endswith('time')]:
         gdf[time_column] = pd.to_datetime(gdf[time_column])
 
-    gdf.nps_mission_code = gdf.nps_mission_code.replace('', np.nan)
+    if 'nps_mission_code' in gdf:
+        gdf.nps_mission_code = gdf.nps_mission_code.replace('', np.nan)
 
     # get flight ID again since the track segments could have been edited
     import_params = params['import_params'] if 'import_params' in params else {}
