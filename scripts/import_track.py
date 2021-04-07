@@ -628,6 +628,18 @@ def check_duplicate_flights(registration, connection, start_time, end_time):
     return matching_flights
 
 
+def calculate_duration(gdf):
+    """
+    Helper function to calculate landing time and duration. This needs to happen 
+    in format track, but it also needs to be recalculated after edits
+    """    
+    land_times = gdf.groupby('segment_id').ak_datetime.max().to_frame().rename(columns={'ak_datetime': 'land_time'})
+    gdf['landing_datetime'] = gdf.merge(land_times, on='segment_id').land_time
+    gdf['duration_hrs'] = (gdf.landing_datetime - gdf.departure_datetime).dt.seconds/3600.0
+
+    return gdf
+
+
 def format_track(path, seg_time_diff=15, min_point_distance=200, registration='', submission_method='manual', operator_code=None, aircraft_type=None, force_registration=True, **kwargs):
 
     _, extension = os.path.splitext(path)
@@ -709,9 +721,7 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
         .dropna(subset=['ak_datetime'])\
         .sort_values(by=['ak_datetime'])
 
-    land_times = gdf.groupby('segment_id').ak_datetime.max().to_frame().rename(columns={'ak_datetime': 'land_time'})
-    gdf['landing_datetime'] = gdf.merge(land_times, on='segment_id').land_time
-    gdf['duration_hrs'] = (gdf.landing_datetime - gdf.departure_datetime).dt.seconds/3600.0
+    gdf = calculate_duration(gdf)
 
     # Get metadata-y columns
     gdf['submission_time'] = (datetime.now()).strftime('%Y-%m-%d %H:%M')
@@ -744,9 +754,11 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
     elif not engine:
         raise ValueError('Either an SQLAlchemy Engine (from create_engine()) or connection_txt must be given')
 
-    # drop any segments with only one vertex
-    gdf['duration_hrs'] = (gdf.landing_datetime - gdf.departure_datetime).dt.seconds/3600.0
-    gdf = gdf.loc[gdf.duration_hrs > 0]
+    
+    # Recalculate landing time and duration here in case there were edits that changed these
+    #   Also drop any segments with only one vertex 
+    gdf = calculate_duration(gdf)\
+        .loc[gdf.duration_hrs > 0]
 
     # get columns from DB tables
     flight_columns = db_utils.get_db_columns('flights', engine)
@@ -756,7 +768,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
 
     # separate flights, points, and lines
     flights = gdf[[c for c in flight_columns if c in gdf]].drop_duplicates()
-
+    
     flights['end_datetime'] = gdf.groupby('flight_id').ak_datetime.max().values
     # if coming from web app, this should already be in the data so don't overwrite
     #if 'submitter' not in flights.columns:
