@@ -1729,7 +1729,7 @@ function validateTrackInfo() {
     }
 
     var $missionCodeInput = $('#select-operator_code-' + fileName);
-    if ($missionCodeInput.val() === 'NPS' && !$('#select-nps_mission_code').val().length){
+    if ($missionCodeInput.val() === 'NPS' && !$('#select-nps_mission_code-' + fileName).val().length){
         if (!confirm(`Are you sure you want to import this file without an NPS mission code selected?`)) {
 	        $missionCodeInput.focus();
 	        return false;
