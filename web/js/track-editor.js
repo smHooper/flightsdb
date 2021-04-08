@@ -335,7 +335,7 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 
 
 	// Update the legend
-	var thisInfo = newGeoJSON.features[0].properties;
+	var thisInfo = JSON.parse(JSON.stringify(trackInfo[fileName][segmentID])); //only way to deep copy without maintaining reference to original
 	thisInfo['visible'] = true;
 	trackInfo[fileName][newSegmentID] = thisInfo;
 	showVertices(newSegmentID);
@@ -845,7 +845,7 @@ function deleteTrack(id=undefined, showAlert=true, isRedo=false) {
 					fileName: fileName,
 					pointGeoJSON: pointGeojsonLayers[fileName][thisID].toGeoJSON(),
 					latlngs: lineLayers[fileName][thisID].getLatLngs(),
-					thisTrackInfo: JSON.parse(JSON.stringify(trackInfo[fileName][segmentID])),
+					thisTrackInfo: JSON.parse(JSON.stringify(trackInfo[fileName][thisID])),
 					segmentID: thisID
 				}
 			}
