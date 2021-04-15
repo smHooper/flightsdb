@@ -104,7 +104,8 @@ def read_json_params(params_json):
                           'log_dir',
                           'web_data_dir',
                           'ssl_cert',
-                          'landing_receipt'])
+                          'landing_receipt',
+                          'admin_email_address'])
     with open(params_json) as j:
         params = json.load(j)
     missing = required.loc[~required.isin(params.keys())]
@@ -569,16 +570,6 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
               var_name='landing_type') \
         .dropna(subset=['n_passengers'])  # '''
     passengers['landing_type'] = passengers.landing_type.apply(lambda x: x.split('_')[-1])
-    '''fee_passengers = passengers.loc[passengers.landing_type.isin(landings_with_fees)]
-
-    # Get the parentglobalid (from AGOL) so fees can be calculated per flight. Fees are actually calulated on the fly in a view of the DB, but they
-
-    fee_passengers['index'] = fee_passengers.index
-    fee_passengers['parentglobalid'] = fee_passengers.merge(landings.drop_duplicates(subset=['globalid']), on='globalid').set_index('index_x').parentglobalid
-    fees = fee_passengers.groupby('parentglobalid').sum().reset_index()
-    fees['fee'] = fees.n_passengers * constants['fee_per_passenger']
-    fees = fees.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid', right_on='agol_global_id')
-    fees = fees.loc[~fees.flight_id.isnull()] # drop flights without match'''
 
     # Get the flight ID for the landings table
     landings = landings.merge(global_ids.rename(columns={'id': 'flight_id'}), left_on='parentglobalid',
@@ -592,8 +583,6 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
         .sort_values('sort_order')
 
     # INSERT into backend
-    '''fees.drop(columns=['parentglobalid', 'index', 'agol_global_id'])\
-        .to_sql('concession_fees', landings_conn, if_exists='append', index=False)'''
     landings.drop(columns='sort_order') \
         .to_sql('landings', landings_conn, if_exists='append', index=False)  # '''
 
@@ -702,12 +691,6 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     # Drop any columns that aren't in the flights or flight_points tables
     gdf.drop(columns=gdf.columns[~gdf.columns.isin(db_columns + ['segment_id', 'geometry'])], inplace=True)
 
-    '''# Set the operator code to the operator name, not the code (easier to read for editors). The web app
-    #   will replace the name with the code on import
-    if attachment_info['tracks_operator'] in operator_codes:
-        attachment_info['operator_code'] = operator_codes[this_submission.tracks_operator]
-    else:
-        attachment_info['operator_code'] = '' '''
     attachment_info['operator_code'] = this_submission.tracks_operator
 
     if attachment_info['tracks_mission'] in mission_codes:
@@ -1112,6 +1095,11 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     all_flights['ticket'] = merged.ticket
     all_flights['submission_time'] = merged.submission_time
     all_landings = tables['landing_repeat']
+
+    # For some reason Pandas v 1.x doesn't read the departure_datetime column as Pandas datetimes even though they're
+    #   all datetime.Datetimes. Instead, they're objects so explicitly cast them as datetimes
+    all_flights.landing_datetime = pd.to_datetime(all_flights.landing_datetime)
+
 
     # Get operator emails from landings DB
     operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email',

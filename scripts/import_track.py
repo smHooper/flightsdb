@@ -108,7 +108,7 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                               'Heading (True)':     'heading'
                               }
                        }
-ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
+ERROR_EMAIL_ADDRESSES = ['dena_flight_data@nps.gov']
 
 # Columns to use to verify that the file was read correctly
 VALIDATION_COLUMNS = pd.Series(['geometry', 'utc_datetime', 'altitude_ft', 'longitude', 'latitude', 'x_albers', 'y_albers', 'diff_m', 'diff_seconds', 'm_per_sec', 'knots', 'previous_lat', 'previous_lon', 'heading'])
@@ -591,7 +591,7 @@ def get_flight_id(gdf, seg_time_diff):
 
     return gdf
 
-
+# Has to be defined below the last read function
 READ_FUNCTIONS = {'.gpx': read_gpx,
                   '.gdb': read_gdb,
                   '.csv': read_csv,
