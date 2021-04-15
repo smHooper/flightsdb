@@ -1,5 +1,5 @@
 const dataSteward = 'dena_flight_data@nps.gov';
-var zoomMapCalled = 0;
+var zoomMapCalled = false;
 const noFileGIFS = [
 	"https://media2.giphy.com/media/l2Je0ihsoThQy6D0Q/giphy.gif?cid=790b76112a7424c801a727f0e2d02ccc6731809cafdc8d60&rid=giphy.gif",
     "https://media.tenor.com/images/ea9f942522f48f3897999cda42778e6a/tenor.gif",
@@ -160,8 +160,6 @@ function toggleZoomNextPreviousButtons() {
 	} else {
 		$('#img-zoom_next').parent().addClass('leaflet-toolbar-icon-disabled');
 	}
-	//$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.35);
-	//$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.35);
 
 }
 
@@ -193,7 +191,7 @@ function onMapZoom() {
 
 function zoomMap() {
 
-	zoomMapCalled ++; // should never exceed 1
+	zoomMapCalled = true;// ++; // should never exceed 1
 
 	var zoomTo = mapExtentBuffer[currentMapExtentIndex];
 	var currentBuffer = [...mapExtentBuffer];// copy the buffer
@@ -207,9 +205,8 @@ function zoomMap() {
 			mapExtentBuffer = [...currentBuffer];
 			currentMapExtentIndex = currentMapExtentIndex > 0 ? currentMapExtentIndex - 1 : 0;
 			// Set style here too because buffer might not be accurate in onMapZoom()
-			$('#img-zoom_previous').css('opacity', mapExtentBuffer.length > 1 && currentMapExtentIndex !== 0 ? 1 : 0.35);
-			$('#img-zoom_next').css('opacity', mapExtentBuffer.length > currentMapExtentIndex + 1 ? 1 : 0.35);
-			zoomMapCalled --; // reset value so callers no map finished moving
+			toggleZoomNextPreviousButtons();
+			zoomMapCalled = false;//--; // reset value so callers know map finished moving
 		},
 		1000);
 
@@ -276,10 +273,11 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 	var newColor = getColor();
 	colors[fileName][newSegmentID] = newColor;
 	var newLine = L.polyline(
-		newLatLngs, 
-		options={color: newColor})
-	.addEventListener({click: onLineClick})
-	.addTo(map);
+			newLatLngs, 
+			options={color: newColor}
+		)
+		.addEventListener({click: onLineClick})
+		.addTo(map);
 	lineLayers[fileName][newSegmentID] = newLine;
 
 	// Create the new point geojson by looping through all points 
@@ -287,7 +285,11 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 	//	It's inefficient to recreate the original points too, but 
 	//	if I don't there's some reference to the old points that 
 	//	means the min_index changes in lines that were split before.
-	var newDepartureTime = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features[vertexIndex].properties.ak_datetime
+	var newDepartureTime = pointGeojsonLayers[fileName][segmentID]
+		.toGeoJSON()
+		.features[vertexIndex]
+		.properties
+		.ak_datetime;
 	var newGeoJSON = {
 		type: "FeatureCollection",
 		features: []
@@ -419,7 +421,7 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 	showVertices(segmentID);
 	selectLegendItem(segmentID);
 
-	redoBuffer[editingBufferIndex - 1] = {
+	redoBuffer[editingBufferIndex] = {
 		function: redoSplitAtVertex,
 		args: {
 			fileName: fileName,
@@ -569,7 +571,6 @@ function showLoadingIndicator(timeout=15000) {
     var thisCaller = showLoadingIndicator.caller.name;
 
 	var indicator = $('#loading-indicator').removeClass('hidden');
-	//$('#loading-indicator-background').css('display', 'block');
 
     // check the .data() to see if any other functions called this
     indicator.data('callers', indicator.data('callers') === undefined ? 
@@ -845,7 +846,7 @@ function deleteTrack(id=undefined, showAlert=true, isRedo=false) {
 					fileName: fileName,
 					pointGeoJSON: pointGeojsonLayers[fileName][thisID].toGeoJSON(),
 					latlngs: lineLayers[fileName][thisID].getLatLngs(),
-					thisTrackInfo: JSON.parse(JSON.stringify(trackInfo[fileName][thisID])),
+					segmentInfo: JSON.parse(JSON.stringify(trackInfo[fileName][thisID])),
 					segmentID: thisID
 				}
 			}
@@ -872,7 +873,7 @@ function deleteTrack(id=undefined, showAlert=true, isRedo=false) {
 }
 
 
-function undoDeleteTrack({fileName, pointGeoJSON, latlngs, thisTrackInfo, segmentID}) {
+function undoDeleteTrack({fileName, pointGeoJSON, latlngs, segmentInfo, segmentID}) {
 
 	let thisID = trackInfo[fileName][segmentID] === undefined ?
 		segmentID : // the ID doesn't already exist
@@ -886,11 +887,13 @@ function undoDeleteTrack({fileName, pointGeoJSON, latlngs, thisTrackInfo, segmen
 		style: {className: 'cut-cursor-eligible'}
 	});
 	lineLayers[fileName][segmentID] = L.polyline(
-		latlngs, 
-		options={color: colors[fileName][segmentID]})
-	.addEventListener({click: onLineClick});
+			latlngs, 
+			options={color: colors[fileName][segmentID]}
+		)
+		.addEventListener({click: onLineClick})
+		.addTo(map);
 	
-	trackInfo[fileName][segmentID] = thisTrackInfo;
+	trackInfo[fileName][segmentID] = segmentInfo;
 	
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
@@ -909,7 +912,7 @@ function undoDeleteTrack({fileName, pointGeoJSON, latlngs, thisTrackInfo, segmen
 	updateLegend(fileName);
 	selectLegendItem(segmentID);
 
-	redoBuffer[editingBufferIndex - 1] = {
+	redoBuffer[editingBufferIndex] = {
 		function: redoDeleteTrack,
 		args: {
 			fileName: fileName,
@@ -934,14 +937,14 @@ function redoDeleteTrack({fileName, segmentID}) {
 
 function toggleUndoButton() {
 	
-	if (editingBufferIndex >= 1 ) {
-		$('#img-undo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', editingBufferIndex < redoBuffer.length ? 1 : 0.35)
+	if (editingBufferIndex >= 0 ) {
+		$('#img-undo').parent().removeClass('leaflet-toolbar-icon-disabled');
 	} else {
 		$('#img-undo').parent().addClass('leaflet-toolbar-icon-disabled');
 	}
 
 	if (redoBuffer.length > 0) {
-		$('#img-redo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', editingBufferIndex < redoBuffer.length ? 1 : 0.35)
+		$('#img-redo').parent().removeClass('leaflet-toolbar-icon-disabled');
 	} else {
 		$('#img-redo').parent().addClass('leaflet-toolbar-icon-disabled');
 	}
@@ -962,12 +965,12 @@ function undoMapEdit() {
 
 function redoMapEdit() {
 	
+	editingBufferIndex ++;
 	let editAction = redoBuffer[editingBufferIndex];
 	editAction.function(editAction.args);
-	editingBufferIndex ++;
 
 	$('#img-undo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', 1);
-	if (editingBufferIndex < redoBuffer.length) {
+	if (editingBufferIndex + 1 < redoBuffer.length) {
 		$('#img-redo').parent().removeClass('leaflet-toolbar-icon-disabled');//.css('opacity', editingBufferIndex < redoBuffer.length ? 1 : 0.35)
 	} else {
 		$('#img-redo').parent().addClass('leaflet-toolbar-icon-disabled');
@@ -1004,7 +1007,7 @@ function onKeyDown(e) {
 		}
 	// User pressed ctl + z -> undo the last map edit
 	} else if (e.key === 'z' && e.ctrlKey && !e.shiftKey) {
-		if (editingBufferIndex < 1) {
+		if (editingBufferIndex < 0) {
 			alert('No actions to undo');
 		} else {
 			undoMapEdit();
@@ -1387,6 +1390,7 @@ function loadTracksFromJSON(filePath) {
 		// Show first line
 		if (selectedLines[fileName] == undefined) {
 			selectedLines[fileName] = 0;
+			// Add remove the disabled class from the zoom-to-selected button
 			$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 		}
 
