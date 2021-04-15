@@ -321,7 +321,12 @@ function queryFlights() {
 					showQueryResult().then(() => {
 						hideLoadingIndicator();//'queryFlights');
 						// Show the first flight's landings after a brief delay
-						setTimeout(() => {$('.card-header > a').get(0).click()}, 300);
+						setTimeout(() => {
+							$('.card-header > a').get(0).click();
+							$('.truncatable:truncated').each(function(){
+								addExpandTruncatedButton($(this).parent(), $(this));
+							});
+						}, 300);
 					})
 				}
 			} else {
@@ -412,17 +417,23 @@ function showExpandedText(cellID) {
 	const result = solver.solve();
 	const filterString = result.filter;
 	
+	var saveButtoContainerClass = 'save-modal-text-button-container';
+	var textAreaDisabled = '';
+	if (truncatable.is('.landing-result-input-disabled, .flight-result-input-disabled')) {
+		saveButtoContainerClass += ' hidden';
+		textAreaDisabled = 'disabled'
+	}
 	$(`
 		<div class="modal-background"></div>
 		<div class="modal-content" style="${truncatableStyle}" data-parent="${truncatable.attr('id')}">
 			<div class="modal-button-container">
-				<span class="save-modal-text-button-container">
+				<span class="${saveButtoContainerClass}">
 					<img class="save-modal-text-button slide-up-on-hover" src="imgs/save_icon_30px.svg" data-text-source="${truncatable.attr('id')}" style="${filterString}">
 				</span>
 				<span class="close-modal-text-button slide-up-on-hover" style="color: ${foreColor}">&times;</span>
 			</div>
 			<div class="row mx-0 px-0" style="display: flex; justify-content: center; width: 100%; height: ${modalHeight}px;">
-				<textarea class="modal-expanded-text" style="width: 100%; height: ${modalHeight}px;">${text}</textarea>
+				<textarea class="modal-expanded-text" style="width: 100%; height: ${modalHeight}px;" ${textAreaDisabled}>${text}</textarea>
 			</div>
 		</div>
 	`).appendTo('body');
@@ -431,10 +442,11 @@ function showExpandedText(cellID) {
 	$('.save-modal-text-button').click(function() {
 		let sourceID = $(this).attr('data-text-source');
 		let newText = $(this).closest('.modal-content').find('.modal-expanded-text').val();
-		$('#' + sourceID).val(newText);
+		let $source = $('#' + sourceID).val(newText);
+		$source.closest('.card').addClass('flight-data-dirty');
 		removeModalExpandedText();
 		removeExpandTruncatedButtons();
-	})
+	});
 
 	$('.modal-expanded-text')
 		.focus( function() {$(this).setCursorToEnd()}) // set the listener
@@ -486,7 +498,7 @@ function resizeColumns() {
 		}
 	}
 
-	// find any divs truncated because their too long and add a button to show the full text
+	// find any divs truncated because they're too long and add a button to show the full text
 	$('.result-table-cell > .truncatable:truncated').each(function(){
 		addExpandTruncatedButton($(this).parent(), $(this));
 	});

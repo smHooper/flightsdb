@@ -159,9 +159,16 @@
 			$('#input-start_date').val(today.addDays(-14).getChromeFormattedString());
 
 			showLoadingIndicator();
+			const ticketSQL = `
+				SELECT DISTINCT submissions.ticket as name, submissions.ticket AS value 
+				FROM submissions LEFT JOIN flights ON submissions.ticket = flights.ticket
+				WHERE flights.ticket IS NOT NULL
+				ORDER BY submissions.ticket DESC;
+			`;
 			$.when(
 				fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators ORDER BY sort_order;", 'scenic_landings'),
 				fillSelectOptions('select-locations', "SELECT name, code AS value FROM landing_locations ORDER BY name;", 'scenic_landings'),
+				fillSelectOptions('select-tickets-only', ticketSQL, 'scenic_landings'),
 				$.ajax({
 					url: 'geojson_io.php',
 					method: 'POST',
