@@ -30,6 +30,7 @@ import requests
 import time
 import json
 import getpass
+import re
 import pandas as pd
 from sqlalchemy import create_engine
 from datetime import datetime
@@ -153,7 +154,7 @@ def query_after_timestamp(service_url, token, layers, last_poll_time, ssl_cert=T
         return query_json
 
 
-def download_attachments(agol_ids, token, layer, layer_info, service_url, out_dir, ssl_cert=True, additional_info={}):
+def download_attachments(agol_ids, token, layer, layer_info, service_url, out_dir, ssl_cert=True, additional_info={}, overwrite=True):
     '''
     Download attachments from the specified layer of feature layer
     :param agol_ids: AGOL feature global IDs (not global IDs of attachments) to download attachments for
@@ -187,10 +188,20 @@ def download_attachments(agol_ids, token, layer, layer_info, service_url, out_di
 
     for i, row in df.iterrows():
         name, extension = os.path.splitext(row['name'])
-        attachment_path = os.path.join(attachments_dir, row['name'])
         result_response = requests.get(row.url, params={'token': token}, verify=ssl_cert)
         check_http_error('download attachment %s' % row.parentglobalid, result_response)
         content = result_response.content
+        attachment_path = os.path.join(attachments_dir, row['name'])
+
+        if not overwrite:
+            counter = 1
+            while os.path.isfile(attachment_path):
+                attachment_path = re.sub(r'-*\d*\{}$'.format(extension), '-{}{}'.format(counter, extension), attachment_path)
+                counter += 1
+            filename = os.path.basename(attachment_path)
+            df.loc[i, 'name'] = filename
+            row['name'] = filename
+
         with open(attachment_path, 'wb') as attachment_pointer:
             attachment_pointer.write(content)
         df.loc[i, 'content'] = content

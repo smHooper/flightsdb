@@ -12,6 +12,7 @@ import openpyxl
 import traceback
 import requests
 import inspect
+import uuid
 import pandas as pd
 import numpy as np
 from glob import glob
@@ -61,6 +62,10 @@ LANDINGS_COLUMNS = {'flight_id': 'flight_id',
                     'landing_notes': 'notes',
                     'sort_order': 'sort_order'
                     }
+# If there weren't any landings entered, but an Excel file of landings was submitted, the landings table will be empty
+#   To populste it properly, all fields need to be present
+AGOL_LANDING_COLUMNS = ['objectid', 'globalid', 'landing_type', 'landing_location', 'landing_justification', 'n_passengers_scenic', 'n_passengers_pickup', 'n_passengers_dropoff', 'landing_notes', 'parentglobalid',
+       'CreationDate', 'Creator', 'EditDate', 'Editor']
 
 LANDING_RECEIPT_COLUMNS = ['departure_datetime',
                            'registration',
@@ -465,6 +470,155 @@ def save_excel_receipt(template_path, receipt_dir, ticket, data_type, data, head
     return xl_path
 
 
+def validate_excel_landings(df, engine, row_offset=9, error_handling='raise'):
+    excel_errors = []
+    excel_warnings = []
+
+    df['row_str_id'] = df.departure_datetime.dt.strftime('%m/%d/%y %I:%M') + \
+                       pd.Series(df.index + row_offset).apply(lambda x: ' (row %s)' % x)
+
+    for i, row in df.drop('n_passengers', axis=1).iterrows():
+        location_cols = row[df.columns[df.columns.str.contains(r'\d_location')]].dropna().index
+        passenger_cols = row[df.columns[df.columns.str.contains(r'\d_passengers')]].loc[~row.isna() & (row.astype(str) != '')].index
+
+        # Check that all flights have at least one landing
+        n_locations = len(location_cols)
+        n_passengers = len(passenger_cols)
+        if not n_locations + n_passengers:
+            excel_warnings.append('No landings entered for the flight departing at {row_str_id}'.format(**row))
+            continue
+        # If so, check that at least one landing location/passenger count has been recorded per row
+        else:
+            if not n_locations:
+                excel_errors.append('No landing location given for the flight departing at {row_str_id}'.format(**row))
+                continue
+            if not n_passengers:
+                excel_errors.append('No passenger count given for the flight departing at {row_str_id}'.format(**row))
+                continue
+
+        # Check that for each passenger count there's a location and vice versa
+        missing_locations = passenger_cols[
+            ~passenger_cols.isin([c.replace('_location', '_passengers') for c in location_cols])]
+        missing_passengers = location_cols[
+            ~location_cols.isin([c.replace('_passengers', '_location') for c in passenger_cols])]
+        if len(missing_locations):
+            excel_errors.append(
+                'For the flight departing %s, the landings columns are missing a location: %s' % (
+                row.row_str_id, ', '.join(missing_locations.str.replace('passengers', 'location'))))
+
+        if len(missing_passengers):
+            excel_errors.append(
+                'For the flight departing %s, the landings at the following locations are missing passenger counts: %s' % (
+                row.row_str_id, ', '.join(missing_passengers)))
+
+    # Check that there's a justification given for any scenic landings that require it
+    scenic_landings = df.dropna(subset=['scenic_1_location'])
+    sql = 'SELECT name, scenic_data_entry_note FROM landing_locations WHERE scenic_data_entry_note IS NOT NULL'
+    needs_justification = pd.read_sql(sql, engine)
+    without_justification = scenic_landings.loc[
+        scenic_landings.scenic_1_location.isin(needs_justification['name']) &
+        scenic_landings.notes.isnull()
+        ]
+    if len(without_justification):
+        excel_warnings.append('Flights that departed at the following times need justification for scenic landing'
+                        ' locations: %s' % ', '.join(without_justification.row_str_id))
+
+    taxi_landing_fields = df.loc[:,
+                          df.columns[df.columns.str.contains(r'\d_location') & ~df.columns.str.contains('scenic')]]
+    taxi_flights_without_location = df.loc[
+        (taxi_landing_fields == 'Other').any(axis=1) &
+        (df.notes.isna() | (df.notes.astype(str).str.strip() == ''))
+        ]
+    if len(taxi_flights_without_location):
+        excel_warnings.append('Flights that departed at the following times need a location specified in the notes for 1 or'
+                      ' more taxi dropoffs/pickups locations: %s' % ', '.join(without_justification.row_str_id))
+
+    # If errors should be raised, raise for either errors or warnings
+    # Otherwise, errors and warnings will be handled differently
+    if len(excel_errors + excel_warnings) and error_handling == 'raise':
+        raise ValueError('Invalid or missing values found in file:\n\t-%s' % '\n\t-'.join(excel_errors + excel_warnings))
+
+    return excel_errors, excel_warnings
+
+
+def process_excel_landings(excel_path, landings_conn, submitted_info, data_steward,
+                           flights_agol_columns, row_offset=9, data_sheet_name='data', info_sheet_name='info'):
+
+    # Read data from the downloaded
+    data = pd.read_excel(excel_path, data_sheet_name)
+    info = pd.read_excel(excel_path, info_sheet_name).squeeze()
+    ticket = submitted_info.ticket
+    agol_id = submitted_info.parentglobalid
+
+    excel_errors, excel_warnings = validate_excel_landings(data, landings_conn, row_offset, error_handling=None)
+
+    # If there were any errors, the data shouldn't be processed. Add an error to the notifications email and return
+    #   empty dataframes
+    if len(excel_errors):
+        html_li = (
+            '<li>The Excel file {excel_file} could not be processed because it produced the following errors:'
+            '<ul><li>{error_str}</li></ul>').format(excel_file=os.path.basename(excel_path), error_str='</li><li>'.join(excel_errors))
+        MESSAGES.append(
+            {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'error', 'attachment': excel_path}
+        )
+        # Return dummy data
+        return  pd.DataFrame(flights_agol_columns), pd.DataFrame(columns=AGOL_LANDING_COLUMNS)
+
+    # Warnings are fine, but the data steward(s) needs to be notified
+    if len(excel_warnings):
+        html_li = (
+            '<li>Could not process the file {excel_file} because it produced the following warnings:'
+            '<ul><li>{warning_str}</li></ul>'
+        ).format(excel_file=os.path.basename(excel_path), warning_str='</li><li>'.join(excel_warnings))
+        MESSAGES.append(
+            {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning', 'attachment': excel_path}
+        )
+
+    data['flight_id'] = data.registration + '_' + \
+                        data.departure_datetime.dt.floor('15min').dt.strftime('%Y%m%d%H%M')
+    data['operator'] = info.operator_code
+    data['globalid'] = [str(uuid.uuid4()) for _ in range(len(data))]#agol_id + '-' + data.index.astype(str)
+    data['submission_type'] = 'landings'
+
+    landings = data.drop(columns=['n_passengers', 'n_fee_passengers'])\
+        .melt(
+            id_vars=[c for c in data if not c.endswith('_passengers')],
+            value_name='n_passengers'
+        ).dropna(subset=['n_passengers'])
+    landings['landing_type'] = landings.variable.apply(lambda x: x.split('_')[0])
+    landings['location'] = [landings.loc[i, c.replace('_passengers', '_location')] for i, c in landings.variable.iteritems()]
+    landings['n_passengers_scenic'] = landings.loc[landings.landing_type == 'scenic', 'n_passengers']
+    landings['n_passengers_dropoff'] = landings.loc[landings.landing_type == 'dropoff', 'n_passengers']
+    landings['n_passengers_pickup'] = landings.loc[landings.landing_type == 'pickup', 'n_passengers']
+
+    # Group landings into individual landings (e.g., a pickup and dropoff occurred at the same time)
+    grouped_landings = landings.groupby(['flight_id','location'])
+    landing_types = grouped_landings.landing_type.apply(lambda x: ','.join(x))
+    grouped_landings = grouped_landings.sum()
+    grouped_landings['landing_type'] = landing_types
+    grouped_landings = grouped_landings.reset_index()
+    grouped_landings['parentglobalid'] = grouped_landings\
+        .merge(landings.drop_duplicates(subset=['flight_id']), on='flight_id').globalid
+
+    landing_locations = db_utils.get_lookup_table(table='landing_locations', index_col='name', value_col='code',
+                                               conn=landings_conn)
+    landings = grouped_landings.rename(columns={v: k for k, v in LANDINGS_COLUMNS.items()})\
+        .reindex(columns=AGOL_LANDING_COLUMNS)\
+        .replace({'landing_location': landing_locations}) # data come as names, not codes
+    landings.globalid = [str(uuid.uuid4()) for _ in range(len(landings))]
+
+    aircraft_types = db_utils.get_lookup_table(table='aircraft_types', index_col='name', value_col='code',
+                                               conn=landings_conn)
+    flights = data.rename(columns={v: k for k, v in LANDINGS_FLIGHT_COLUMNS.items()})\
+        .reindex(columns=flights_agol_columns)\
+        .replace({'landing_aircraft_type': aircraft_types}) # data come as names, not codes
+    flights.is_from_excel = True
+    flights.ticket = ticket
+    flights.submission_time = submitted_info.submission_time
+
+    return flights, landings
+
+
 def import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir, receipt_template,
                     receipt_header, sheet_password, data_steward):
     '''
@@ -476,7 +630,6 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
     :param landings: data frame of landings
     :param receipt_dir: directory to save Excel file submission receipts
     :param receipt_template: Excel file to use as template for making receipts
-    :param email_server: smtplib server instance (smtlib.SMTP) for sending emails
     :return:
     '''
 
@@ -495,6 +648,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
 
     # Check for flights with no landings
     landings_per_flight = landing_flights \
+        .loc[~landing_flights.is_from_excel]\
         .merge(landings, left_on='agol_global_id', right_on='parentglobalid', how='left') \
         .groupby('flight_id') \
         .parentglobalid \
@@ -517,7 +671,8 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
             '<li>All landings submitted with this ticket were already reported (according to the tail number and departure time). Flights submitted with this ticket:<br>{table}<br></li>').format(
             table=get_html_table(landing_flights.reindex(columns=_html_receipt_columns + ['objectid'])))
         MESSAGES.append(
-            {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
+            {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'}
+        )
         return None, None, None
 
     aircraft_types = db_utils.get_lookup_table(table='aircraft_types', conn=landings_conn)
@@ -894,6 +1049,7 @@ def compose_error_notifications(tickets, param_dict):
         errors = info.loc[info.level == 'error', 'message']
         warning_html = ul_template.format(type='Warnings', li_elements=''.join(warnings))
         error_html = ul_template.format(type='Errors', li_elements=''.join(errors))
+        attachments = info.attachment.unique().tolist() if 'attachment' in info.columns else []
 
         if ticket == -1:
             message = '''
@@ -950,7 +1106,8 @@ def compose_error_notifications(tickets, param_dict):
                                 message_body=message,
                                 recipients=info.recipients.iloc[0],
                                 sender=param_dict['mail_sender'],
-                                message_body_type='html'
+                                message_body_type='html',
+                                attachments=attachments
                                 )
                            )
 
@@ -1006,8 +1163,8 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                        'message_body_type': 'plain'
                        })
         return
-    submissions = pd.DataFrame([feature['attributes'] for feature in result['layers'][0][
-        'features']])  # pretty sure the first layer is always the parent table for a survey123 survey with related tables
+
+    submissions = pd.DataFrame([feature['attributes'] for feature in result['layers'][0]['features']]) # 1st layer = survey123 parent table
     if not len(submissions):
         log_and_exit(log_info, [log_dir, download_dir, timestamp, False, 'No new data to download'])
 
@@ -1040,7 +1197,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     try:
         attachments = download.download_attachments(submissions.globalid, token, 0, layer_info, service_url,
                                                     download_dir, ssl_cert=ssl_cert,
-                                                    additional_info={'sqlite_path': sqlite_path})
+                                                    additional_info={'sqlite_path': sqlite_path}, overwrite=False)
     except:
         EMAILS.append({'message_body': 'An unexpected error occurred while downloading attachments:\n%s'
                                        % traceback.format_exc(),
@@ -1054,10 +1211,14 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # Write data to SQLite db so everything can be stored as a single file
     engine = create_engine('sqlite:///' + sqlite_path)
     tables = {}
+
     with engine.connect() as conn:
         for layer in result['layers']:
             layer_name = layer_info.loc[layer['id'], 'name']
-            data = pd.DataFrame([feature['attributes'] for feature in layer['features']])
+            # If features is empty
+            data = pd.DataFrame(
+                    [feature['attributes'] for feature in layer['features']]
+            )
             if len(data):
                 data.to_sql(layer_name, conn, index=False)
             tables[layer_name] = data
@@ -1079,6 +1240,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     submissions = pd.concat([get_ticket(g, connection_dict)
                              for _, g in submissions.groupby(['submitter', 'submission_type'])])
 
+
     # Process and import the landing data. The flight tracks will need to be unzipped, but they need to be
     #   validated/edited before they can be imported. This is handled manually via a separate web app
     # Add the ticket column to the sqlite flights table
@@ -1087,7 +1249,6 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         for field, _ in data_types.loc[data_types == 'esriFieldTypeDate'].iteritems():
             df.loc[~df[field].isnull(), field] = [datetime.fromtimestamp(ts / 1000.0) if ts else pd.NaT for ts in
                                                   df.loc[~df[field].isnull(), field]]
-
         tables[table_name] = df
 
     all_flights = tables['flights']
@@ -1096,10 +1257,33 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     all_flights['submission_time'] = merged.submission_time
     all_landings = tables['landing_repeat']
 
+    # Check for any flights with landings submitted via Excel
+    all_flights['is_from_excel'] = False
+    excel_landing_flights = all_flights.loc[all_flights.landings_submission_type == 'excel']\
+        .merge(attachments, left_on='globalid', right_on='parentglobalid')
+    if len(excel_landing_flights):
+        for _, info in excel_landing_flights.iterrows():
+            excel_path = os.path.join(download_dir, 'attachments', info['name'])
+            excel_flights, excel_landings = process_excel_landings(
+                excel_path,
+                landings_conn,
+                info,
+                param_dict['landing_data_stewards'],
+                all_flights.columns,
+                **param_dict['excel_landing_template']
+            )
+            # If there were errors, the flights and landing DataFrames will be empty
+            if len(excel_flights):
+                excel_landings.CreationDate = info.CreationDate
+                all_flights = pd.concat([all_flights, excel_flights])
+                all_landings = pd.concat([all_landings, excel_landings])
+
+            # Remove the flight record that just had the Excel file because it
+            all_flights = all_flights.loc[all_flights.objectid != info.objectid]
+
     # For some reason Pandas v 1.x doesn't read the departure_datetime column as Pandas datetimes even though they're
     #   all datetime.Datetimes. Instead, they're objects so explicitly cast them as datetimes
     all_flights.landing_datetime = pd.to_datetime(all_flights.landing_datetime)
-
 
     # Get operator emails from landings DB
     operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email',
