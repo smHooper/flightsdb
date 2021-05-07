@@ -911,6 +911,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
 
     submitted_files = {}
     geojson_paths = []
+
     # Unzip all zipped files and add the extracted files to the list of tracks to process
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
         try:
@@ -1388,10 +1389,21 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # Pre-process track data
     track_submissions = submissions.loc[submissions.submission_type == 'tracks']
     if len(track_submissions):
+        invalid_file_features = []
+        for _, file_info in submissions.merge(attachments, left_on='globalid', right_on='parentglobalid').iterrows():
+            ext, name = os.path.splitext(file_info['name'])
+
+            if ext not in import_track.READ_FUNCTIONS or ext.lower() != 'zip':
+                html_li = ('<li>The file "{file}" is in an invalid format. Accepted formats are {file_formats}.</li>').format(
+                    file=file_info['name'], file_formats=', '.join(import_track.READ_FUNCTIONS))
+                MESSAGES.append({'ticket': file_info['ticket'], 'message': html_li, 'recipients': param_dict['track_data_stewards'],
+                                 'type': 'tracks', 'level': 'error'})
+            invalid_file_features.append(file_info.parentglobalid)
+
         geojson_paths, submitted_files = prepare_track_data(param_dict, download_dir, tracks_conn, submissions)
 
         try:
-            failed_object_ids = delete_from_feature_service(submitted_files.index, token, service_url, ssl_cert)
+            failed_object_ids = delete_from_feature_service(submitted_files.index.tolist() + invalid_file_features, token, service_url, ssl_cert)
             if len(failed_object_ids):
                 EMAILS.append({
                                   'message_body': 'Unable to delete the following features: %s. These should be manually deleted.' % failed_object_ids.astype(
@@ -1428,6 +1440,8 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
             message_info = get_track_receipt_email(s, ticket, param_dict['mail_sender'], param_dict['agol_users'])
             if len(message_info):
                 EMAILS.append(message_info)
+                global DATA_PROCESSED
+                DATA_PROCESSED = True
         # EMAILS.extend([get_track_receipt_email(s, ticket, param_dict['mail_sender'], param_dict['agol_users']) for ticket, s in track_submissions.groupby('ticket')])
 
     # Reduce submissions df to one per ticket
