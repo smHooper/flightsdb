@@ -5,7 +5,7 @@ Manual entry point into workflow to process/import flight data that were downloa
 import sqlalchemy
 from poll_feature_service import * # all modules and constants impored in poll_feature_service
 
-def main(sqlite_path, config_json):
+def main(sqlite_path, config_json, overwrite_attachments=False):
 
     params = read_json_params(config_json)
 
@@ -20,8 +20,11 @@ def main(sqlite_path, config_json):
         attachments = pd.read_sql_table('attachments', conn)
         if 'landing_repeat' in sqlalchemy.inspect(engine).get_table_names():
             all_landings = pd.read_sql_table('landing_repeat', conn)
+        else:
+            all_landings = pd.DataFrame()
 
         all_flights.landing_datetime = (all_flights.landing_datetime/1000).dropna().apply(datetime.fromtimestamp)
+
 
     # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
     connection_info = params['db_credentials']
@@ -36,24 +39,28 @@ def main(sqlite_path, config_json):
 
     for _, file_info in attachments.iterrows():
         attachment_path = os.path.join(attachment_dir, file_info['name'])
-        _, extension = os.path.splitext(attachment_path)
+        if os.path.isfile(attachment_path) and overwrite_attachments:
+            _, extension = os.path.splitext(attachment_path)
 
-        # Write track file
-        with open(attachment_path, 'wb') as f:
-            f.write(file_info.content)
+            # Write track file
+            with open(attachment_path, 'wb') as f:
+                f.write(file_info.content)
 
-        # WRite track info
-        row_dict = file_info.to_dict()
-        row_dict['parent_table_name'] = 'flights'
-        row_dict['REL_GLOBALID'] = file_info.parentglobalid # This is what's called in the createReplica result so just make it consistent
-        row_dict['sqlite_path'] = sqlite_path
-        del row_dict['content']
-        json_path = attachment_path.rstrip(extension) + '.json'
-        with open(json_path, 'w') as json_pointer:
-            json.dump(row_dict, json_pointer, indent=4)
+            # WRite track info
+            row_dict = file_info.to_dict()
+            row_dict['parent_table_name'] = 'flights'
+            row_dict['REL_GLOBALID'] = file_info.parentglobalid # This is what's called in the createReplica result so just make it consistent
+            row_dict['sqlite_path'] = sqlite_path
+            del row_dict['content']
+            json_path = attachment_path.rstrip(extension) + '.json'
+            with open(json_path, 'w') as json_pointer:
+                json.dump(row_dict, json_pointer, indent=4)
 
-    # Get operator codes from usernames/submitter
+    
     with landings_engine.connect() as landings_conn, tracks_engine.connect() as tracks_conn, landings_conn.begin(), tracks_conn.begin():
+
+
+        # Get operator codes from usernames/submitter
         operator_codes = db_utils.get_lookup_table(table='operators', index_col='code', value_col='agol_username', conn=landings_conn)
 
         submissions = all_flights.copy()
@@ -69,6 +76,40 @@ def main(sqlite_path, config_json):
         merged = all_flights.merge(submissions, on='globalid')
         all_flights['ticket'] = merged.ticket
         all_flights['submission_time'] = merged.submission_time
+
+        # Check for any flights with landings submitted via Excel. Need to do this inside the with/as 
+        #   block because process_excel_landings() references the landings_conn connection. Also the submission
+        #   needs to be created in the landings database
+        all_flights['is_from_excel'] = False
+        excel_landing_flights = all_flights.loc[all_flights.landings_submission_type == 'excel']\
+            .merge(attachments, left_on='globalid', right_on='parentglobalid')
+        if len(excel_landing_flights):
+            for _, info in excel_landing_flights.iterrows():
+                excel_path = os.path.join(download_dir, 'attachments', info['name'])
+                try:
+                    excel_flights, excel_landings = process_excel_landings(
+                        excel_path,
+                        landings_conn,
+                        info,
+                        params['landing_data_stewards'],
+                        all_flights.columns,
+                        error_handling='raise',
+                        **params['excel_landing_template']
+                    )
+                except Exception as e:
+                    raise RuntimeError('Could not process {excel_path} because {error}'.format(excel_path=excel_path, error=e))
+
+                # If there were errors, the flights and landing DataFrames will be empty
+                if len(excel_flights):
+                    excel_landings.CreationDate = info.CreationDate
+                    all_flights = pd.concat([all_flights, excel_flights])
+                    all_landings = pd.concat([all_landings, excel_landings])
+
+                # Remove the flight record that just had the Excel file because it
+                all_flights = all_flights.loc[all_flights.objectid != info.objectid]
+
+            # sqlite treats ISO datetimes as string, so explicitly cast as pandas datetime
+            all_flights.landing_datetime = pd.to_datetime(all_flights.landing_datetime)
 
         # Get operator emails from landings DB
         operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email',
@@ -112,7 +153,7 @@ def main(sqlite_path, config_json):
                     continue
 
                 agol_ids = imported_flights.agol_global_id
-                failed_object_ids = pd.Series(dtype=int)
+                failed_object_ids = []
                 try:
                     if 'token' not in locals():
                         token = download.get_token(ssl_cert=ssl_cert, **agol_credentials)
@@ -129,15 +170,17 @@ def main(sqlite_path, config_json):
 
         # Pre-process tracks
         track_submissions = submissions.loc[submissions.submission_type == 'tracks']
+        submitted_files = pd.Series()
         if len(track_submissions):
             geojson_paths, submitted_files = prepare_track_data(params, download_dir, tracks_conn, submissions)
 
-        try:
-            failed_object_ids = delete_from_feature_service(submitted_files.index, token, service_url, ssl_cert)
-            if len(failed_object_ids):
-                ERRORS.append('Unable to delete the following features: %s. These should be manually deleted.' % failed_object_ids.astype(str))
-        except Exception as e:
-            ERRORS.append('Unable to delete the following features: %s. These should be manually deleted.' % submitted_files.index.tolist())
+        if len(submitted_files):
+            try:
+                failed_object_ids = delete_from_feature_service(submitted_files.index, token, service_url, ssl_cert)
+                if len(failed_object_ids):
+                    ERRORS.append('Unable to delete the following features: %s. These should be manually deleted.' % failed_object_ids.astype(str))
+            except Exception as e:
+                ERRORS.append('Unable to delete the following features: %s. These should be manually deleted.' % submitted_files.index.tolist())
 
         if len(ERRORS):
             break_str = '#' * 50
