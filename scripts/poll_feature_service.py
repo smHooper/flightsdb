@@ -474,6 +474,10 @@ def validate_excel_landings(df, engine, row_offset=9, error_handling='raise'):
     excel_errors = []
     excel_warnings = []
 
+    if df.departure_datetime.isnull().any():
+        excel_errors.append('There are flights without departure dates/times or with dates/times in invalid formats')
+        return excel_errors, excel_warnings
+
     df['row_str_id'] = df.departure_datetime.dt.strftime('%m/%d/%y %I:%M') + \
                        pd.Series(df.index + row_offset).apply(lambda x: ' (row %s)' % x)
 
@@ -542,7 +546,7 @@ def validate_excel_landings(df, engine, row_offset=9, error_handling='raise'):
 
 
 def process_excel_landings(excel_path, landings_conn, submitted_info, data_steward,
-                           flights_agol_columns, row_offset=9, data_sheet_name='data', info_sheet_name='info'):
+                           flights_agol_columns, error_handling=None, row_offset=9, data_sheet_name='data', info_sheet_name='info'):
 
     # Read data from the downloaded
     data = pd.read_excel(excel_path, data_sheet_name)
@@ -550,7 +554,7 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
     ticket = submitted_info.ticket
     agol_id = submitted_info.parentglobalid
 
-    excel_errors, excel_warnings = validate_excel_landings(data, landings_conn, row_offset, error_handling=None)
+    excel_errors, excel_warnings = validate_excel_landings(data, landings_conn, row_offset, error_handling=error_handling)
 
     # If there were any errors, the data shouldn't be processed. Add an error to the notifications email and return
     #   empty dataframes
@@ -566,6 +570,7 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
 
     # Warnings are fine, but the data steward(s) needs to be notified
     if len(excel_warnings):
+
         html_li = (
             '<li>Could not process the file {excel_file} because it produced the following warnings:'
             '<ul><li>{warning_str}</li></ul>'
@@ -1393,7 +1398,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         for _, file_info in submissions.merge(attachments, left_on='globalid', right_on='parentglobalid').iterrows():
             ext, name = os.path.splitext(file_info['name'])
 
-            if ext not in import_track.READ_FUNCTIONS or ext.lower() != 'zip':
+            if ext not in import_track.READ_FUNCTIONS or ext.lower() != '.zip':
                 html_li = ('<li>The file "{file}" is in an invalid format. Accepted formats are {file_formats}.</li>').format(
                     file=file_info['name'], file_formats=', '.join(import_track.READ_FUNCTIONS))
                 MESSAGES.append({'ticket': file_info['ticket'], 'message': html_li, 'recipients': param_dict['track_data_stewards'],
@@ -1536,6 +1541,7 @@ def main(config_json):
             pass
 
     failed_emails = []
+
     for msg_info in EMAILS:  # + steward_notifications:
         # If this message has not been sent before, send it. Don't use the subject line to determine this because it
         #   contains a ticket number, which changes every time there's an attempt to process the data
