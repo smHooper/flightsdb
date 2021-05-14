@@ -108,7 +108,7 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                               'Heading (True)':     'heading'
                               }
                        }
-ERROR_EMAIL_ADDRESSES = ['dena_flight_data@nps.gov']
+ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
 
 # Columns to use to verify that the file was read correctly
 VALIDATION_COLUMNS = pd.Series(['geometry', 'utc_datetime', 'altitude_ft', 'longitude', 'latitude', 'x_albers', 'y_albers', 'diff_m', 'diff_seconds', 'm_per_sec', 'knots', 'previous_lat', 'previous_lon', 'heading'])
@@ -591,7 +591,7 @@ def get_flight_id(gdf, seg_time_diff):
 
     return gdf
 
-# Has to be defined below the last read function
+
 READ_FUNCTIONS = {'.gpx': read_gpx,
                   '.gdb': read_gdb,
                   '.csv': read_csv,
@@ -680,7 +680,13 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
             gdf['ak_datetime'] = gdf.utc_datetime.dt.tz_convert(timezone)
         else: # otherwise, calculate by adding the offset
             gdf['ak_datetime'] = gdf.utc_datetime + gdf.utc_datetime.apply(timezone.utcoffset)
-    gdf = gdf.sort_values('ak_datetime') # track points are *usually* in chronological order, but not always
+    # track points are *usually* in chronological order, but not always Also some files have duplicated track points for
+    #   some reason, so get rid of those. Resetting the index is important if this function is being called from 
+    #   poll_feature_service.py. The index is used to create a point_index field, which the track-editor app needs
+    #   for splitting tracks and deleting points
+    gdf = gdf.sort_values('ak_datetime')\
+        .drop_duplicates('ak_datetime')\
+        .reset_index() 
 
     # Validate the registration
     if 'registration' in gdf.columns and not force_registration: # Already in a column in the data
@@ -856,7 +862,7 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
 
         # INSERT info about this aircraft if it doesn't already exist. If it does, UPDATE it if necessary
         #   disable because this happens now as a separate scheduled task
-        '''if ssl_cert_path:
+        if ssl_cert_path:
             ainfo.update_aircraft_info(conn, registration, ssl_cert_path)#'''
 
     # VACUUM and ANALYZE clean up unused space and recalculate statistics to improve spatial query performance. Attempt
