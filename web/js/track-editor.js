@@ -9,7 +9,7 @@ const noFileGIFS = [
 /*
 Modify the default boxzoom Leaflet.Handler to use the same functionality for selection
 */
-L.Map.Selector = L.Map.BoxZoom.extend({
+/*L.Map.Selector = L.Map.BoxZoom.extend({
 	initialize: function (map) {
 		this._map = map;
 		this._container = map._container;
@@ -25,25 +25,24 @@ L.Map.Selector = L.Map.BoxZoom.extend({
 	},
 
 	_onMouseDown: function (e) {
-		if (!e.shiftKey || ((e.which !== 1) && (e.button !== 1))) { return false; }
+		if (e.shiftKey || (e.which !== 1 && e.button !== 1)) {
 
-		L.DomUtil.disableTextSelection();
+			L.DomUtil.disableTextSelection();
 
-		this._startLayerPoint = this._map.mouseEventToLayerPoint(e);
+			this._startLayerPoint = this._map.mouseEventToLayerPoint(e);
 
-		this._box = L.DomUtil.create('div', 'leaflet-zoom-box', this._pane);
-		L.DomUtil.setPosition(this._box, this._startLayerPoint);
+			this._box = L.DomUtil.create('div', 'leaflet-zoom-box', this._pane);
+			L.DomUtil.setPosition(this._box, this._startLayerPoint);
 
-		//TODO refactor: move cursor to styles
-		this._container.style.cursor = 'crosshair';
+			//TODO refactor: move cursor to styles
+			this._container.style.cursor = 'crosshair';
 
-		L.DomEvent
-		    .on(document, 'mousemove', this._onMouseMove, this)
-		    .on(document, 'mouseup', this._onMouseUp, this)
-		    .on(document, 'keydown', this._onKeyDown, this)
-		    .preventDefault(e);
-
-		this._map.fire('boxzoomstart');
+			L.DomEvent
+			    .on(document, 'mousemove', this._onMouseMove, this)
+			    .on(document, 'mouseup', this._onMouseUp, this)
+			    .on(document, 'keydown', this._onKeyDown, this)
+			    //.preventDefault(e);
+		}
 	},
 
 	_onMouseMove: function (e) {
@@ -65,7 +64,10 @@ L.Map.Selector = L.Map.BoxZoom.extend({
 	},
 
 	_finish: function () {
-		this._pane.removeChild(this._box);
+		for (let node of this._pane.querySelectorAll('.leaflet-zoom-box')) {
+			node.remove();
+		}
+		
 		this._container.style.cursor = '';
 
 		L.DomUtil.enableTextSelection();
@@ -89,12 +91,15 @@ L.Map.Selector = L.Map.BoxZoom.extend({
 		        map.layerPointToLatLng(this._startLayerPoint),
 		        map.layerPointToLatLng(layerPoint));
 
-		//map.fitBounds(bounds);
-		console.log(bounds);
+		let fileName = getSelectedFileName();
+		let segmentID = selectedLines[fileName];
+		if (segmentID >= 0) {
+			let points = pointGeojsonLayers[fileName][segmentID];
+			points.eachLayer(layer => {
+				console.log(layer.feature.geometry.coordinates);
+			});
+		}
 
-		map.fire('boxzoomend', {
-			boxZoomBounds: bounds
-		});
 	},
 
 	_onKeyDown: function (e) {
@@ -103,7 +108,7 @@ L.Map.Selector = L.Map.BoxZoom.extend({
 		}
 	}
 
-})
+})*/
 
 L.Map.mergeOptions({selector: true});
 L.Map.addInitHook('addHandler', 'selector', L.Map.Selector);
@@ -245,18 +250,29 @@ function onNextExtentClick() {
 
 
 
-function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
+function splitAtVertex(segmentID, vertexFeatureID, minVertexIndex, isRedo=false){
 	/*
-	Split a line at the associated vertex. vertexID is the ID of the 
-	point from the geojson used to create it
+	Split a line at the associated vertex. vertexFeatureID is the ID of the 
+	feature from the geojson used to create it. minVertexIndex is the minimum 
+	sequential *index* of all points belonging to this track segment
 	*/
 
 	var fileName = getSelectedFileName();//$('.collapse.show').text();
 	var originalLine = lineLayers[fileName][segmentID];
 	var allLatlngs = originalLine.getLatLngs();
 
-	// vertexID is a global ID so calculate the index within the latlngs array
-	var vertexIndex = vertexID - minVertexIndex;
+	// Get the feature object associated with the splitting vertex from the GeoJSON
+	var splittingFeature,
+		vertexIndex = 0;
+	const geoJSONFeatures = pointGeojsonLayers[fileName][segmentID].toGeoJSON().features;
+	for (let feature of geoJSONFeatures) {
+		if (feature.id == vertexFeatureID) {
+			splittingFeature = deepCopy(feature);
+			break;
+		}
+		vertexIndex ++;
+	}
+	//var vertexIndex = splittingFeature.properties.point_index - minVertexIndex;
 
 	if ((vertexIndex === allLatlngs.length - 1) || (vertexIndex === 0)) {
 		alert('Invalid operation: You attempted to split this line at the end of this track segment');
@@ -285,11 +301,8 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 	//	It's inefficient to recreate the original points too, but 
 	//	if I don't there's some reference to the old points that 
 	//	means the min_index changes in lines that were split before.
-	var newDepartureTime = pointGeojsonLayers[fileName][segmentID]
-		.toGeoJSON()
-		.features[vertexIndex]
-		.properties
-		.ak_datetime;
+	const newMinPointIndex = splittingFeature.properties.point_index;
+	const newDepartureTime = splittingFeature.properties.ak_datetime;
 	var newGeoJSON = {
 		type: "FeatureCollection",
 		features: []
@@ -300,22 +313,23 @@ function splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=false){
 	}
 	pointGeojsonLayers[fileName][segmentID].eachLayer(
 		function(layer) {
-			var featureID = layer.feature.id;
+			var featureID = parseInt(layer.feature.id);
 			let newFeature = deepCopy(layer.feature);
 
 			// all points up to and including the splitting vertex
-			if (featureID <= vertexID) {
+			if (featureID <= vertexFeatureID) {
 				layer.feature.properties.landing_datetime = newDepartureTime;
 				originalGeoJSON.features.push(layer.feature);
 			} 
 			// the splitting vertex and all points after it
-			if (featureID >= vertexID) {
+			if (featureID >= vertexFeatureID) {
 				// set the mapID to the new segment ID so the points 
 				//  are still related to the line
 				newFeature.properties.mapID = newSegmentID;
-				newFeature.properties.min_index = vertexID;
+				newFeature.properties.min_index = newMinPointIndex;
 				newFeature.properties.departure_datetime = newDepartureTime;
-				if (parseInt(featureID) === parseInt(vertexID)) newFeature.properties.is_new_segment = true;
+				if (parseInt(featureID) === parseInt(vertexFeatureID)) 
+					newFeature.properties.is_new_segment = true;
 				newGeoJSON.features.push(newFeature);
 			}
 
@@ -377,7 +391,7 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 	// Get the vertex ID where the split occurred so the split can be redone 
 	//	if the user wants (i.e., presses ctr + shift + Z)
 	let mergeGeojson = pointGeojsonLayers[fileName][mergeSegID].toGeoJSON();
-	let splitVertexID = mergeGeojson.features[0].properties.min_index;
+	let splitVertexID = mergeGeojson.features[0].id;
 
 	// Add the lat/lngs of the newer line to the original line
 	let allLatlngs = lineLayers[fileName][segmentID].getLatLngs();
@@ -426,7 +440,7 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 		args: {
 			fileName: fileName,
 			segmentID: segmentID,
-			vertexID: splitVertexID,
+			vertexFeatureID: splitVertexID,
 			minVertexIndex: minIndex
 		}
 	}
@@ -434,7 +448,7 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 }
 
 
-function redoSplitAtVertex({fileName, segmentID, vertexID, minVertexIndex}) {
+function redoSplitAtVertex({fileName, segmentID, vertexFeatureID, minVertexIndex}) {
 
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
@@ -442,13 +456,45 @@ function redoSplitAtVertex({fileName, segmentID, vertexID, minVertexIndex}) {
 	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
 	}
 
-	splitAtVertex(segmentID, vertexID, minVertexIndex, isRedo=true);
+	splitAtVertex(segmentID, vertexFeatureID, minVertexIndex, isRedo=true);
 }
 
 
-function onVertexClick(event, segmentID, vertexID, minVertexIndex) {
-	if (event.originalEvent.ctrlKey || $('#img-split_vertex').parent().hasClass('map-tool-selected')) {
-		splitAtVertex(segmentID, vertexID, minVertexIndex)
+function onVertexClick(e, segmentID, vertexFeatureID, minVertexIndex) {
+	
+	// The user is splitting the line at the vertex
+	if (e.originalEvent.ctrlKey || $('#img-split_vertex').parent().hasClass('map-tool-selected')) {
+		splitAtVertex(segmentID, vertexFeatureID, minVertexIndex)
+	} 
+	// The user is selecting the point
+	else if (e.originalEvent.shiftKey) {
+		// Prevent the popup from showing
+		e.target.closePopup();
+		
+		// leaflet path as jQuery object
+		const $el = $(e.originalEvent.target);
+
+		if ($el.hasClass('overflights-point-selected')) {
+			// It's already selected so deselect it
+			const color = colors[getSelectedFileName()][segmentID];
+			e.target.setStyle({
+				color: color,
+				fillColor: color,
+				weight: 1
+			})
+
+			$el.removeClass('overflights-point-selected');
+
+		} else {
+			// select it
+			e.target.setStyle({
+				color: '#56eaee',
+				fillColor: '#56eaee',
+				weight: 3
+			})
+
+			$el.addClass('overflights-point-selected');
+		}
 	}
 }
 
@@ -466,12 +512,12 @@ function onEachPoint(feature, layer, fileName) {
 	//  from the segment_id. If the mapID is already set though, 
 	//  that means that this feature was created by splitAtVertex(), 
 	//  so don't reassign it
-	if (feature.properties["mapID"] == undefined) {
-		feature.properties["mapID"] = segmentID;
+	if (feature.properties.mapID == undefined) {
+		feature.properties.mapID = segmentID;
 	}
 	
 	layer.addEventListener({
-		click: (e => onVertexClick(e, properties.mapID, properties.point_index, properties.min_index))
+		click: (e => onVertexClick(e, properties.mapID, parseInt(feature.id), properties.min_index))
 	});
 
 	// Add coordinates to dict of coordinate arrays for creating lines later
@@ -506,6 +552,7 @@ function geojsonPointAsCircle(feature, latlng, color) {
 				<p><strong>Altitude:</strong> ${feature.properties.altitude_ft} ft</p>
 				<p><strong>Speed:</strong> ${feature.properties.knots} kn</p>
 				<p><strong>Heading:</strong> ${feature.properties.heading}°</p>
+				<p><string>point_index:</strong> ${feature.properties.point_index}</p>
 			</div>
 		`);
 
@@ -632,9 +679,24 @@ function fillSelectOptions(selector, queryString, dbname, optionClassName='track
 }
 
 function hideVertices(id) {
-	var fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
-	var pointLayer = pointGeojsonLayers[fileName][id];
-	//$(pointLayer._path).removeClass('cut-cursor-enabled');
+	const fileName = getSelectedFileName();//currentFile//$('.collapse.show').text()
+	const pointLayer = pointGeojsonLayers[fileName][id];
+	
+	// Remove the selected class from each point (if it has it) and reset the style
+	const color = colors[fileName][id];
+	pointLayer.eachLayer(layer => {
+		layer.setStyle({
+			weight: 1,
+			fillColor: color,
+			color: color
+		})
+
+		// when loading hideVertices() is called before the element exists, so test first
+		const el = layer.getElement(); 
+		if (el) el.classList.remove('overflights-point-selected');
+	});
+	
+
 	map.removeLayer(pointLayer); 
 
 	//unselect this legend item (if it's selected)
@@ -877,7 +939,7 @@ function undoDeleteTrack({fileName, pointGeoJSON, latlngs, segmentInfo, segmentI
 
 	let thisID = trackInfo[fileName][segmentID] === undefined ?
 		segmentID : // the ID doesn't already exist
-		Math.max.apply(null, Object.keys(lineLayers[fileName])) + 1; // it does so just get the next available ID
+		Math.max.apply(null, Object.keys(lineLayers[fileName])) + 1; // it does, so just get the next available ID
 
 	// recreate the layers (for some reason, references to leaflet objects don't seem to work)
 	colors[fileName][segmentID] = colors[fileName][segmentID] === undefined ? getColor() : colors[fileName][segmentID];
@@ -931,6 +993,163 @@ function redoDeleteTrack({fileName, segmentID}) {
 	}
 
 	deleteTrack(segmentID, showAlert=false, isRedo=true);
+
+}
+
+
+function deleteSelectedPoints(showAlert=true, isRedo=false) {
+
+	const nSelected = $('.overflights-point-selected').length;
+	if (!nSelected) {
+		alert('You did not select any points to delete');
+		return;
+	}
+	if (showAlert) {
+		if (!confirm(`Are you sure you want to delete ${nSelected} point${nSelected > 1 ? 's' : ''}?`)) {
+			return;
+		}
+	}
+
+	const fileName = getSelectedFileName();
+	const segmentID = selectedLines[fileName];
+
+	const geojsonPointLayer = pointGeojsonLayers[fileName][segmentID];
+	const selectedLine = lineLayers[fileName][segmentID];
+	var latlngs = selectedLine.getLatLngs();
+	const originalGeojson = deepCopy(geojsonPointLayer.toGeoJSON());//unchanged but needs function scope
+	const originalLatlngs = deepCopy(latlngs);//for undo buffer
+
+	// Record properties for first and last points in the segment
+	const properties = originalGeojson.features[0].properties
+	const departureDatetime = properties.departure_datetime;
+	const landingDatetime = originalGeojson.features[0].properties.landing_datetime;
+	var minIndex = properties.min_index;
+
+	// Loop through each layer and remove from the point layer. Also remove the associated
+	// 	vertex from the line layer. 
+	var deletedFeatureIDs = [];
+	geojsonPointLayer.eachLayer(layer => {
+		var feature = layer.feature; 
+		var theseProperties = feature.properties;//only creates reference, not copy
+
+		// Point index should be sequential so make sure each point's index is adjusted 
+		//	by the number of points that have already been removed
+		const nToDelete = deletedFeatureIDs.length;
+		const $el = $(layer.getElement());
+		if ($el.hasClass('overflights-point-selected')) {
+			const pointIndex = theseProperties.point_index;
+
+			// Get the feature ID so it can be added to the undoBuffer arguments.
+			//	The ID stays constant no matter how many points are deleted
+			deletedFeatureIDs.push(feature.id); 
+
+			geojsonPointLayer.removeLayer(layer);
+
+			// remove the latlng coord
+			const latlngIndex = pointIndex - minIndex - nToDelete;
+			const nFeatures = originalGeojson.features.length;
+			latlngs.splice(latlngIndex, 1); 
+			
+			// If this is the first point, increment the minIndex
+			if (pointIndex == minIndex) minIndex ++;
+
+		} else {
+			// Adjust index by the number of points that have been deleted
+			theseProperties.point_index -= nToDelete;
+
+			// Also make sure the minIndex for each point is up to date in 
+			//	case the first point was deleted
+			theseProperties.minIndex = minIndex;
+		}
+		
+	});
+
+	selectedLine.setLatLngs(latlngs);
+
+
+	// If the user is not redoing the edit action (i.e., pressed ctr + shift + Z), 
+	//	reset the buffer because this is a new action
+	if (!isRedo) {
+		redoBuffer = [];
+		editingBufferIndex ++;
+		undoBuffer[editingBufferIndex] = {
+			function: undoDeleteSelectedPoints,
+			args: {
+				fileName: fileName,
+				segmentID: segmentID,
+				pointGeoJSON: originalGeojson,
+				latlngs: originalLatlngs,
+				deletedFeatureIDs: deletedFeatureIDs
+			}
+		}
+		toggleUndoButton();
+	}
+
+}
+
+
+function undoDeleteSelectedPoints({fileName, segmentID, pointGeoJSON, latlngs, deletedFeatureIDs}) {
+
+	// recreate the layers (for some reason, references to leaflet objects don't seem to work)
+	// 	remove the original points from the map
+	map.removeLayer(pointGeojsonLayers[fileName][segmentID]);
+	// create the geojson layer, but add it later
+	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(pointGeoJSON, { 
+		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
+		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
+		style: {className: 'cut-cursor-eligible'}
+	});
+
+	// Reset the vertices for the line
+	lineLayers[fileName][segmentID].setLatLngs(latlngs);
+	
+	// If a different file was last selected, show this one as selected
+	if (fileName !== getSelectedFileName()) {
+		fileWasSelected(fileName);
+		loadTracksFromMemory(fileName)
+	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+	    
+	    if (selectedLines[fileName] !== segmentID) {
+			hideVertices(selectedLines[fileName]);
+			selectedLines[fileName] = segmentID;
+			$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
+		}
+	}
+
+	// Show the recreated track as selected
+	showVertices(segmentID);
+	selectLegendItem(segmentID);
+
+	redoBuffer[editingBufferIndex] = {
+		function: redoDeleteSelectedPoints,
+		args: {
+			fileName: fileName,
+			segmentID: segmentID,
+			featuresToDelete: deletedFeatureIDs
+		}
+	}
+
+}
+
+
+function redoDeleteSelectedPoints({fileName, segmentID, featuresToDelete}) {
+
+	if (fileName !== getSelectedFileName()) {
+		fileWasSelected(fileName);
+		loadTracksFromMemory(fileName)
+	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+	}
+
+	// Loop through each point and check if it's one of the points to delete
+	//	If so, add the selected class
+	pointGeojsonLayers[fileName][segmentID].eachLayer(layer => {
+		if (featuresToDelete.includes(layer.feature.id)) {
+			$(layer.getElement()).addClass('overflights-point-selected');
+		}
+	})
+
+	// Delete any points with the selected class
+	deleteSelectedPoints(showAlert=false, isRedo=true);
 
 }
 
@@ -999,10 +1218,14 @@ function onKeyDown(e) {
 
 	// User pressed delete key -> delete the selected track
 	if (e.key === 'Delete') {
+
+		const selectedPoints = $('.overflights-point-selected');
 		var fileName = getSelectedFileName();
 		if (selectedLines[fileName] === undefined || selectedLines[fileName] < 0) {
 			alert(`No track is currently selected. Click a track first then press 'Delete' or click a delete button in the legend`);
-		} else {
+		} if (selectedPoints.length) {
+			deleteSelectedPoints();
+		}else {
 			deleteTrack();
 		}
 	// User pressed ctl + z -> undo the last map edit
@@ -1014,7 +1237,10 @@ function onKeyDown(e) {
 		}
 	// User pressed ctl + shift + z -> redo the last map edit
 	} else if (e.key === 'Z' && e.ctrlKey && e.shiftKey) {
-		if (editingBufferIndex >= redoBuffer.length) {
+		if (
+			editingBufferIndex + 1 >= redoBuffer.length || //add one to editingBufferIndex because redoMapEdit will add one
+			(editingBufferIndex < 0 && redoBuffer.length == 0)
+		) {
 			alert('No actions to redo');
 		} else {
 			redoMapEdit();
@@ -1250,7 +1476,9 @@ function updateLegend(fileName){
 		const [fileName, segmentID] = colorPicker.attr('id').replace('colorPicker-', '').split('-');
 
 		var geojsonPoints = pointGeojsonLayers[fileName][segmentID];
-		geojsonPoints.eachLayer((layer) => {layer.setStyle({color: color, fillColor: color})});
+		geojsonPoints.eachLayer(layer => {
+			layer.setStyle({color: color, fillColor: color});
+		});
 
 		lineLayers[fileName][segmentID].setStyle({color: color});
 
@@ -1380,8 +1608,8 @@ function loadTracksFromJSON(filePath) {
 			var line = L.polyline(
 				lineCoords[fileName][segmentID], 
 				options={color: colors[fileName][segmentID]}
-				)
-			.addTo(map);
+			).addTo(map);
+
 			line.on({click: onLineClick});
 			lineLayers[fileName][segmentID] = line;
 			polylineCoords.push(lineCoords[fileName][segmentID]);
