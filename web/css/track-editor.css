@@ -124,8 +124,11 @@ body {
 	opacity: 0.35;
 }
 
-g > path.leaflet-interactive.cut-cursor-eligible.cut-cursor-enabled{
+g > path.leaflet-interactive.cursor-eligible.cut-cursor-enabled{
 	cursor: url('../imgs/cut_cursor_icon.png') 15 15, auto;
+}
+g > path.leaflet-interactive.cursor-eligible.select-cursor-enabled{
+	cursor: url('../imgs/select_cursor_icon.png'), auto;
 }
 
 /*.card-header {

@@ -341,12 +341,12 @@ function splitAtVertex(segmentID, vertexFeatureID, minVertexIndex, isRedo=false)
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(originalGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
 		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
-		style: {className: 'cut-cursor-eligible'}
+		style: {className: 'cursor-eligible'}
 	});
 	pointGeojsonLayers[fileName][newSegmentID] = L.geoJSON(newGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
 		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, newColor)),
-		style: {className: 'cut-cursor-eligible'}
+		style: {className: 'cursor-eligible'}
 	});
 
 
@@ -425,7 +425,7 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(originalGeojson, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
 		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
-		style: {className: 'cut-cursor-eligible'}
+		style: {className: 'cursor-eligible'}
 	});
 
 	// delete the old stuff
@@ -460,41 +460,72 @@ function redoSplitAtVertex({fileName, segmentID, vertexFeatureID, minVertexIndex
 }
 
 
+function deselectAllPoints(selectedFileName, selectedSegmentID) {
+	/*
+	Helper function to deselect any selected track points
+	*/
+
+	// Remove selected class
+	$('.track-points-selected').removeClass('track-points-selected');
+	
+	// Remove selected style
+	const segmentColor = colors[selectedFileName][selectedSegmentID]
+	pointGeojsonLayers[selectedFileName][selectedSegmentID].eachLayer(layer => {
+		layer.setStyle({
+			color: segmentColor,
+			fillColor: segmentColor,
+			weigth: 1
+		});
+	});
+}
+
+
 function onVertexClick(e, segmentID, vertexFeatureID, minVertexIndex) {
 	
+	// leaflet path as jQuery object
+	const $path = $(e.originalEvent.target);
+	const fileName = getSelectedFileName();
+	
+	const color = colors[fileName][segmentID];
+	const defaultStyle = {
+		color: color,
+		fillColor: color,
+		weight: 1
+	}
+
 	// The user is splitting the line at the vertex
-	if (e.originalEvent.ctrlKey || $('#img-split_vertex').parent().hasClass('map-tool-selected')) {
-		splitAtVertex(segmentID, vertexFeatureID, minVertexIndex)
+	if (e.originalEvent.ctrlKey || $path.hasClass('cut-cursor-enabled')) {
+		splitAtVertex(segmentID, vertexFeatureID, minVertexIndex);
 	} 
 	// The user is selecting the point
-	else if (e.originalEvent.shiftKey) {
+	else if (e.originalEvent.shiftKey || $path.hasClass('select-cursor-enabled')) {
 		// Prevent the popup from showing
 		e.target.closePopup();
-		
-		// leaflet path as jQuery object
-		const $el = $(e.originalEvent.target);
 
-		if ($el.hasClass('overflights-point-selected')) {
-			// It's already selected so deselect it
-			const color = colors[getSelectedFileName()][segmentID];
-			e.target.setStyle({
-				color: color,
-				fillColor: color,
-				weight: 1
-			})
+		if ($path.hasClass('track-points-selected')) {
+			// It's already selected so deselect just this point
+			e.target.setStyle(defaultStyle);
 
-			$el.removeClass('overflights-point-selected');
+			$path.removeClass('track-points-selected');
 
-		} else {
-			// select it
+		} else { // select it
+
+			// If the user used the select button and the shift key was not pressed, 
+			//	deselect all other points
+			if (!e.originalEvent.shiftKey) deselectAllPoints(fileName, segmentID);
+			
+			// Select the clicked vertex
 			e.target.setStyle({
 				color: '#56eaee',
 				fillColor: '#56eaee',
 				weight: 3
-			})
-
-			$el.addClass('overflights-point-selected');
+			});
+			$path.addClass('track-points-selected');
 		}
+
+		// Disable/enable the delete toolbar button depending on whether any points are selected
+		$('#img-delete_point').parent()
+			.toggleClass('leaflet-toolbar-icon-disabled', $('.track-points-selected').length == 0);
 	}
 }
 
@@ -599,11 +630,14 @@ function showVertices(id, hideCurrent=true) {
 	selectedLines[fileName] = id;
 	$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 
-	// Remove the cut cursor on hover for the previosu track and show the cut icon on hover for this
-	//$('.cut-cursor-eligible').removeClass('cut-cursor-enabled')
-	$('#img-split_vertex').parent().hasClass('map-tool-selected') ? 		
-		$('.cut-cursor-eligible').addClass('cut-cursor-enabled'):
+	// Remove the cut/select cursor on hover for the previous track and show the 
+	//	cut/select icon on hover for this segment
+	if ($('#img-split_vertex').parent().hasClass('map-tool-selected')) ? 		
+		$('.cursor-eligible').addClass('cut-cursor-enabled'):
 		$('.cut-cursor-enabled').removeClass('cut-cursor-enabled');
+	
+	if ($('#img-select_point').parent().is('.map-tool-selected')) 
+		$('.cursor-eligible').addClass('select-cursor-enabled');
 	
 }
 
@@ -693,9 +727,14 @@ function hideVertices(id) {
 
 		// when loading hideVertices() is called before the element exists, so test first
 		const el = layer.getElement(); 
-		if (el) el.classList.remove('overflights-point-selected');
+		if (el) el.classList.remove('track-points-selected');
 	});
+
+	// If the select points tool is enabled, disable it		
+	$('#img-select_point').parent().removeClass('map-tool-selected');
 	
+	// Make sure the toolbar button is disabled
+	$('#img-delete_point').parent().addClass('leaflet-toolbar-icon-disabled');
 
 	map.removeLayer(pointLayer); 
 
@@ -946,7 +985,7 @@ function undoDeleteTrack({fileName, pointGeoJSON, latlngs, segmentInfo, segmentI
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(pointGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
 		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
-		style: {className: 'cut-cursor-eligible'}
+		style: {className: 'cursor-eligible'}
 	});
 	lineLayers[fileName][segmentID] = L.polyline(
 			latlngs, 
@@ -999,7 +1038,7 @@ function redoDeleteTrack({fileName, segmentID}) {
 
 function deleteSelectedPoints(showAlert=true, isRedo=false) {
 
-	const nSelected = $('.overflights-point-selected').length;
+	const nSelected = $('.track-points-selected').length;
 	if (!nSelected) {
 		alert('You did not select any points to delete');
 		return;
@@ -1036,7 +1075,7 @@ function deleteSelectedPoints(showAlert=true, isRedo=false) {
 		//	by the number of points that have already been removed
 		const nToDelete = deletedFeatureIDs.length;
 		const $el = $(layer.getElement());
-		if ($el.hasClass('overflights-point-selected')) {
+		if ($el.hasClass('track-points-selected')) {
 			const pointIndex = theseProperties.point_index;
 
 			// Get the feature ID so it can be added to the undoBuffer arguments.
@@ -1085,6 +1124,8 @@ function deleteSelectedPoints(showAlert=true, isRedo=false) {
 		toggleUndoButton();
 	}
 
+	$('#img-delete_point').parent().addClass('leaflet-toolbar-icon-disabled');
+
 }
 
 
@@ -1097,7 +1138,7 @@ function undoDeleteSelectedPoints({fileName, segmentID, pointGeoJSON, latlngs, d
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(pointGeoJSON, { 
 		onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
 		pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, colors[fileName][segmentID])),
-		style: {className: 'cut-cursor-eligible'}
+		style: {className: 'cursor-eligible'}
 	});
 
 	// Reset the vertices for the line
@@ -1144,7 +1185,7 @@ function redoDeleteSelectedPoints({fileName, segmentID, featuresToDelete}) {
 	//	If so, add the selected class
 	pointGeojsonLayers[fileName][segmentID].eachLayer(layer => {
 		if (featuresToDelete.includes(layer.feature.id)) {
-			$(layer.getElement()).addClass('overflights-point-selected');
+			$(layer.getElement()).addClass('track-points-selected');
 		}
 	})
 
@@ -1219,7 +1260,7 @@ function onKeyDown(e) {
 	// User pressed delete key -> delete the selected track
 	if (e.key === 'Delete') {
 
-		const selectedPoints = $('.overflights-point-selected');
+		const selectedPoints = $('.track-points-selected');
 		var fileName = getSelectedFileName();
 		if (selectedLines[fileName] === undefined || selectedLines[fileName] < 0) {
 			alert(`No track is currently selected. Click a track first then press 'Delete' or click a delete button in the legend`);
@@ -1595,7 +1636,7 @@ function loadTracksFromJSON(filePath) {
 				pointGeojsonLayers[fileName][segmentID] = L.geoJSON(geojson, {
 					onEachFeature: ((feature, layer) => onEachPoint(feature, layer, fileName)), 
 					pointToLayer: ((feature, latlng) => geojsonPointAsCircle(feature, latlng, color)),
-					style: {className: 'cut-cursor-eligible'}
+					style: {className: 'cursor-eligible'}
 				});
 
 			}
@@ -1817,6 +1858,10 @@ function lockButtonClick(fileName) {
 
 function onSplitButtonClick() {
 
+	// Remove the cut cursor classes and deselect the cut tool
+	$('.map-tool-selected').removeClass('map-tool-selected');
+	$('.select-cursor-enabled').removeClass('select-cursor-enabled');
+
 	var thisTool = $('#img-split_vertex').parent();
 	//thisTool.data('selected', thisTool.data('selected') ? false : true)
 	thisTool.toggleClass('map-tool-selected');/*thisTool.hasClass('map-tool-selected') ? 
@@ -1825,7 +1870,38 @@ function onSplitButtonClick() {
 
 	$('.cut-cursor-enabled').length ?
 		$('.cut-cursor-enabled').removeClass('cut-cursor-enabled') :
-		$('.cut-cursor-eligible').addClass('cut-cursor-enabled');
+		$('.cursor-eligible').addClass('cut-cursor-enabled');
+
+	$('#img-select_point').parent().removeClass('map-tool-selected');
+
+	// Clear selected points
+	const fileName = getSelectedFileName();
+	const selectedSegmentID = selectedLines[fileName];
+	deselectAllPoints(fileName, selectedSegmentID);
+}
+
+
+function onSelectPointButtonClick() {
+
+	// Remove the cut cursor classes and deselect the cut tool
+	$('.map-tool-selected').removeClass('map-tool-selected');
+	$('.cut-cursor-enabled').removeClass('cut-cursor-enabled');
+
+	const $tool = $('#img-select_point').parent().toggleClass('map-tool-selected');
+
+	// Turn off the select cursor if it's turned on
+	const $cursorEnabled = $('.select-cursor-enabled');
+	$('.cursor-eligible').toggleClass('select-cursor-enabled', $cursorEnabled.length == 0);
+}
+
+
+function onDeletePointsButtonClick() {
+
+	// If the button is disabled, exit
+	if ($('#img-delete_point').parent().hasClass('leaflet-toolbar-icon-disabled')) return;
+
+	// If none are selected, this function will warn the user
+	deleteSelectedPoints()
 }
 
 
@@ -1905,6 +1981,28 @@ function addMapToolbars() {
 		addHooks: onSplitButtonClick
 	});
 
+	var selectPoint = L.Toolbar2.Action.extend({
+		
+		options: {
+			toolbarIcon: {
+					html: '<img id="img-select_point" src="imgs/select_point_icon_30px.svg"/>',
+					tooltip: 'Select points'
+			}
+		},
+		addHooks: onSelectPointButtonClick
+	});
+
+	var deletePoint = L.Toolbar2.Action.extend({
+		
+		options: {
+			toolbarIcon: {
+					html: '<img class="leaflet-toolbar-icon-img-disablable" id="img-delete_point" src="imgs/delete_point_icon_30px.svg"/>',
+					tooltip: 'Delete selected points'
+			}
+		},
+		addHooks: onDeletePointsButtonClick
+	});
+
 	var undo = L.Toolbar2.Action.extend({
 		
 		options: {
@@ -1927,7 +2025,7 @@ function addMapToolbars() {
 		addHooks: redoButtonClick
 	});
 	new L.Toolbar2.Control({	
-			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext, cut, undo, redo],
+			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext, cut, selectPoint, deletePoint, undo, redo],
 			position: 'topleft'
 	}).addTo(map);
 
