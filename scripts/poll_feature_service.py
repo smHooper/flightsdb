@@ -875,7 +875,7 @@ def prepare_track(track_path, attachment_info, import_params, submissions, submi
     json_path = get_unique_filename(json_path, filename_suffix='_geojsons')
 
     with open(json_path, 'w') as j:
-        json.dump(geojson_strs, j, indent=4)
+        json.dump(geojson_strs, j)
 
     global DATA_PROCESSED
     DATA_PROCESSED = True
@@ -1270,14 +1270,43 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     if len(excel_landing_flights):
         for _, info in excel_landing_flights.iterrows():
             excel_path = os.path.join(download_dir, 'attachments', info['name'])
-            excel_flights, excel_landings = process_excel_landings(
-                excel_path,
-                landings_conn,
-                info,
-                param_dict['landing_data_stewards'],
-                all_flights.columns,
-                **param_dict['excel_landing_template']
-            )
+            excel_flights = []
+            try:
+                excel_flights, excel_landings = process_excel_landings(
+                    excel_path,
+                    landings_conn,
+                    info,
+                    param_dict['landing_data_stewards'],
+                    all_flights.columns,
+                    **param_dict['excel_landing_template']
+                )
+            except Exception as e:
+                html_li = '<li>The Excel file {filename} could not be processed because {error}</li>'\
+                    .format(filename=info['name'], error=e)
+                MESSAGES.append(
+                    {'ticket': info.ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                     'type': 'landings', 'level': 'error'}
+                )
+                ERRORS.append(traceback.format_exc())
+
+                # Try to remove the invalid submission
+                try:
+                    failed_object_ids = delete_from_feature_service([info.parentglobalid], token, service_url, ssl_cert)
+                    if len(failed_object_ids):
+                        html_li = ('<li>Unable to delete feature with Object ID {object_ids}</li>') \
+                            .format(object_ids=', '.join(failed_object_ids.astype(str)))
+                        MESSAGES.append(
+                            {'ticket': info.ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                             'type': 'landings', 'level': 'error'})
+                        ERRORS.append(traceback.format_exc())
+                except Exception as e:
+                    html_li = (
+                        '<li>Could not delete AGOL ID {agol_id} because "{error}". This error occurred after failing to process {filename}</li>') \
+                        .format(agol_id=info.parentglobalid, error=e, filename=info['name'])
+                    MESSAGES.append({'ticket': info.ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                                     'type': 'landings', 'level': 'error'})
+                    ERRORS.append(traceback.format_exc())
+
             # If there were errors, the flights and landing DataFrames will be empty
             if len(excel_flights):
                 excel_landings.CreationDate = info.CreationDate
@@ -1361,23 +1390,25 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
             if not excel_path:  # There weren't any new landings
                 continue
 
-            agol_ids = imported_flights.agol_global_id
-            try:
-                failed_object_ids = delete_from_feature_service(agol_ids, token, service_url, ssl_cert)
-                if len(failed_object_ids):
-                    html_li = ('<li>Unable to delete features with Object IDs {object_ids}<br></li>') \
-                        .format(object_ids=', '.join(failed_object_ids.astype(str)), table=html_table)
-                    MESSAGES.append(
-                        {'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
-                         'type': 'landings', 'level': 'error'})
+            # Delete any flights that weren't submitted via Excel
+            agol_ids = imported_flights.agol_global_id[~imported_flights.is_from_excel]
+            if len(agol_ids):
+                try:
+                    failed_object_ids = delete_from_feature_service(agol_ids, token, service_url, ssl_cert)
+                    if len(failed_object_ids):
+                        html_li = ('<li>Unable to delete features with Object IDs {object_ids}<br></li>') \
+                            .format(object_ids=', '.join(failed_object_ids.astype(str)), table=html_table)
+                        MESSAGES.append(
+                            {'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                             'type': 'landings', 'level': 'error'})
+                        ERRORS.append(traceback.format_exc())
+                except Exception as e:
+                    html_li = (
+                        '<li>The following error occurred while trying to delete features with AGOL IDs {agol_ids}, "{error}", while processing the following flights:<br>{table}<br></li>') \
+                        .format(agol_ids=', '.join(agol_ids.astype(str)), error=e, table=html_table)
+                    MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
+                                     'type': 'landings', 'level': 'error'})
                     ERRORS.append(traceback.format_exc())
-            except Exception as e:
-                html_li = (
-                    '<li>The following error occurred while trying to delete features with AGOL IDs {agol_ids}, "{error}", while processing the following flights:<br>{table}<br></li>') \
-                    .format(agol_ids=', '.join(agol_ids.astype(str)), error=e, table=html_table)
-                MESSAGES.append({'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
-                                 'type': 'landings', 'level': 'error'})
-                ERRORS.append(traceback.format_exc())
 
             start_datetime = all_landings['CreationDate'].min()
             end_datetime = datetime.now()
@@ -1398,7 +1429,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         for _, file_info in submissions.merge(attachments, left_on='globalid', right_on='parentglobalid').iterrows():
             ext, name = os.path.splitext(file_info['name'])
 
-            if ext not in import_track.READ_FUNCTIONS or ext.lower() != '.zip':
+            if ext not in import_track.READ_FUNCTIONS and ext.lower() != '.zip':
                 html_li = ('<li>The file "{file}" is in an invalid format. Accepted formats are {file_formats}.</li>').format(
                     file=file_info['name'], file_formats=', '.join(import_track.READ_FUNCTIONS))
                 MESSAGES.append({'ticket': file_info['ticket'], 'message': html_li, 'recipients': param_dict['track_data_stewards'],
