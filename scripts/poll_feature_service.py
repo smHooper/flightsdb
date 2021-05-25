@@ -30,7 +30,7 @@ import process_emails
 pd.set_option('display.max_columns', None)  # useful for debugging
 pd.options.mode.chained_assignment = None
 
-SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
+SUBMISSION_TICKET_INTERVAL = 0#900 # seconds between submission of a particular user
 LOG_CACHE_DAYS = 365  # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 TIMEZONE = pytz.timezone('US/Alaska')
@@ -228,7 +228,7 @@ def get_submitter_email(agol_user, agol_user_emails):
     elif agol_user in agol_user_emails:
         return agol_user_emails[agol_user]
     else:
-        return None
+        return agol_user
 
 
 def get_html_table(data, column_widths={}):
@@ -1238,14 +1238,22 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # Create separate tickets for each user for both landing and track data
     submissions['submission_time'] = [datetime.fromtimestamp(round(ts / 1000)) for _, ts in
                                       submissions['CreationDate'].iteritems()]
+    
+    # There was a brief time when Survey123 stopped recognizing a logged in NPS user. I added a field to
+    #   enter an NPS email to resolve this, so use that wherever the Creator field (which is automatically
+    #   filled in by AGOL when a user is logged in) is blank
+    if 'tracks_nps_email' in submissions:
+        creator_blank_mask = submissions.Creator.isna() | (submissions.Creator == '')
+        submissions.loc[creator_blank_mask, 'Creator'] = submissions.loc[creator_blank_mask, 'tracks_nps_email']
+
     submissions.rename(columns={'Creator': 'submitter'}, inplace=True)
-    submissions.loc[submissions.submitter == '', 'submitter'] = [operator_codes[o] for _, o in submissions.loc[
-        submissions.submitter == '', 'operator'].iteritems()]
+    submitter_null_mask = (submissions.submitter == '') | submissions.submitter.isna()
+    submissions.loc[submitter_null_mask, 'submitter'] = [operator_codes[o] for _, o in submissions.loc[
+        submitter_null_mask, 'operator'].iteritems()]
 
     connection_dict = {'tracks': tracks_conn, 'landings': landings_conn}
     submissions = pd.concat([get_ticket(g, connection_dict)
                              for _, g in submissions.groupby(['submitter', 'submission_type'])])
-
 
     # Process and import the landing data. The flight tracks will need to be unzipped, but they need to be
     #   validated/edited before they can be imported. This is handled manually via a separate web app
