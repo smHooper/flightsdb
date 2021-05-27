@@ -40,21 +40,23 @@ def main(sqlite_path, config_json, overwrite_attachments=False):
     for _, file_info in attachments.iterrows():
         attachment_path = os.path.join(attachment_dir, file_info['name'])
         if os.path.isfile(attachment_path) and overwrite_attachments:
-            _, extension = os.path.splitext(attachment_path)
+            continue
+        _, extension = os.path.splitext(attachment_path)
 
-            # Write track file
-            with open(attachment_path, 'wb') as f:
-                f.write(file_info.content)
+        # Write track file
+        with open(attachment_path, 'wb') as f:
+            f.write(file_info.content)
 
-            # WRite track info
-            row_dict = file_info.to_dict()
-            row_dict['parent_table_name'] = 'flights'
-            row_dict['REL_GLOBALID'] = file_info.parentglobalid # This is what's called in the createReplica result so just make it consistent
-            row_dict['sqlite_path'] = sqlite_path
-            del row_dict['content']
-            json_path = attachment_path.rstrip(extension) + '.json'
-            with open(json_path, 'w') as json_pointer:
-                json.dump(row_dict, json_pointer, indent=4)
+        # WRite track info
+        row_dict = file_info.to_dict()
+        row_dict['parent_table_name'] = 'flights'
+        row_dict['REL_GLOBALID'] = file_info.parentglobalid # This is what's called in the createReplica result so just make it consistent
+        row_dict['sqlite_path'] = sqlite_path
+        del row_dict['content']
+        json_path = attachment_path.rstrip(extension) + '.json'
+        with open(json_path, 'w') as json_pointer:
+            json.dump(row_dict, json_pointer, indent=4)
+
 
     
     with landings_engine.connect() as landings_conn, tracks_engine.connect() as tracks_conn, landings_conn.begin(), tracks_conn.begin():
@@ -170,7 +172,7 @@ def main(sqlite_path, config_json, overwrite_attachments=False):
 
         # Pre-process tracks
         track_submissions = submissions.loc[submissions.submission_type == 'tracks']
-        submitted_files = pd.Series()
+        submitted_files = pd.Series(dtype=object)
         if len(track_submissions):
             geojson_paths, submitted_files = prepare_track_data(params, download_dir, tracks_conn, submissions)
 
@@ -187,6 +189,7 @@ def main(sqlite_path, config_json, overwrite_attachments=False):
             print('All data from {sqlite_path} processed except for the following errors:\n\n{break_str}\n{errors}'.format(sqlite_path=sqlite_path, break_str=break_str, errors=('\n%s\n' % break_str).join(ERRORS)))
         else:
             print('All data from {} successfully processed'.format(sqlite_path))
+
 
 
 if __name__ == '__main__':
