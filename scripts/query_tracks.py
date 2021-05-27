@@ -149,7 +149,7 @@ def query_tracks(start_date, end_date, connection_txt=None, engine=None, table='
     mask_specified = isinstance(mask, gpd.geodataframe.GeoDataFrame)
     if mask_specified:
         # Make sure the mask is in WGS84 (same as database features)
-        if not mask.crs['init'] == 'epsg:4326':
+        if not mask.crs.to_epsg() == 4326:
             mask = mask.to_crs(epsg='4326')
 
         mask_wkt = get_mask_wkt(mask, mask_buffer_distance)
