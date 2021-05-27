@@ -485,6 +485,20 @@ def format_foreflight_csv(path, encoding='ISO-8859-1', **kwargs):
     return df
 
 
+def read_excel(path):
+    """
+    Wrapper for read_csv() (after converting Excel file to CSV)
+    :param path: Excel track
+    :return: GeoDataFrame of the track file
+    """
+    df = pd.read_excel(path)
+    _, ext = os.path.splitext(path)
+    csv_path = path.replace(ext, '.csv')
+    df.to_csv(csv_path, index=False)
+
+    return read_csv(csv_path)
+
+
 def get_csv_type(path, encoding):
     """
     Helper function to try to determine the CSV source
@@ -595,7 +609,8 @@ def get_flight_id(gdf, seg_time_diff):
 READ_FUNCTIONS = {'.gpx': read_gpx,
                   '.gdb': read_gdb,
                   '.csv': read_csv,
-                  '.kml': read_kml
+                  '.kml': read_kml,
+                  '.xlsx': read_excel
                   }
 
 

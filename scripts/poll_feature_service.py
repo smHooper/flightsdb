@@ -293,7 +293,7 @@ def get_email_html(data, start_datetime, end_datetime, column_widths={}):
     return html
 
 
-def get_attachment_info(file_path, ext='.zip'):
+def get_attachment_info(file_path, submissions, ext='.zip'):
     ''' Each zip file created by download_feature_service.download_data() has an accompanying JSON metadata file, so return the JSON as a dict'''
     json_meta_path = file_path.replace(ext, '.json')
     with open(json_meta_path) as j:
@@ -303,6 +303,8 @@ def get_attachment_info(file_path, ext='.zip'):
         submission_data = pd.read_sql(
             "SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']),
             conn).squeeze(axis=0)
+
+    submission_data['ticket'] = submissions.loc[submissions.globalid == metadata['REL_GLOBALID'], 'ticket'].squeeze()
 
     return pd.concat([pd.Series(metadata), submission_data])
 
@@ -920,12 +922,12 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
     # Unzip all zipped files and add the extracted files to the list of tracks to process
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
         try:
-            attachment_info = get_attachment_info(zip_path)
+            attachment_info = get_attachment_info(zip_path, submissions)
         except Exception as e:
             html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(
                 file=zip_path, error=e)
             MESSAGES.append(
-                {'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward, 'type': 'tracks',
+                {'ticket': -1, 'message': html_li, 'recipients': data_steward, 'type': 'tracks',
                  'level': 'error'})
             ERRORS.append(traceback.format_exc())
             continue
@@ -975,11 +977,11 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                 continue
 
             try:
-                attachment_info = get_attachment_info(path, ext)
+                attachment_info = get_attachment_info(path, submissions, ext)
             except Exception as e:
                 html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(
                     file=path, error=e)
-                MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,
+                MESSAGES.append({'ticket': -1, 'message': html_li, 'recipients': data_steward,
                                  'type': 'tracks', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
                 continue
@@ -1288,6 +1290,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                     all_flights.columns,
                     **param_dict['excel_landing_template']
                 )
+                os.remove(excel_path)
             except Exception as e:
                 html_li = '<li>The Excel file {filename} could not be processed because {error}</li>'\
                     .format(filename=info['name'], error=e)
@@ -1341,6 +1344,16 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # The submitter being logged in *and* the username ending in _nps is the only way any non-operator could submit
     #   data. The operator field will be blank though, so fill it in
     all_flights.operator.fillna('NPS', inplace=True)
+
+    # Add the ticket number to any attachment info files
+    '''attachment_dir = os.path.join(download_dir, 'attachments')
+    for attachment_info in all_flights.merge(attachments, left_on='globalid', right_on='parentglobalid').iterrows():
+        json_path = os.path.join(attachment_dir, attachment_info['name'])
+        with open(json_path) as f:
+            info = json.load(f)
+        info['ticket'] = attachment_info.ticket
+        with open(json_path, 'w') as f:
+            json.dump(info, f)'''
 
     # If there were any landings submitted, import them into the database
     receipt_dir = os.path.join(log_dir, 'receipts')
