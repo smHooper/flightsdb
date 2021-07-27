@@ -65,6 +65,7 @@ import process_emails
 import kml_parser
 from utils import get_cl_args
 
+
 # Patterns of column names for different csv sources
 CSV_INPUT_COLUMNS = [
     ['aff', ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)']],
@@ -115,7 +116,7 @@ VALIDATION_COLUMNS = pd.Series(['geometry', 'utc_datetime', 'altitude_ft', 'long
 
 ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files\tracks'
 
-REGISTRATION_REGEX = r'(?i)N\d{2,5}[A-Z]{0,2}'
+REGISTRATION_REGEX = r'(?i)N\d{1,5}[A-Z]{0,2}'
 
 FEET_PER_METER = 3.2808399
 M_PER_S_TO_KNOTS = 1.94384
@@ -550,9 +551,12 @@ def read_csv(path, seg_time_diff=None):
             if detector.done:
                 encoding = detector.result['encoding']
                 break
+    
     detector.close()
-    if not encoding:
-        raise RuntimeError('Could not determine encoding of file ' + path)
+    # Get the encoding even if the detector doesn't have high confidence
+    encoding = detector.result['encoding']
+        #raise RuntimeError('Could not determine encoding of file ' + path)
+    
 
     CSV_FUNCTIONS = {'aff': format_aff,
                      'gsat': format_gsat,
@@ -562,7 +566,7 @@ def read_csv(path, seg_time_diff=None):
                      }
 
     best_match, skip_rows = get_csv_type(path, encoding)
-
+    
     if not best_match in CSV_FUNCTIONS:
         sorted_types = sorted(CSV_FUNCTIONS.keys())
         raise IOError(
