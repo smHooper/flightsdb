@@ -920,6 +920,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
     geojson_paths = []
 
     # Unzip all zipped files and add the extracted files to the list of tracks to process
+    processed_unzipped_files = [] # keep track of processed files from zip files so they can be skipped in next for loop
     for zip_path in glob(os.path.join(attachment_dir, '*.zip')):
         try:
             attachment_info = get_attachment_info(zip_path, submissions)
@@ -961,6 +962,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                                              param_dict['web_data_dir'], db_columns)
                 geojson_paths.append(geojson_path)
                 submitted_files[attachment_info['REL_GLOBALID'].strip('{}')] = os.path.basename(zip_path)
+
             except Exception as e:
                 html_li = (
                     '<li>An error occurred while trying to process {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(
@@ -968,23 +970,17 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                 MESSAGES.append({'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,
                                  'type': 'tracks', 'level': 'error'})
                 ERRORS.append(traceback.format_exc())
+            processed_unzipped_files.append(fname)  # add to list of processed files so the next for loop will skip them
 
     # Find all the files that were downloaded without being zipped. This will only include files with valid extensions
     #   because Survey123 will reject all others
     for ext in import_track.READ_FUNCTIONS:
         for path in glob(os.path.join(attachment_dir, '*%s' % ext)):
-            if os.path.basename(path) in submitted_files.values():
+            fname = os.path.basename(path)
+            if fname in submitted_files.values() or fname in processed_unzipped_files:
                 continue
 
-            try:
-                attachment_info = get_attachment_info(path, submissions, ext)
-            except Exception as e:
-                html_li = ('<li>An error occurred while trying to read metadata for {file}: {error}.</li>').format(
-                    file=path, error=e)
-                MESSAGES.append({'ticket': -1, 'message': html_li, 'recipients': data_steward,
-                                 'type': 'tracks', 'level': 'error'})
-                ERRORS.append(traceback.format_exc())
-                continue
+            attachment_info = get_attachment_info(path, submissions, ext)
 
             submitter = get_submitter_email(attachment_info['Creator'], param_dict['agol_users'])
             try:
@@ -1448,7 +1444,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     if len(track_submissions):
         invalid_file_features = []
         for _, file_info in submissions.merge(attachments, left_on='globalid', right_on='parentglobalid').iterrows():
-            ext, name = os.path.splitext(file_info['name'])
+            name, ext = os.path.splitext(file_info['name'])
 
             if ext not in import_track.READ_FUNCTIONS and ext.lower() != '.zip':
                 html_li = ('<li>The file "{file}" is in an invalid format. Accepted formats are {file_formats}.</li>').format(
