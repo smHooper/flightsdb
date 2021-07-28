@@ -71,7 +71,7 @@ CSV_INPUT_COLUMNS = [
     ['aff', ['Registration', 'Longitude', 'Latitude', 'Speed (kts)', 'Heading (True)', 'Altitude (FT MSL)', 'Fix', 'PDOP', 'HDOP', 'posnAcquiredUTC', 'posnAcquiredUTC -8', 'usageType', 'source', 'Latency (Sec)']],
     ['gsat', ['Asset', 'IMEI/Unit #/Device ID', 'Device', 'Positions', 'Events', 'Messages', 'Alerts']],
     ['gsat', ['Events', 'Date', 'Address', 'Lat/Lng', 'Speed', 'Heading', 'Altitude', 'Via']],
-    ['spy', ['Registration', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Speed(knots)', 'Bearing', 'PointType', 'Description']],
+    ['spy', ['Aircraft', 'Registration', 'Track', 'Point', 'DateTime(UTC)', 'DateTime(Local)', 'Latitude', 'Latitude(degrees)', 'Latitude(minutes)', 'Latitude(seconds)', 'Latitude(decimal)', 'Longitude', 'Longitude(degrees)', 'Longitude(minutes)', 'Longitude(seconds)', 'Longitude(decimal)', 'Altitude(Feet)', 'Altitude(ft)', 'Speed(knots)', 'Bearing', 'PointType', 'Description']],
     ['tms', ['Serial No.', 'UTC', 'Latitude', 'HemNS', 'Longititude', 'HemEW', 'Knots', 'Heading', 'Altitude (m)', 'HDOP', 'New Conn', 'Entered', 'Event', 'ESN', 'Latitude (DDMM.MMMM)', 'Longititude (DDMM.MMMM)',
        'Heading (True)', 'Server Time (PDT)']],
     ['foreflight', ['Pilot', 'Tail Number', 'Derived Origin', 'Start Latitude', 'Start Longitude', 'Derived Destination', 'End Latitude', 'End Longitude', 'Start Time', 'End Time', 'Total Duration', 'Total Distance', 'Initial Attitude Source', 'Device Model', 'Device Model Detailed', 'iOS Version', 'Battery Level', 'Battery State', 'GPS Source', 'Maximum Vertical Error', 'Minimum Vertical Error', 'Average Vertical Error', 'Maximum Horizontal Error', 'Minimum Horizontal Error', 'Average Horizontal Error', 'Imported From', 'Route Waypoints']]
@@ -91,11 +91,13 @@ CSV_OUTPUT_COLUMNS = {'aff': {'Registration':       'registration',
                               },
                       'gsat': { },
                       'spy': {'Registration':       'registration',
+                              'Aircraft':           'registration',
                               'DateTime(UTC)':      'utc_datetime',
                               'DateTime(Local)':    'ak_datetime',
                               'Latitude(decimal)':  'latitude',
                               'Longitude(decimal)': 'longitude',
                               'Altitude(Feet)':     'altitude_ft',
+                              'Altitude(ft)':       'altitude_ft',
                               'Bearing':            'heading'
                               },
                       'tms': {'UTC':                'utc_datetime',
@@ -146,9 +148,11 @@ def calc_bearing(lat1, lon1, lat2, lon2):
 
 def calc_distance_to_last_pt(gdf):
 
-    in_proj = pyproj.Proj('epsg:4326')
-    out_proj = pyproj.Proj('epsg:3338') # Alaska Albers Equal Area, which is pretty good at preserving distances
-    gdf['x_albers'], gdf['y_albers'] = pyproj.transform(in_proj, out_proj, gdf.longitude.values, gdf.latitude.values)
+    #in_proj = pyproj.Proj('epsg:4326')
+    #out_proj = pyproj.Proj('epsg:3338') # Alaska Albers Equal Area, which is pretty good at preserving distances
+    transformer = pyproj.Transformer.from_crs('epsg:4326', 'epsg:3338')
+    # for some reason you specify .transform() with y, x but it returns x, y
+    gdf['x_albers'], gdf['y_albers'] = transformer.transform(gdf.latitude.values, gdf.longitude.values)#pyproj.transform(in_proj, out_proj, gdf.longitude.values, gdf.latitude.values)
     distance = (gdf.x_albers.diff()**2 + gdf.y_albers.diff()**2)**0.5 # distance between 2 points
 
     return distance
@@ -427,6 +431,7 @@ def format_spy(path, encoding='ISO-8859-1', **kwargs):
 
     df.altitude_ft = df.altitude_ft.astype(int)
     df.utc_datetime = pd.to_datetime(df.utc_datetime, errors='coerce')
+    df.ak_datetime = pd.to_datetime(df.ak_datetime, errors='coerce')
 
     return df
 
@@ -574,7 +579,7 @@ def read_csv(path, seg_time_diff=None):
             ('Only %s, and %s currently accepted.' % (', '.join(sorted_types[:-1]), sorted_types[-1]))
         )
 
-    df = CSV_FUNCTIONS[best_match](path, encoding, skip_rows)
+    df = CSV_FUNCTIONS[best_match](path, encoding, skip_rows=skip_rows)
     df.heading = df.heading.round().astype(int)
     df.knots = df.knots.round().astype(int)
 
