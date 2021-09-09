@@ -30,7 +30,7 @@ import process_emails
 pd.set_option('display.max_columns', None)  # useful for debugging
 pd.options.mode.chained_assignment = None
 
-SUBMISSION_TICKET_INTERVAL = 0#900 # seconds between submission of a particular user
+SUBMISSION_TICKET_INTERVAL = 900 # seconds between submission of a particular user
 LOG_CACHE_DAYS = 365  # amount of time to keep a log file
 TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 TIMEZONE = pytz.timezone('US/Alaska')
@@ -41,6 +41,7 @@ MESSAGES = []  # internal messages to data stewards
 EMAILS = []  # messages to submitters
 # AGOL IDs of submissions that caused errors and data stewards have been warned about. Errors are dict of ID: date so that old
 ERRORS = []
+TRACK_JSON_FILES = [] # keep track of newly created track files
 LANDINGS_FLIGHT_COLUMNS = {'landing_operator': 'operator_code',
                            'landing_tail_number': 'registration',
                            'landing_datetime': 'departure_datetime',
@@ -299,6 +300,7 @@ def get_attachment_info(file_path, submissions, ext='.zip'):
     with open(json_meta_path) as j:
         metadata = json.load(j)
     engine = create_engine('sqlite:///' + metadata['sqlite_path'])
+
     with engine.connect() as conn:
         submission_data = pd.read_sql(
             "SELECT * FROM %s WHERE globalid='%s';" % (metadata['parent_table_name'], metadata['REL_GLOBALID']),
@@ -551,13 +553,13 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
                            flights_agol_columns, error_handling=None, row_offset=9, data_sheet_name='data', info_sheet_name='info'):
 
     # Read data from the downloaded
-    data = pd.read_excel(excel_path, data_sheet_name)
+    data = pd.read_excel(excel_path, data_sheet_name)\
+        .dropna(subset=['departure_datetime', 'registration'])
     info = pd.read_excel(excel_path, info_sheet_name).squeeze()
     ticket = submitted_info.ticket
     agol_id = submitted_info.parentglobalid
 
     excel_errors, excel_warnings = validate_excel_landings(data, landings_conn, row_offset, error_handling=error_handling)
-
     # If there were any errors, the data shouldn't be processed. Add an error to the notifications email and return
     #   empty dataframes
     if len(excel_errors):
@@ -574,7 +576,7 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
     if len(excel_warnings):
 
         html_li = (
-            '<li>Could not process the file {excel_file} because it produced the following warnings:'
+            '<li>The Excel file {excel_file} was processed, but it produced the following warnings:'
             '<ul><li>{warning_str}</li></ul>'
         ).format(excel_file=os.path.basename(excel_path), warning_str='</li><li>'.join(excel_warnings))
         MESSAGES.append(
@@ -1236,7 +1238,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # Create separate tickets for each user for both landing and track data
     submissions['submission_time'] = [datetime.fromtimestamp(round(ts / 1000)) for _, ts in
                                       submissions['CreationDate'].iteritems()]
-    
+
     # There was a brief time when Survey123 stopped recognizing a logged in NPS user. I added a field to
     #   enter an NPS email to resolve this, so use that wherever the Creator field (which is automatically
     #   filled in by AGOL when a user is logged in) is blank
@@ -1382,7 +1384,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
                         {'ticket': ticket, 'message': html_li, 'recipients': param_dict['admin_email_address'],
                          'type': 'landings', 'level': 'error'})
                     ERRORS.append(traceback.format_exc())
-                
+
                 # Then go to the next ticket
                 continue
 
@@ -1454,6 +1456,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
             invalid_file_features.append(file_info.parentglobalid)
 
         geojson_paths, submitted_files = prepare_track_data(param_dict, download_dir, tracks_conn, submissions)
+        TRACK_JSON_FILES.extend(geojson_paths)
 
         try:
             failed_object_ids = delete_from_feature_service(submitted_files.index.tolist() + invalid_file_features, token, service_url, ssl_cert)
@@ -1569,6 +1572,17 @@ def main(config_json):
                        'recipients': params['admin_email_address'],
                        'message_body_type': 'plain'
                        })
+
+        # Remove any of the track JSONs that were created while processing these tickets. Since all database operations
+        #   are run within a transaction, when there's an error, the transaction gets rolled back. That includes any
+        #   tickets created in the submissions table, which need to be present when a track is imported. In order for
+        #   the available track files to stay in sync with the database, all track files associated with those rolled
+        #   back tickets should be deleted
+        for f in TRACK_JSON_FILES:
+            try:
+                os.remove(f)
+            except:
+                continue
     # '''
 
     # send emails here so that all DB transactions are committed before actually sending anything
