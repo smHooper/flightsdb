@@ -1,11 +1,35 @@
-'''
-Manual entry point into workflow to process/import flight data that were downloaded, but
-'''
+"""
+Manual entry point into workflow to process/import flight data that were downloaded. This script, 
+however, will not send email receipts/notfications
+
+Usage:
+    process_sqlite_file.py <sqlite_path> <config_json> [--overwrite_attachments] [--object_ids=<str>] 
+
+Examples:
+    process_sqlite_file.py ..\poll_feature_service_params\dena_flight_data_query_view_20211025-104441.db ..\config\poll_feature_service_params.json
+    process_sqlite_file.py dena_flight_data_query_view_20211025-104441.db ..\config\poll_feature_service_params.json --overwrite_attachments
+    process_sqlite_file.py dena_flight_data_query_view_20211025-104441.db ..\config\poll_feature_service_params.json --object_ids=189,190
+
+
+Required parameters:
+    sqlite_path     Path of the SQLite database file to process
+    config_json     Configuration file passed to poll_feature_service.py
+
+Options:
+    -h, --help                      Show this screen.
+    -o, --overwrite_attachments     Boolean flag indicating whether or not to overwrite attachments 
+                                    if they already exist
+    -i, --object_ids=<str>          Comma-separated list of object IDs from the objectid field of 
+                                    the SQLite file. Only rows with an ID specified in this list 
+                                    will be processed
+"""
+
 
 import sqlalchemy
 from poll_feature_service import * # all modules and constants impored in poll_feature_service
+from utils import get_cl_args
 
-def main(sqlite_path, config_json, overwrite_attachments=False):
+def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None):
 
     params = read_json_params(config_json)
 
@@ -25,6 +49,18 @@ def main(sqlite_path, config_json, overwrite_attachments=False):
 
         all_flights.landing_datetime = (all_flights.landing_datetime/1000).dropna().apply(datetime.fromtimestamp)
 
+    # If specific IDs (for the flights table) were passed, only process those
+    if object_ids:
+        if type(object_ids) == str:
+            try:
+                object_ids = [int(id_str.strip()) for id_str in object_ids.split(',')]
+            except Exception as e:
+                raise ValueError(f'Could not parse object_ids string {object_ids} because {e}')
+        all_flights = all_flights.loc[all_flights.objectid.isin(object_ids)]
+        global_ids = all_flights.globalid
+        attachments = attachments.loc[attachments.parentglobalid.isin(global_ids)]
+        if len(all_landings):
+            all_landings.loc[all_landings.parentglobalid.isin(global_ids)]
 
     # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
     connection_info = params['db_credentials']
@@ -104,8 +140,8 @@ def main(sqlite_path, config_json, overwrite_attachments=False):
                 # If there were errors, the flights and landing DataFrames will be empty
                 if len(excel_flights):
                     excel_landings.CreationDate = info.CreationDate
-                    all_flights = pd.concat([all_flights, excel_flights])
-                    all_landings = pd.concat([all_landings, excel_landings])
+                    all_flights = pd.concat([all_flights, excel_flights], ignore_index=True)
+                    all_landings = pd.concat([all_landings, excel_landings], ignore_index=True)
 
                 # Remove the flight record that just had the Excel file because it
                 all_flights = all_flights.loc[all_flights.objectid != info.objectid]
@@ -193,4 +229,5 @@ def main(sqlite_path, config_json, overwrite_attachments=False):
 
 
 if __name__ == '__main__':
-    sys.exit(main(*sys.argv[1:]))
+    args = get_cl_args(__doc__)
+    sys.exit(main(**args))
