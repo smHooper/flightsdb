@@ -178,7 +178,7 @@ def read_gpx(path, seg_time_diff=15):
     gdf.sort_values(by='utc_datetime', inplace=True)
     gdf['diff_m'] = calc_distance_to_last_pt(gdf)
     gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
-    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff / 60)), 'diff_seconds'] = -1
+    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff * 60)), 'diff_seconds'] = -1
     gdf['m_per_sec'] = gdf.diff_m / gdf.diff_seconds
     gdf['knots'] = (gdf.m_per_sec * M_PER_S_TO_KNOTS).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
     gdf.loc[(gdf.knots < 0) | gdf.knots.isnull(), 'knots'] = 0
@@ -258,7 +258,58 @@ def parse_web_sentinel_xml(parser, seg_time_diff=15):
     gdf = gpd.GeoDataFrame(df, geometry=geometry)
     gdf['diff_m'] = calc_distance_to_last_pt(gdf)
     gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
-    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff / 60)), 'diff_seconds'] = -1
+    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff * 60)), 'diff_seconds'] = -1
+    gdf['m_per_sec'] = gdf.diff_m / gdf.diff_seconds
+    if 'knots' not in gdf:
+        gdf['knots'] = (gdf.m_per_sec * M_PER_S_TO_KNOTS).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
+    gdf.loc[(gdf.knots < 0) | gdf.knots.isnull(), 'knots'] = 0
+
+    gdf['previous_lat'] = gdf.shift().latitude
+    gdf['previous_lon'] = gdf.shift().longitude
+    gdf['heading'] = gdf.apply(lambda row:
+                                    calc_bearing(*row[['previous_lat', 'previous_lon', 'latitude', 'longitude']]),
+                               axis=1)\
+        .fillna(-1).round().astype(int)
+
+    return gdf
+
+
+def parse_inreach_xml(parser, seg_time_diff=15):
+
+    points = []
+    for placemark in parser.find_all('Placemark'):
+        if placemark.find('kml:Point'):
+            points.append({d['name']: d.find('value').text for d in placemark.find_all('kml:Data') if d.find('value')})
+
+    df = pd.DataFrame(points)
+
+    df['ak_datetime'] = pd.to_datetime(df['Time'])
+    df['utc_datetime'] = pd.to_datetime(df['Time UTC'])
+    df = df.sort_values('ak_datetime') \
+        .loc[df.Event.str.lower().str.contains('tracking')]\
+        .rename(columns={c: c.lower().replace(' ', '_') for c in df.columns})
+
+
+    # Search for registration because with an InReach, it seems particularly likely that multiple aircraft might be
+    #   included in the same file
+    for c in df.columns:
+        registration = df[c].astype(str).str.extract(f'({REGISTRATION_REGEX})').squeeze().str.upper().fillna(False)
+        if registration.all():
+            df['registration'] = registration
+            break
+
+    if not (df.spatialrefsystem.dropna() == 'WGS84').all():
+        raise RuntimeError('Not all coordinates in WGS84')
+
+    df.longitude = df.longitude.astype(float)
+    df.latitude = df.latitude.astype(float)
+    df['altitude_ft'] = df.elevation.str.extract(r'(\d*\.\d*)').astype(float) * FEET_PER_METER
+
+    geometry = df.apply(lambda row: shapely_Point(row.longitude, row.latitude, row.altitude_ft), axis=1)
+    gdf = gpd.GeoDataFrame(df, geometry=geometry)
+    gdf['diff_m'] = calc_distance_to_last_pt(gdf)
+    gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
+    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff * 60)), 'diff_seconds'] = -1
     gdf['m_per_sec'] = gdf.diff_m / gdf.diff_seconds
     if 'knots' not in gdf:
         gdf['knots'] = (gdf.m_per_sec * M_PER_S_TO_KNOTS).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
@@ -309,7 +360,7 @@ def read_kml(path, seg_time_diff=15):
             ...
     '''
 
-    with open(path) as f:
+    with open(path, encoding='utf-8') as f:
         soup = bs4.BeautifulSoup(f, 'xml')
 
     if soup.find('name', text='www.websentinel.net'):
@@ -317,7 +368,13 @@ def read_kml(path, seg_time_diff=15):
             return parse_web_sentinel_xml(soup, seg_time_diff)
         except Exception as e:
             raise RuntimeError('Could not parse Web Sentinel KML file %s: %s' % (path, e))
-
+    elif soup.find('kml:Data', attrs={'name': 'IMEI'}):
+        try:
+            return parse_inreach_xml(soup, seg_time_diff)
+        except RuntimeError as e:
+            raise RuntimeError('Could not process %s because %s' % (path, e))
+        except Exception as e:
+            raise RuntimeError('Could not parse InReach KML file %s: %s' % (path, e))
     elif soup.find('gx:Track'):
         try:
             parser = kml_parser.ForeflightKMLParser()
@@ -784,7 +841,6 @@ def import_data(connection_txt=None, data=None, path=None, seg_time_diff=15, min
     elif not engine:
         raise ValueError('Either an SQLAlchemy Engine (from create_engine()) or connection_txt must be given')
 
-    
     # Recalculate landing time and duration here in case there were edits that changed these
     #   Also drop any segments with only one vertex 
     gdf = calculate_duration(gdf)\
