@@ -24,7 +24,9 @@ const landingColumns = [
 
 const editors = [
 	'shooper',
-	'amaki'
+	'amaki',
+	'llabahn',
+	'jlebel'
 ];
 
 var landingQueryResult = {}; //global var to store result for writing CSV  
@@ -36,20 +38,7 @@ var cloneableLanding;
 var cloneableFlight;
 var username = '';
 
-/* Extentions */
-Date.prototype.addDays = function(days) {
-    var date = new Date(this.valueOf());
-    date.setDate(date.getDate() + days);
-    return date;
-}
 
-
-Date.prototype.getChromeFormattedString = function() {
-
-	let month = '0' + (this.getMonth() + 1);
-	let day = '0' + (this.getDate())
-	return `${this.getFullYear()}-${month.slice(month.length - 2, month.length)}-${day.slice(day.length - 2, day.length)}`;
-}
 
 
 // jquery pseudo-selectors to determine if ellipsis is active or not
@@ -1765,7 +1754,25 @@ function onExportDataClick() {
 	const operator = landingQueryResult.data[Object.keys(landingQueryResult.data)[0]].operator_code.toLowerCase();
 	const filename = `landing_fees_${operator}_${$('#input-start_date').val()}_${$('#input-end_date').val()}.csv`
 
-	let csvString = $.csv.fromObjects(landingQueryResult.data)
+	let csvData = [];
+	for (const flightID in landingQueryResult.data) {
+		const flight = landingQueryResult.data[flightID];
+		let flightData = {};
+		for (const flightProperty in flight) {
+			if (!flightProperty.startsWith('landing') && flightProperty !== 'total_fee') {
+				flightData[flightProperty] = flight[flightProperty];
+			}
+		}
+		for (const landingID of flight.landingsOrder) {
+			const landing = flight.landings[landingID];
+			for (const landingProperty in landing) {
+				if (landingProperty.startsWith('landing')) flightData[landingProperty] = landing[landingProperty];
+			}
+		}
+		flightData.total_flight_fee = flight.total_fee;
+		csvData.push(flightData);
+	}
+	let csvString = $.csv.fromObjects(csvData)
 	let a = $(`<a href="data:text/plain;charset=utf-8,${encodeURIComponent(csvString)}" download="${filename}"></a>`)
 		.appendTo('body')
 		.get(0).click(); // need to trigger the native dom click event because jQuery excludes it

@@ -18,9 +18,9 @@
 
   <!--turf (for geometry calculations)
   <script src='https://unpkg.com/@turf/turf@6.3.0/turf.min.js'></script>-->
-
-  <link rel="stylesheet" href="css/track-editor.css"/>
+  
   <link rel="stylesheet" href="css/flights.css"/>
+  <link rel="stylesheet" href="css/track-editor.css"/>
 
 </head>
 
@@ -44,6 +44,13 @@
 
     <div id="file-menu-title" class="col-12">
       <h4>Files to import</h4>
+      <div id="ignore-duplicates-slider-container" class="slider-container">
+        <label class="switch mx-10">
+          <input type="checkbox">
+          <span class="slider round"></span>
+        </label>
+        <span class="slider-label">Ignore duplicates when importing</span>
+      </div>
     </div>
     <div id="main-content-container">
       
@@ -75,6 +82,7 @@
 
   </div>
 
+  <script src="js/flights.js"></script>
   <script src="js/track-editor.js"></script>
   <script type="text/javascript">
 

@@ -6,12 +6,29 @@ body {
 
 
 #file-menu-title {
-	width:100%; 
-	display: block; 
+	width: 100%; 
+	display: flex; 
 	margin-top: 10px
+
 }
 #file-menu-title > h4 {
 	color: rgb(125, 125, 125);
+}
+.slider-container {
+	flex: 1 1 auto;
+	margin-left: 50px; 
+}
+.slider {
+	background-color: rgb(75, 75, 75);
+}
+.slider:before {
+	background-color: rgb(190, 190, 190);
+}
+.slider-label {
+	line-height: 34px;
+	height: 34px;
+	color: rgb(150, 150, 150);
+	margin-left: 10px;
 }
 
 #main-content-container {
@@ -148,18 +165,28 @@ g > path.leaflet-interactive.cursor-eligible.select-cursor-enabled{
 .card.selected {
 	background-color: rgb(95, 95, 95);
 }
+.card-header-content {
+	width: 100%; 
+	display: flex; 
+	height: 40px;
+	justify-content: space-between;
+	padding-right: 10%;
 
-.card-header a{
+}
+.card-header a.card-link{
+	display: inline-block; 
+	flex: 1; 
+	min-width: 50%; 
+	max-width: 75%; 
+	padding-left: 5%;
 	color: rgb(145, 145, 145);
 }
-
-.card-header a:hover {
+.card-header a.card-link:hover {
 	/*font-weight: bold;*/
 	color: rgb(180, 180, 180);
 	cursor: pointer;
 }
-
-.card.selected .card-header a {
+.card.selected .card-header a.card-link {
 	color: rgb(180, 180, 180);
 	color: hsl(195, 84%, 61%);
 }
@@ -192,6 +219,7 @@ g > path.leaflet-interactive.cursor-eligible.select-cursor-enabled{
 	height: 50px;
 	width: 100%;
 	transition: 0.2s;
+	display: flex;
 }
 
 .legend-row:hover {
@@ -211,28 +239,50 @@ g > path.leaflet-interactive.cursor-eligible.select-cursor-enabled{
 .legend-cell {
 	color: rgb(125, 125, 125);
 	text-align: center;
-	display: inline-block;
+	display: inline-flex;
 	vertical-align: middle;
 	transition: 0.2s;
 	height: 100%;
-	padding-top: 12px;
-	padding-bottom: 12px;
+	padding: 0 12px;
+	align-items: center;
 }
 
 .legend-cell:hover {
 	color: rgb(145, 145, 145);
 }
 
-.legend-cell-selected {
+.legend-row-selected .legend-cell {
 	color: rgb(160, 160, 160);
 	text-align: center;
-	display: inline-block;
 	vertical-align: middle;
 	height: 100%;
 	padding-top: 12px;
 	padding-bottom: 12px;
 }
 
+.legend-cell.legend-patch-cell {
+	width: 60px; 
+	text-align: right;
+	padding: 0 10px;
+	margin-left: 5%;
+}
+.legend-cell.departure-time-cell {
+	text-align: left;
+	padding-left: 15px;
+  flex: 1 1 40%;
+}
+.legend-cell.delete-button-cell {
+	max-width: 10%; 
+	width: 10%; 
+	/*margin: 0 10px; */
+	justify-content: flex-end;
+}
+.legend-cell.checkbox-cell {
+	text-align: center; 
+	width: 100px; 
+	padding: 14px 10px;
+	display: inline-block;
+}
 .legend-patch {
 	cursor: pointer;
 }
@@ -325,6 +375,12 @@ td {
 	text-align: center;
 }
 
+.legend {
+	overflow-x: hidden;
+	display:block; 
+	width:100%;
+	max-height:250px;
+}
 .dark-scrollbar {
 	overflow-y: auto;
 }
@@ -345,7 +401,28 @@ div.dark-scrollbar::-webkit-scrollbar-thumb:hover {
 	flex: 1; 
 	flex-direction: column; 
 	background-color: rgb(60, 60, 60); 
-	padding: 20px;
+	padding: 0 20px 20px 20px;
+}
+.switch-all-button-container {
+	width: 100%;
+	height: 40px;
+	padding-bottom: 10px;
+	display: flex;
+	justify-content: flex-end;
+}
+.track-info-panel button.text-only-button, .text-only-button:focus {
+	background: none;
+	-webkit-box-shadow: none !important;
+	outline: -webkit-focus-ring-color auto 0px !important;
+	border: none;
+	color: rgb(175, 175, 175);
+	transition: 0.2s all;
+	cursor: pointer;
+	width: 100px;
+	height: 100%;
+}
+.track-info-panel button.text-only-button:hover {
+	color: rgb(200, 200, 200);
 }
 .track-info-header-container {
 	display: flex;
@@ -415,7 +492,9 @@ div.dark-scrollbar::-webkit-scrollbar-thumb:hover {
 	-ms-user-select: none;
 	user-select: none;
 	height: 100%;
-	width: 100%;
+}
+.checkbox-cell .checkmark-container {
+	left: 30px;
 }
 
 /* Hide the browser's default checkbox */

@@ -1,4 +1,4 @@
-export function showLoadingIndicator() {
+function showLoadingIndicator() {
 
     //set a timer to turn off the indicator after a max of 15 seconds because 
     //  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
@@ -18,7 +18,7 @@ export function showLoadingIndicator() {
 }
 
 
-export function hideLoadingIndicator(caller) {
+function hideLoadingIndicator(caller) {
     
 
     var indicator = $('#loading-indicator')
@@ -41,7 +41,7 @@ export function hideLoadingIndicator(caller) {
 }
 
 
-export function fillSelectOptions(selectElementID, queryString, dbname, optionClassName='track-info-option') {
+function fillSelectOptions(selectElementID, queryString, dbname, optionClassName='track-info-option') {
     
 
     var deferred = $.ajax({
@@ -67,4 +67,26 @@ export function fillSelectOptions(selectElementID, queryString, dbname, optionCl
     });
 
     return deferred;
+}
+
+/* Extentions */
+Date.prototype.addDays = function(days) {
+    var date = new Date(this.valueOf());
+    date.setDate(date.getDate() + days);
+    return date;
+}
+
+
+Date.prototype.getChromeFormattedString = function() {
+
+    let month = '0' + (this.getMonth() + 1);
+    let day = '0' + (this.getDate())
+    return `${this.getFullYear()}-${month.slice(month.length - 2, month.length)}-${day.slice(day.length - 2, day.length)}`;
+}
+
+
+Date.prototype.getChromeFormattedTimeString = function() {
+    let hour = '0' + (this.getHours());
+    let minute = '0' + (this.getMinutes());
+    return `${hour.slice(hour.length - 2, hour.length)}:${minute.slice(minute.length - 2, minute.length)}`;
 }

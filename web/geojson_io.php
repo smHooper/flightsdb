@@ -93,6 +93,12 @@ if (isset($_POST['action'])) {
 		echo json_encode($json_files);
 	}
 
+	/*if ($_POST['action'] == 'runCommand') {
+		$cmd = $_POST['command'];
+		echo "$cmd";
+		echo shell_exec($cmd);
+	}*/
+
 	// write json data to the server
 	if ($_POST['action'] == 'writeFile') {
 		// check that both the json string and the path to write the json to were given
@@ -189,7 +195,8 @@ if (isset($_POST['action'])) {
 			$geojson = $_POST['geojsonString'];
 			$trackInfo = $_POST['trackInfoString'];
 			$stderrPath = $_POST['stderrPath'];
-			$cmd = "conda activate overflights && python ..\\scripts\\import_from_editor.py $geojson $trackInfo $import_param_file 2> $stderrPath && conda deactivate";
+			$ignoreDuplicates = $_POST['ignoreDuplicates'] === 'true' ? 'True' : '';
+			$cmd = "conda activate overflights && python ..\\scripts\\import_from_editor.py $geojson $trackInfo $import_param_file $ignoreDuplicates 2> $stderrPath && conda deactivate";
 			echo shell_exec($cmd);
 		}
 	}

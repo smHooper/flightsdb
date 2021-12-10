@@ -13,7 +13,7 @@ import db_utils
 pd.set_option('display.max_columns', None)
 
 
-def main(geojson_path, track_info_json, config_json):
+def main(geojson_path, track_info_json, config_json, ignore_duplicates=False):
     # def main(geojson_str, track_info_str, config_json):
     with open(config_json) as j:
         params = json.load(j)
@@ -36,6 +36,7 @@ def main(geojson_path, track_info_json, config_json):
         if k in flight_columns.values and k not in gdf:
             gdf[k] = v
     gdf['registration'] = track_info['registration']
+    gdf['agol_global_id'] = track_info['globalid']
 
     gdf.drop(columns=['departure_datetime', 'id'], inplace=True)
     for time_column in gdf.columns[gdf.columns.str.endswith('time')]:
@@ -49,7 +50,7 @@ def main(geojson_path, track_info_json, config_json):
     seg_time_diff = import_params['seg_time_diff'] if 'seg_time_diff' in import_params else 15
     gdf = import_track.get_flight_id(gdf, seg_time_diff)
 
-    import_track.import_data(engine=engine, data=gdf, path=track_info['name'], **import_params)
+    import_track.import_data(engine=engine, data=gdf, path=track_info['name'], ignore_duplicate_flights=ignore_duplicates, called_from_editor=True, **import_params)
 
 
 if __name__ == '__main__':

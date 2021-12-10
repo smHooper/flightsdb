@@ -2,8 +2,8 @@ const dataSteward = 'dena_flight_data@nps.gov';
 var zoomMapCalled = false;
 const noFileGIFS = [
 	"https://media2.giphy.com/media/l2Je0ihsoThQy6D0Q/giphy.gif?cid=790b76112a7424c801a727f0e2d02ccc6731809cafdc8d60&rid=giphy.gif",
-    "https://media.tenor.com/images/ea9f942522f48f3897999cda42778e6a/tenor.gif",
-    "https://media.tenor.com/images/18bc79d054124aa3d8c594f6555383ed/tenor.gif" 
+	"https://media.tenor.com/images/ea9f942522f48f3897999cda42778e6a/tenor.gif",
+	"https://media.tenor.com/images/18bc79d054124aa3d8c594f6555383ed/tenor.gif" 
 ];
 
 /*
@@ -38,23 +38,23 @@ Modify the default boxzoom Leaflet.Handler to use the same functionality for sel
 			this._container.style.cursor = 'crosshair';
 
 			L.DomEvent
-			    .on(document, 'mousemove', this._onMouseMove, this)
-			    .on(document, 'mouseup', this._onMouseUp, this)
-			    .on(document, 'keydown', this._onKeyDown, this)
-			    //.preventDefault(e);
+				.on(document, 'mousemove', this._onMouseMove, this)
+				.on(document, 'mouseup', this._onMouseUp, this)
+				.on(document, 'keydown', this._onKeyDown, this)
+				//.preventDefault(e);
 		}
 	},
 
 	_onMouseMove: function (e) {
 		var startPoint = this._startLayerPoint,
-		    box = this._box,
+			box = this._box,
 
-		    layerPoint = this._map.mouseEventToLayerPoint(e),
-		    offset = layerPoint.subtract(startPoint),
+			layerPoint = this._map.mouseEventToLayerPoint(e),
+			offset = layerPoint.subtract(startPoint),
 
-		    newPos = new L.Point(
-		        Math.min(layerPoint.x, startPoint.x),
-		        Math.min(layerPoint.y, startPoint.y));
+			newPos = new L.Point(
+				Math.min(layerPoint.x, startPoint.x),
+				Math.min(layerPoint.y, startPoint.y));
 
 		L.DomUtil.setPosition(box, newPos);
 
@@ -73,9 +73,9 @@ Modify the default boxzoom Leaflet.Handler to use the same functionality for sel
 		L.DomUtil.enableTextSelection();
 
 		L.DomEvent
-		    .off(document, 'mousemove', this._onMouseMove)
-		    .off(document, 'mouseup', this._onMouseUp)
-		    .off(document, 'keydown', this._onKeyDown);
+			.off(document, 'mousemove', this._onMouseMove)
+			.off(document, 'mouseup', this._onMouseUp)
+			.off(document, 'keydown', this._onKeyDown);
 	},
 
 	_onMouseUp: function (e) {
@@ -88,8 +88,8 @@ Modify the default boxzoom Leaflet.Handler to use the same functionality for sel
 		if (this._startLayerPoint.equals(layerPoint)) { return; }
 
 		var bounds = new L.LatLngBounds(
-		        map.layerPointToLatLng(this._startLayerPoint),
-		        map.layerPointToLatLng(layerPoint));
+				map.layerPointToLatLng(this._startLayerPoint),
+				map.layerPointToLatLng(layerPoint));
 
 		let fileName = getSelectedFileName();
 		let segmentID = selectedLines[fileName];
@@ -118,17 +118,17 @@ function deepCopy(inObject) {
   let outObject, value, key
 
   if (typeof inObject !== "object" || inObject === null) {
-    return inObject // Return the value if inObject is not an object
+	return inObject // Return the value if inObject is not an object
   }
 
   // Create an array or object to hold the values
   outObject = Array.isArray(inObject) ? [] : {}
 
   for (key in inObject) {
-    value = inObject[key]
+	value = inObject[key]
 
-    // Recursively (deep) copy for nested objects, including arrays
-    outObject[key] = deepCopy(value)
+	// Recursively (deep) copy for nested objects, including arrays
+	outObject[key] = deepCopy(value)
   }
 
   return outObject
@@ -203,8 +203,8 @@ function zoomMap() {
 	map.fitBounds(zoomTo);
 
 	//fitBounds() will trigger onMapZoom, so reset what it did
-	// 	delay this by 1 seconds so the move event has time to fire, 
-	//	because it happens asynchronously
+	//  delay this by 1 seconds so the move event has time to fire, 
+	//  because it happens asynchronously
 	setTimeout(
 		function() {
 			mapExtentBuffer = [...currentBuffer];
@@ -239,11 +239,11 @@ function onNextExtentClick() {
 	var bufferLength = mapExtentBuffer.length;
 
 	// Use separate conditional test to ensure that if current extent is the second to last 
-	//	(and it will be the last) that the button looks disabled
+	//  (and it will be the last) that the button looks disabled
 	if (currentMapExtentIndex >= bufferLength - 1) {
 		currentMapExtentIndex = bufferLength - 1;
 	} else {
-		currentMapExtentIndex ++;			
+		currentMapExtentIndex ++;           
 		zoomMap();
 	}
 }
@@ -298,9 +298,9 @@ function splitAtVertex(segmentID, vertexFeatureID, minVertexIndex, isRedo=false)
 
 	// Create the new point geojson by looping through all points 
 	//  of the original and adding each .feature to the json.
-	//	It's inefficient to recreate the original points too, but 
-	//	if I don't there's some reference to the old points that 
-	//	means the min_index changes in lines that were split before.
+	//  It's inefficient to recreate the original points too, but 
+	//  if I don't there's some reference to the old points that 
+	//  means the min_index changes in lines that were split before.
 	const newMinPointIndex = splittingFeature.properties.point_index;
 	const newDepartureTime = splittingFeature.properties.ak_datetime;
 	var newGeoJSON = {
@@ -360,7 +360,7 @@ function splitAtVertex(segmentID, vertexFeatureID, minVertexIndex, isRedo=false)
 	isEditing[fileName] = true;
 	
 	// If the user is not redoing the edit action (i.e., pressed ctr + shift + Z or the redo button), 
-	//	reset the buffer because this is a new action
+	//  reset the buffer because this is a new action
 	if (!isRedo) {
 		redoBuffer = [];
 		editingBufferIndex ++;
@@ -382,14 +382,14 @@ function undoSplitAtVertex({fileName, segmentID, mergeSegID}) {
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
 		loadTracksFromMemory(fileName)
-	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+			.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
 	}
 
 	if (selectedLines[fileName] == segmentID) {
 		hideVertices(segmentID);
 	}
 	// Get the vertex ID where the split occurred so the split can be redone 
-	//	if the user wants (i.e., presses ctr + shift + Z)
+	//  if the user wants (i.e., presses ctr + shift + Z)
 	let mergeGeojson = pointGeojsonLayers[fileName][mergeSegID].toGeoJSON();
 	let splitVertexID = mergeGeojson.features[0].id;
 
@@ -453,7 +453,7 @@ function redoSplitAtVertex({fileName, segmentID, vertexFeatureID, minVertexIndex
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
 		loadTracksFromMemory(fileName)
-	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+			.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
 	}
 
 	splitAtVertex(segmentID, vertexFeatureID, minVertexIndex, isRedo=true);
@@ -466,7 +466,7 @@ function deselectAllPoints(selectedFileName, selectedSegmentID) {
 	*/
 
 	// Remove selected class
-	$('.track-points-selected').removeClass('track-points-selected');
+	$('.overflights-point-selected').removeClass('overflights-point-selected');
 	
 	// Remove selected style
 	const segmentColor = colors[selectedFileName][selectedSegmentID]
@@ -502,16 +502,16 @@ function onVertexClick(e, segmentID, vertexFeatureID, minVertexIndex) {
 		// Prevent the popup from showing
 		e.target.closePopup();
 
-		if ($path.hasClass('track-points-selected')) {
+		if ($path.hasClass('overflights-point-selected')) {
 			// It's already selected so deselect just this point
 			e.target.setStyle(defaultStyle);
 
-			$path.removeClass('track-points-selected');
+			$path.removeClass('overflights-point-selected');
 
 		} else { // select it
 
 			// If the user used the select button and the shift key was not pressed, 
-			//	deselect all other points
+			//  deselect all other points
 			if (!e.originalEvent.shiftKey) deselectAllPoints(fileName, segmentID);
 			
 			// Select the clicked vertex
@@ -520,12 +520,12 @@ function onVertexClick(e, segmentID, vertexFeatureID, minVertexIndex) {
 				fillColor: '#56eaee',
 				weight: 3
 			});
-			$path.addClass('track-points-selected');
+			$path.addClass('overflights-point-selected');
 		}
 
 		// Disable/enable the delete toolbar button depending on whether any points are selected
 		$('#img-delete_point').parent()
-			.toggleClass('leaflet-toolbar-icon-disabled', $('.track-points-selected').length == 0);
+			.toggleClass('leaflet-toolbar-icon-disabled', $('.overflights-point-selected').length == 0);
 	}
 }
 
@@ -631,11 +631,11 @@ function showVertices(id, hideCurrent=true) {
 	$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
 
 	// Remove the cut/select cursor on hover for the previous track and show the 
-	//	cut/select icon on hover for this segment
-	if ($('#img-split_vertex').parent().hasClass('map-tool-selected')) ? 		
+	//  cut/select icon on hover for this segment
+	$('#img-split_vertex').parent().hasClass('map-tool-selected') ?         
 		$('.cursor-eligible').addClass('cut-cursor-enabled'):
 		$('.cut-cursor-enabled').removeClass('cut-cursor-enabled');
-	
+
 	if ($('#img-select_point').parent().is('.map-tool-selected')) 
 		$('.cursor-eligible').addClass('select-cursor-enabled');
 	
@@ -644,72 +644,72 @@ function showVertices(id, hideCurrent=true) {
 
 function showLoadingIndicator(timeout=15000) {
 
-    //set a timer to turn off the indicator after a max of 15 seconds because 
-    //  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
-    //  with who called it
-    if (timeout) setTimeout(hideLoadingIndicator, timeout);
+	//set a timer to turn off the indicator after a max of 15 seconds because 
+	//  sometimes hideLoadingIndicator doesn't get called or there's some mixup 
+	//  with who called it
+	if (timeout) setTimeout(hideLoadingIndicator, timeout);
 
-    var thisCaller = showLoadingIndicator.caller.name;
+	var thisCaller = showLoadingIndicator.caller.name;
 
 	var indicator = $('#loading-indicator').removeClass('hidden');
 
-    // check the .data() to see if any other functions called this
-    indicator.data('callers', indicator.data('callers') === undefined ? 
-    	[thisCaller] : indicator.data('callers').concat([thisCaller])
-    )
+	// check the .data() to see if any other functions called this
+	indicator.data('callers', indicator.data('callers') === undefined ? 
+		[thisCaller] : indicator.data('callers').concat([thisCaller])
+	)
 
 }
 
 
 function hideLoadingIndicator(caller) {
-    
+	
 
-    var indicator = $('#loading-indicator')
-    // if no caller was given, just remove the indicator
-    if (caller === undefined) {
-         indicator.data('callers', [])
-    } else if (indicator.data('callers').includes(caller)) {
-        indicator.data(
-            'callers', 
-            indicator.data('callers').filter(thisCaller => thisCaller != caller)
-        );
-    }
+	var indicator = $('#loading-indicator')
+	// if no caller was given, just remove the indicator
+	if (caller === undefined) {
+		 indicator.data('callers', [])
+	} else if (indicator.data('callers').includes(caller)) {
+		indicator.data(
+			'callers', 
+			indicator.data('callers').filter(thisCaller => thisCaller != caller)
+		);
+	}
 
-    // Hide the indicator if there are no more callers
-    if (!indicator.data('callers').length) {
-        //$('#loading-indicator-background').addClass('hidden');
-        indicator.addClass('hidden');
-    }
+	// Hide the indicator if there are no more callers
+	if (!indicator.data('callers').length) {
+		//$('#loading-indicator-background').addClass('hidden');
+		indicator.addClass('hidden');
+	}
 
 }
 
 
 function fillSelectOptions(selector, queryString, dbname, optionClassName='track-info-option') {
-    
+	
 
-    var deferred = $.ajax({
-        url: 'geojson_io.php',
-        method: 'POST',
-        data: {action: 'query', dbname: dbname, queryString: queryString},
-        cache: false,
-        success: function(queryResultString){
-            var queryResult = queryResultString.startsWith('ERROR') ? false : $.parseJSON(queryResultString);
-            if (queryResult) {
-                queryResult.forEach(function(object) {
-                    $(selector).append(
-                        `<option class="${optionClassName}" value="${object.value}">${object.name === undefined ? object.value : object.name}</option>`
-                    );
-                })
-            } else {
-                console.log(`error filling in ${selectElementID}: ${queryResultString}`);
-            }
-        },
-        error: function(xhr, status, error) {
-            console.log(`fill select failed with status ${status} because ${error} from query:\n${sql}`)
-        }
-    });
+	var deferred = $.ajax({
+		url: 'geojson_io.php',
+		method: 'POST',
+		data: {action: 'query', dbname: dbname, queryString: queryString},
+		cache: false,
+		success: function(queryResultString){
+			var queryResult = queryResultString.startsWith('ERROR') ? false : $.parseJSON(queryResultString);
+			if (queryResult) {
+				queryResult.forEach(function(object) {
+					$(selector).append(
+						`<option class="${optionClassName}" value="${object.value}">${object.name === undefined ? object.value : object.name}</option>`
+					);
+				})
+			} else {
+				console.log(`error filling in ${selectElementID}: ${queryResultString}`);
+			}
+		},
+		error: function(xhr, status, error) {
+			console.log(`fill select failed with status ${status} because ${error} from query:\n${sql}`)
+		}
+	});
 
-    return deferred;
+	return deferred;
 }
 
 function hideVertices(id) {
@@ -727,10 +727,10 @@ function hideVertices(id) {
 
 		// when loading hideVertices() is called before the element exists, so test first
 		const el = layer.getElement(); 
-		if (el) el.classList.remove('track-points-selected');
+		if (el) el.classList.remove('overflights-point-selected');
 	});
 
-	// If the select points tool is enabled, disable it		
+	// If the select points tool is enabled, disable it     
 	$('#img-select_point').parent().removeClass('map-tool-selected');
 	
 	// Make sure the toolbar button is disabled
@@ -741,10 +741,10 @@ function hideVertices(id) {
 	//unselect this legend item (if it's selected)
 	$('#legend-' + fileName + '-' + id)
 		.removeClass('legend-row-selected')
-		.addClass('legend-row')
+		/*.addClass('legend-row')
 		.children()
 			.removeClass('legend-cell-selected')
-			.addClass('legend-cell');
+			.addClass('legend-cell');*/
 }
 
 
@@ -786,23 +786,23 @@ function selectLegendItem(id) {
 
 	// Deselect all currently selected .legend-cell items,
 	//  which actually contain the formatting
-	$('.legend-cell-selected')
-		.removeClass('legend-cell-selected')
-		.addClass('legend-cell');
+	/*$('.legend-cell-selected')
+		.removeClass('legend-cell-selected');*/
+		//.addClass('legend-cell');
 	
 	// Remove the selection class from the row
 	$('.legend-row-selected')
-		.removeClass('legend-row-selected')
-		.addClass('legend-row')
+		.removeClass('legend-row-selected');
+		//.addClass('legend-row')
 
 	// The row was a assigned the id, so get it's children (the .legned-cells)
 	//  and add the class that contains the 
 	$(`#legend-${fileName}-${id}`)
-		.removeClass('legend-row')
-		.addClass('legend-row-selected')
-		.children()
+		//.removeClass('legend-row')
+		.addClass('legend-row-selected');
+		/*.children()
 		.removeClass('legend-cell')
-		.addClass('legend-cell-selected');
+		.addClass('legend-cell-selected');*/
 
 	// If the checkbox was unselected, select it
 	// This only works if legend-row events are filtered and only allowed 
@@ -860,19 +860,19 @@ function showNoFileMessage() {
 
 async function removeFile(fileName) {
 
-    var nextCard = $(`#card-${fileName}`).next();
-    // check if there is a next card. If not, try to get the previous card
-    nextCard = nextCard.length ? nextCard : $(`#card-${fileName}`).prev()
+	var nextCard = $(`#card-${fileName}`).next();
+	// check if there is a next card. If not, try to get the previous card
+	nextCard = nextCard.length ? nextCard : $(`#card-${fileName}`).prev()
 
-    $(`#card-${fileName}`)
-        .fadeOut(500, function() {$(this).remove()});// remove the item from the legend
+	$(`#card-${fileName}`)
+		.fadeOut(500, function() {$(this).remove()});// remove the item from the legend
 
-   	if (nextCard.length) {
-	    var nextFileName = nextCard[0].id.replace('card-', '');
-	    var nextFilePath = `data/${nextFileName}_geojsons.json`;
+	if (nextCard.length) {
+		var nextFileName = nextCard[0].id.replace('card-', '');
+		var nextFilePath = `data/${nextFileName}_geojsons.json`;
 
-	    fileWasSelected(nextFileName);
-	    if (pointGeojsonLayers[nextFileName] == undefined) {
+		fileWasSelected(nextFileName);
+		if (pointGeojsonLayers[nextFileName] == undefined) {
 			loadTracksFromJSON(nextFilePath)
 				.done(() => {
 					hideLoadingIndicator('loadTracksFromJSON')
@@ -880,15 +880,15 @@ async function removeFile(fileName) {
 					//mapExtentBuffer = [map.getBounds()]
 					//currentMapExtentIndex = 0;
 				});
-	    } else {
-	        loadTracksFromMemory(nextFileName)
-	        	.then(() => {
+		} else {
+			loadTracksFromMemory(nextFileName)
+				.then(() => {
 					hideLoadingIndicator('loadTracksFromMemory')
 					// Reset zoom buffer
 					//mapExtentBuffer = [map.getBounds()]
 					//currentMapExtentIndex = 0;
 				});
-	    }
+		}
 	} else {
 		showLoadingIndicator(timeout=false);
 		setTimeout(() => {
@@ -897,21 +897,21 @@ async function removeFile(fileName) {
 		}, 1000);
 	}
 
-    // send ajax to delete file
-    var oldFilePath = `data/${fileName}_geojsons.json`;
-    $.ajax({
-        url: 'geojson_io.php',
-        method: 'POST',
-        data: {action: 'deleteFile', filePath: oldFilePath},
-        cache: false,
-        success: function(success){
-            if (!success) {
-                alert(`problem deleting file ${oldFilePath}. This file will have to be manually deleted.`)
-            }
-        }
-    });//*/
+	// send ajax to delete file
+	var oldFilePath = `data/${fileName}_geojsons.json`;
+	$.ajax({
+		url: 'geojson_io.php',
+		method: 'POST',
+		data: {action: 'deleteFile', filePath: oldFilePath},
+		cache: false,
+		success: function(success){
+			if (!success) {
+				alert(`problem deleting file ${oldFilePath}. This file will have to be manually deleted.`)
+			}
+		}
+	});//*/
 
-    delete isEditing[fileName];
+	delete isEditing[fileName];
 
 }
 
@@ -925,19 +925,19 @@ function deleteTrack(id=undefined, showAlert=true, isRedo=false) {
 	var fileName = getSelectedFileName();
 	var thisID = id === undefined ? selectedLines[fileName] : id;
 	if (thisID >= 0 && (showAlert ? confirm(`Are you sure you want to delete the selected track?`) : true)) {
-        if (Object.keys(pointGeojsonLayers[fileName]).length === 1) {
-            var deleteFile = confirm('This is the only track left in this file. Deleting it will delete the file. Are you sure you want to continue?');
-            if (deleteFile) {
-                removeFile(fileName);
-            } else {
-                return;
-            }
-        }
+		if (Object.keys(pointGeojsonLayers[fileName]).length === 1) {
+			var deleteFile = confirm('This is the only track left in this file. Deleting it will delete the file. Are you sure you want to continue?');
+			if (deleteFile) {
+				removeFile(fileName);
+			} else {
+				return;
+			}
+		}
 		map.removeLayer(pointGeojsonLayers[fileName][thisID]);
 		map.removeLayer(lineLayers[fileName][thisID]);
 
 		// If the user is not redoing the edit action (i.e., pressed ctr + shift + Z), 
-		//	reset the buffer because this is a new action
+		//  reset the buffer because this is a new action
 		if (!isRedo) {
 			redoBuffer = [];
 			editingBufferIndex ++;
@@ -999,9 +999,9 @@ function undoDeleteTrack({fileName, pointGeoJSON, latlngs, segmentInfo, segmentI
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
 		loadTracksFromMemory(fileName)
-	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
-	    
-	    if (selectedLines[fileName] !== segmentID) {
+			.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+		
+		if (selectedLines[fileName] !== segmentID) {
 			hideVertices(selectedLines[fileName]);
 			selectedLines[fileName] = segmentID;
 			$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
@@ -1028,7 +1028,7 @@ function redoDeleteTrack({fileName, segmentID}) {
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
 		loadTracksFromMemory(fileName)
-	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+			.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
 	}
 
 	deleteTrack(segmentID, showAlert=false, isRedo=true);
@@ -1038,7 +1038,7 @@ function redoDeleteTrack({fileName, segmentID}) {
 
 function deleteSelectedPoints(showAlert=true, isRedo=false) {
 
-	const nSelected = $('.track-points-selected').length;
+	const nSelected = $('.overflights-point-selected').length;
 	if (!nSelected) {
 		alert('You did not select any points to delete');
 		return;
@@ -1065,21 +1065,21 @@ function deleteSelectedPoints(showAlert=true, isRedo=false) {
 	var minIndex = properties.min_index;
 
 	// Loop through each layer and remove from the point layer. Also remove the associated
-	// 	vertex from the line layer. 
+	//  vertex from the line layer. 
 	var deletedFeatureIDs = [];
 	geojsonPointLayer.eachLayer(layer => {
 		var feature = layer.feature; 
 		var theseProperties = feature.properties;//only creates reference, not copy
 
 		// Point index should be sequential so make sure each point's index is adjusted 
-		//	by the number of points that have already been removed
+		//  by the number of points that have already been removed
 		const nToDelete = deletedFeatureIDs.length;
 		const $el = $(layer.getElement());
-		if ($el.hasClass('track-points-selected')) {
+		if ($el.hasClass('overflights-point-selected')) {
 			const pointIndex = theseProperties.point_index;
 
 			// Get the feature ID so it can be added to the undoBuffer arguments.
-			//	The ID stays constant no matter how many points are deleted
+			//  The ID stays constant no matter how many points are deleted
 			deletedFeatureIDs.push(feature.id); 
 
 			geojsonPointLayer.removeLayer(layer);
@@ -1097,7 +1097,7 @@ function deleteSelectedPoints(showAlert=true, isRedo=false) {
 			theseProperties.point_index -= nToDelete;
 
 			// Also make sure the minIndex for each point is up to date in 
-			//	case the first point was deleted
+			//  case the first point was deleted
 			theseProperties.minIndex = minIndex;
 		}
 		
@@ -1107,7 +1107,7 @@ function deleteSelectedPoints(showAlert=true, isRedo=false) {
 
 
 	// If the user is not redoing the edit action (i.e., pressed ctr + shift + Z), 
-	//	reset the buffer because this is a new action
+	//  reset the buffer because this is a new action
 	if (!isRedo) {
 		redoBuffer = [];
 		editingBufferIndex ++;
@@ -1132,7 +1132,7 @@ function deleteSelectedPoints(showAlert=true, isRedo=false) {
 function undoDeleteSelectedPoints({fileName, segmentID, pointGeoJSON, latlngs, deletedFeatureIDs}) {
 
 	// recreate the layers (for some reason, references to leaflet objects don't seem to work)
-	// 	remove the original points from the map
+	//  remove the original points from the map
 	map.removeLayer(pointGeojsonLayers[fileName][segmentID]);
 	// create the geojson layer, but add it later
 	pointGeojsonLayers[fileName][segmentID] = L.geoJSON(pointGeoJSON, { 
@@ -1148,9 +1148,9 @@ function undoDeleteSelectedPoints({fileName, segmentID, pointGeoJSON, latlngs, d
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
 		loadTracksFromMemory(fileName)
-	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
-	    
-	    if (selectedLines[fileName] !== segmentID) {
+			.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+		
+		if (selectedLines[fileName] !== segmentID) {
 			hideVertices(selectedLines[fileName]);
 			selectedLines[fileName] = segmentID;
 			$('#img-zoom_selected').parent().removeClass('leaflet-toolbar-icon-disabled');
@@ -1178,14 +1178,14 @@ function redoDeleteSelectedPoints({fileName, segmentID, featuresToDelete}) {
 	if (fileName !== getSelectedFileName()) {
 		fileWasSelected(fileName);
 		loadTracksFromMemory(fileName)
-	    	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+			.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
 	}
 
 	// Loop through each point and check if it's one of the points to delete
-	//	If so, add the selected class
+	//  If so, add the selected class
 	pointGeojsonLayers[fileName][segmentID].eachLayer(layer => {
 		if (featuresToDelete.includes(layer.feature.id)) {
-			$(layer.getElement()).addClass('track-points-selected');
+			$(layer.getElement()).addClass('overflights-point-selected');
 		}
 	})
 
@@ -1260,7 +1260,7 @@ function onKeyDown(e) {
 	// User pressed delete key -> delete the selected track
 	if (e.key === 'Delete') {
 
-		const selectedPoints = $('.track-points-selected');
+		const selectedPoints = $('.overflights-point-selected');
 		var fileName = getSelectedFileName();
 		if (selectedLines[fileName] === undefined || selectedLines[fileName] < 0) {
 			alert(`No track is currently selected. Click a track first then press 'Delete' or click a delete button in the legend`);
@@ -1310,6 +1310,32 @@ function onMapClick(e) {
 }
 
 
+function switchCheckboxesClick(fileName) {
+
+	const $card = $('#card-' + fileName);
+	const $button = $card.find('.switch-all-checkboxes-button');
+	const $checkboxes = $card.find('.checkbox-cell input[type=checkbox]');
+	// Check if all checkboxes are checked. If so, uncheck them all and change the button text to 
+	//	"check all" to reflect what will happen the next time the user clicks the button. Otherwise, 
+	//	at least one isn't checked so check them all and set the button text to "uncheck all"
+	const nChecked = $checkboxes.filter((_, el) => {return el.checked}).length;
+	const allChecked = $checkboxes.length === nChecked;
+	$checkboxes.prop('checked', !allChecked);
+	$button.text(allChecked ? 'check all' : 'uncheck all');
+	const layers = lineLayers[fileName];
+	for (const id in layers) {
+		if (allChecked) {
+			map.removeLayer(layers[id]);
+			const selectedTrackID = selectedLines[fileName];
+			if (selectedTrackID != -1) hideVertices(selectedTrackID);
+		} else {
+			map.addLayer(layers[id]);
+		}
+		trackInfo[fileName][id].visible = !allChecked;
+	}
+}
+
+
 function addFileToMenu(filePath) {
 	 
 	var fileName = filePath.replace('data/', '').replace('_geojsons.json', '');
@@ -1319,41 +1345,41 @@ function addFileToMenu(filePath) {
 	var cardHeaderID = 'cardHeader-' + fileName;
 	var contentID = 'cardContent-' + fileName;
 	// add the card
-	var $card = $(
-		'<div class="card" id="' + cardID + '">' + 
-			'<div class="card-header px-0" id="' + cardHeaderID + '" style="width:100%;"></div>' +
-		'</div>'
-	).appendTo('#file-list');
+	var $card = $(`
+		<div class="card" id="${cardID}"> 
+			<div class="card-header px-0" id="${cardHeaderID}"></div>
+		</div>
+	`).appendTo('#file-list');
 
 	 // add an anchor to the card header
-	$(
-	`<div class="row mx-0" style="width:100%; display: flex; flex-direction: column; height: 40px;">
-	 	<a class="collapsed card-link" data-toggle="collapse" href="#${contentID}" style="display:inline-block; flex: 1; min-width:50%; max-width:75%; padding-left:5%;">
-			<p class="card-title">${fileName}</p>
-		</a>
-		<div style="display:inline-block; float:right; width: 100px;">
-			<button class="file-card-button delete" title="Delete file" id="delete-${fileName}"></button>
-			<button class="file-card-button import" title="Import tracks from file" id="import-${fileName}"></button>
+	$(`
+		<div class="row mx-0 card-header-content">
+			<a class="collapsed card-link" data-toggle="collapse" href="#${contentID}">
+				<p class="card-title">${fileName}</p>
+			</a>
+			<div style="display:inline-block; float:right; width: 100px;">
+				<button class="file-card-button delete" title="Delete file" id="delete-${fileName}"></button>
+				<button class="file-card-button import" title="Import tracks from file" id="import-${fileName}"></button>
+			</div>
 		</div>
-	</div>`
-	)
-	.appendTo('#' + cardHeaderID)
-	.find('a').on('click', function(event) {
-		if (!$(this).closest('.card').hasClass('selected')){
-			
-			// Make sure the new card is given the selected class before trying to load data
-			fileWasSelected(fileName);
-			
-			// If the points don't yet exist, this file hasn't been loaded, so load them
-			if (pointGeojsonLayers[fileName] == undefined) {
-				loadTracksFromJSON(filePath)
-					.done(() =>  {hideLoadingIndicator('loadTracksFromJSON')});
-		    } else {
-		        loadTracksFromMemory(fileName)
-		        	.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
-		    }
-		}
-	 });
+	`)
+		.appendTo('#' + cardHeaderID)
+		.find('a').on('click', function(event) {
+			if (!$(this).closest('.card').hasClass('selected')){
+				
+				// Make sure the new card is given the selected class before trying to load data
+				fileWasSelected(fileName);
+				
+				// If the points don't yet exist, this file hasn't been loaded, so load them
+				if (pointGeojsonLayers[fileName] == undefined) {
+					loadTracksFromJSON(filePath)
+						.done(() =>  {hideLoadingIndicator('loadTracksFromJSON')});
+				} else {
+					loadTracksFromMemory(fileName)
+						.then(() => {hideLoadingIndicator('loadTracksFromMemory')});
+				}
+			}
+		 });
 
 	// Add event handlers that prevent propogation to the card
 	$(`#delete-${fileName}`).click((event) => {
@@ -1368,70 +1394,74 @@ function addFileToMenu(filePath) {
 	})
 
 	// Add the card content to the card
+	/*      */
 	const cardFooterHTML = `
-    <div class="track-info-panel dark-scrollbar" id="track-info-panel-${fileName}">
-      <!-- Info about each track-->
-      <div class="row track-info-header-container">
-        <div class="track-info-header-title-container">
-          <h5>Track info</h5>
-          <button class="button-track-info-lock" id="button-track-info-lock-${fileName}" title="Toggle lock on track info" onclick="lockButtonClick('${fileName}')"></button>
-        </div>
-        <div class="submission-info-container" style="">
-          <p class="submission-info" id="p-submitted-at-${fileName}"> </p>
-          <p class="submission-info" id="p-submitted-by-${fileName}"> </p>
-        </div>
-      </div>
+	<div class="track-info-panel dark-scrollbar" id="track-info-panel-${fileName}">
+		<div class="switch-all-button-container">
+			<button class="switch-all-checkboxes-button text-only-button" onclick="switchCheckboxesClick('${fileName}')">uncheck all</button>
+		</div>
+	  <!-- Info about each track-->
+	  <div class="row track-info-header-container">
+		<div class="track-info-header-title-container">
+		  <h5>Track info</h5>
+		  <button class="button-track-info-lock" id="button-track-info-lock-${fileName}" title="Toggle lock on track info" onclick="lockButtonClick('${fileName}')"></button>
+		</div>
+		<div class="submission-info-container" style="">
+		  <p class="submission-info" id="p-submitted-at-${fileName}"> </p>
+		  <p class="submission-info" id="p-submitted-by-${fileName}"> </p>
+		</div>
+	  </div>
 
-      <form class="track-info-form" id="form-track-info-${fileName}">
-        
-        <div class="row">
-          <div class="input-container">
-            <label class="track-info-label">Tail number</label>
-            <input type="text" class="track-info-textbox locked" id="textbox-registration-${fileName}" name="registration" spellcheck="false" disabled="true">
-          </div>
-          <div class="input-container">
-            <label class="track-info-label">Editor</label>
-            <input type="text" class="track-info-textbox locked track-editor" id="textbox-track_editor-${fileName}" name="editor" spellcheck="false" disabled="true">
-          </div>
-        </div>
-        
-        <div class="row">
-          <div class="input-container">
-            <label class="track-info-label">Operator code</label>
-            <select class="track-info-textbox locked operator-code" id="select-operator_code-${fileName}" name="operator_code" disabled="true">
-              <option class="track-info-option" value=""></option><!--make first option blank-->
-            </select>
-          </div>
-          <div class="input-container">
-            <label class="track-info-label" id="label-nps_mission_code-${fileName}">NPS mission code</label>
-            <select class="track-info-textbox locked nps-mission-code" id="select-nps_mission_code-${fileName}" name="mission_code" disabled="true">
-              <option class="track-info-option" value=""></option>
-            </select>
-          </div>
-        </div>
+	  <form class="track-info-form" id="form-track-info-${fileName}">
+		
+		<div class="row">
+		  <div class="input-container">
+			<label class="track-info-label">Tail number</label>
+			<input type="text" class="track-info-textbox locked" id="textbox-registration-${fileName}" name="registration" spellcheck="false" disabled="true">
+		  </div>
+		  <div class="input-container">
+			<label class="track-info-label">Editor</label>
+			<input type="text" class="track-info-textbox locked track-editor" id="textbox-track_editor-${fileName}" name="editor" spellcheck="false" disabled="true">
+		  </div>
+		</div>
+		
+		<div class="row">
+		  <div class="input-container">
+			<label class="track-info-label">Operator code</label>
+			<select class="track-info-textbox locked operator-code" id="select-operator_code-${fileName}" name="operator_code" disabled="true">
+			  <option class="track-info-option" value=""></option><!--make first option blank-->
+			</select>
+		  </div>
+		  <div class="input-container">
+			<label class="track-info-label" id="label-nps_mission_code-${fileName}">NPS mission code</label>
+			<select class="track-info-textbox locked nps-mission-code" id="select-nps_mission_code-${fileName}" name="mission_code" disabled="true">
+			  <option class="track-info-option" value=""></option>
+			</select>
+		  </div>
+		</div>
 
-        <div class="row">
-          <div class="input-container input-container-large input-container-submitter-notes">
-            <label class="track-info-label">Submitter notes</label>
-            <div class="track-info-textbox locked" id="div-submitter_notes-${fileName}">
-              <p id="p-submitter_notes-${fileName}"></p>
-            </div>
-          </div>
-        </div>
+		<div class="row">
+		  <div class="input-container input-container-large input-container-submitter-notes">
+			<label class="track-info-label">Submitter notes</label>
+			<div class="track-info-textbox locked" id="div-submitter_notes-${fileName}">
+			  <p id="p-submitter_notes-${fileName}"></p>
+			</div>
+		  </div>
+		</div>
 
-      </form>
-    </div>
+	  </form>
+	</div>
 	`;
-	$('<div id="' + contentID + '" class="collapse" aria-labeledby="' + cardHeaderID + '" data-parent="#file-list">' + 
-			'<div class="card-body p-0" id="' + contentID + '-body">' +
-				'<div class="dark-scrollbar" id="legend-' + fileName + '" style="display:block; width:100%; overflow:auto; max-height:250px;"></div>' +
-			'</div>' +
-			'<div class="card-footer">' + cardFooterHTML + '</div>' +
-		'</div>'
-		).appendTo('#' + cardID);
+	$(`
+		<div id="${contentID}" class="collapse" aria-labeledby="${cardHeaderID}" data-parent="#file-list"> 
+			<div class="card-body p-0" id="${contentID}-body">
+				<div class="dark-scrollbar legend" id="legend-${fileName}"></div>
+			</div>
+			<div class="card-footer">${cardFooterHTML}</div>
+		</div>
+	`).appendTo('#' + cardID);
 
 	isEditing[fileName] = false;
-
 
 }
 
@@ -1445,28 +1475,29 @@ function updateLegend(fileName){
 	for (segmentID in trackInfo[fileName]) {
 		var thisInfo = trackInfo[fileName][segmentID];
 		var thisColor = colors[fileName][segmentID];
-		var htmlString = 
-		`
-		<div class="legend-row" id="legend-${fileName}-${segmentID}" style="width: 100%;">
-			<div class="legend-cell px-10" style="width:60px; text-align:right;">
-				<label class="legend-patch" for="colorPicker-${fileName}-${segmentID}">
-					<svg height="10" width="60">
-						<line x1="0" y1="5" x2="50" y2="5" style="stroke:${thisColor}; stroke-width:3;"></line>
-					</svg>
-				</label>
-				<input class="line-color-picker" type="color" id="colorPicker-${fileName}-${segmentID}" name="colorPicker-${fileName}-${segmentID}" value="${thisColor}">
+		const departureTimestamp = new Date(thisInfo.departure_datetime);
+		const departureString = `${departureTimestamp.getChromeFormattedString()} ${departureTimestamp.getChromeFormattedTimeString()}`;
+		var htmlString = `
+			<div class="legend-row" id="legend-${fileName}-${segmentID}">
+				<div class="legend-cell legend-patch-cell">
+					<label class="legend-patch" for="colorPicker-${fileName}-${segmentID}">
+						<svg height="10" width="60">
+							<line x1="0" y1="5" x2="50" y2="5" style="stroke:${thisColor}; stroke-width:3;"></line>
+						</svg>
+					</label>
+					<input class="line-color-picker" type="color" id="colorPicker-${fileName}-${segmentID}" name="colorPicker-${fileName}-${segmentID}" value="${thisColor}">
+				</div>
+				<div class="legend-cell departure-time-cell">${departureString}</div>
+				<div class="legend-cell delete-button-cell">
+					<button class="delete-track-button" title="Delete track" onclick="deleteTrack(${segmentID})"></button>
+				</div>
+				<div class="legend-cell checkbox-cell">
+					<label class="checkmark-container">
+						<input type="checkbox" checked="checked" id="legend-checkmark-${fileName}-${segmentID}">
+						<span class="checkmark"></span>
+					</label>
+				</div>
 			</div>
-			<div class="legend-cell" style="width:40%; max-width: 60%; text-align:left;">${thisInfo.departure_datetime}</div>
-			<div class="legend-cell" style="max-width:10%; width:10%; margin-left:10px; margin-right:10px;">
-				<button class="delete-track-button" title="Delete track" onclick="deleteTrack(${segmentID})"></button>
-			</div>
-			<div class="legend-cell" style="text-align:center; max-width:10%; width:10%; padding-right:10px; padding-left:10px;">
-				<label class="checkmark-container">
-					<input type="checkbox" checked="checked" id="legend-checkmark-${fileName}-${segmentID}">
-					<span class="checkmark"></span>
-				</label>
-			</div>
-		</div>
 		`;
 		var legendItem = $(htmlString)
 			.click(function(event) {
@@ -1474,7 +1505,6 @@ function updateLegend(fileName){
 				if ($(event.target).hasClass('checkmark') || $(event.target).attr('checked') || $(event.target).hasClass('delete-track-button')) {
 					return;
 				}
-
 
 				var thisID = $(this)[0].id.replace('legend-' + fileName + '-', '');
 				showVertices(thisID);
@@ -1485,8 +1515,9 @@ function updateLegend(fileName){
 		// Handle clicks on this item's checkbox
 		var checkbox = $(`#legend-checkmark-${fileName}-${segmentID}`).change(function(event) {
 
-			var thisID = parseInt($(this)[0].id.replace(`legend-checkmark-${fileName}-` , ''));
-			if (!this.checked) {// state is after click
+			const thisCheckbox = event.target;
+			var thisID = parseInt(thisCheckbox.id.replace(`legend-checkmark-${fileName}-` , ''));
+			if (!thisCheckbox.checked) {// state is after click
 				if (thisID == selectedLines[fileName]) {
 					hideVertices(thisID);
 				}
@@ -1498,6 +1529,14 @@ function updateLegend(fileName){
 				map.addLayer(lineLayers[fileName][thisID]);
 				trackInfo[fileName][thisID]['visible'] = true;
 			}
+
+			// Adjust the check-all button text depending on whether all checkboxes are checked or not
+			const $card = $(thisCheckbox).closest('.card');
+			const allChecked = 
+				$card.find('.legend-cell input[type=checkbox]:checked').length === 
+				$card.find('.legend-cell input[type=checkbox]').length;
+			$card.find('.switch-all-checkboxes-button')
+					.text(allChecked ? 'uncheck all' : 'check all');
 
 			// Make sure the click doesn't continue to the .legend-row and highlight it
 			event.stopPropagation();
@@ -1528,6 +1567,9 @@ function updateLegend(fileName){
 	
 	// select the row corresponding to the selected line
 	selectLegendItem(selectedLines[fileName]);
+
+	// Add select/deselect all button
+
 }
 
 
@@ -1554,7 +1596,7 @@ function fileWasSelected(filePath) {
 	
 	
 	// Fill track info if the trackInfo exists already. If it doesn't exist,
-	//	it'll be filled later
+	//  it'll be filled later
 	if (oldFileName != newFileName && trackInfo[newFileName] != undefined) {
 		
 		fillTrackInfo(newFileName);
@@ -1679,9 +1721,9 @@ function loadTracksFromJSON(filePath) {
 		fillTrackInfo(fileName);
 
 	}).fail(function(d, textStatus, error) {
-        alert(`failed to read track data for "${fileName}" because of the following error: ${error}`);
-        hideLoadingIndicator('loadTracksFromJSON');
-    })
+		alert(`failed to read track data for "${fileName}" because of the following error: ${error}`);
+		hideLoadingIndicator('loadTracksFromJSON');
+	})
 
 	return deferred;
 }
@@ -1759,18 +1801,18 @@ function fillTrackInfo(fileName){
 	// Change the state of the lock button (and the form) if necessary
 	var $lockButton = $(`#button-track-info-lock-${fileName}`);
 	if ($lockButton.hasClass('unlocked') != thisInfo.trackInfoUnlocked) {
-		lockButtonClick(fileName);	
+		lockButtonClick(fileName);  
 	}
 }
 
 
 function onTrackInfoElementChange(target) {
-    var fileName = getSelectedFileName();
-    var thisValue = $(target).val();
-    var propertyName = $(target).attr('id').replace('textbox-', '').replace('select-', '').replace(`-${fileName}`, '');
-    for (segmentID in trackInfo[fileName]) {
-        trackInfo[fileName][segmentID][propertyName] = thisValue; 
-    }
+	var fileName = getSelectedFileName();
+	var thisValue = $(target).val();
+	var propertyName = $(target).attr('id').replace('textbox-', '').replace('select-', '').replace(`-${fileName}`, '');
+	for (segmentID in trackInfo[fileName]) {
+		trackInfo[fileName][segmentID][propertyName] = thisValue; 
+	}
 }
 
 
@@ -1785,7 +1827,7 @@ function onOperatorChange(selectedOperator){
 	if (trackInfo[fileName] !== undefined && selectedOperator != null) {
 		for (segmentID in trackInfo[fileName]) {
 			trackInfo[fileName][segmentID]['operator_code'] = //capture value
-                selectedOperator.length ? selectedOperator : trackInfo[fileName][segmentID]['operator_code']; 
+				selectedOperator.length ? selectedOperator : trackInfo[fileName][segmentID]['operator_code']; 
 		}
 	}
 
@@ -2024,7 +2066,7 @@ function addMapToolbars() {
 		},
 		addHooks: redoButtonClick
 	});
-	new L.Toolbar2.Control({	
+	new L.Toolbar2.Control({    
 			actions: [zoomSelected, zoomFull, zoomPrevious, zoomNext, cut, selectPoint, deletePoint, undo, redo],
 			position: 'topleft'
 	}).addTo(map);
@@ -2038,145 +2080,194 @@ function addMapToolbars() {
 function validateTrackInfo() {
 
 	var fileName = getSelectedFileName()
-    var trackInfoInputs = $('#form-track-info-' + fileName).find('.track-info-textbox, .track-info-textbox.locked').toArray();
-    for (elementID in trackInfoInputs) {
-        var thisElement = $(trackInfoInputs[elementID]);
-        var thisLabel = $(thisElement.siblings()[0]).text();
-        if (!(thisElement.is('input') || thisElement.is('select')) || thisElement.val() == undefined) continue;
-        var thisID = thisElement[0].id;
-        if (!(thisElement.val().length) && !thisElement.hasClass('select-disabled') && thisLabel !== "NPS mission code"){
-            alert(`The "${thisLabel}" field is empty but all track info fields are mandatory.`);
-            thisElement.focus();
-            return false;
-        }
-    }
+	var trackInfoInputs = $('#form-track-info-' + fileName).find('.track-info-textbox, .track-info-textbox.locked').toArray();
+	for (elementID in trackInfoInputs) {
+		var thisElement = $(trackInfoInputs[elementID]);
+		var thisLabel = $(thisElement.siblings()[0]).text();
+		if (!(thisElement.is('input') || thisElement.is('select')) || thisElement.val() == undefined) continue;
+		var thisID = thisElement[0].id;
+		if (!(thisElement.val().length) && !thisElement.hasClass('select-disabled') && thisLabel !== "NPS mission code"){
+			alert(`The "${thisLabel}" field is empty but all track info fields are mandatory.`);
+			thisElement.focus();
+			return false;
+		}
+	}
 
-    var $registrationInput = $('#textbox-registration-' + fileName);
-    if (!$registrationInput.val().match(/N\d{2,5}[A-Z]{0,2}/gi)) {
-        alert(`The "Tail number" field entry isn't valid.`);
-        $registrationInput.focus();
-        return false;
-    }
+	var $registrationInput = $('#textbox-registration-' + fileName);
+	if (!$registrationInput.val().match(/N\d{1,5}[A-Z]{0,2}/gi)) {
+		alert(`The "Tail number" field entry isn't valid.`);
+		$registrationInput.focus();
+		return false;
+	}
 
-    var $missionCodeInput = $('#select-operator_code-' + fileName);
-    if ($missionCodeInput.val() === 'NPS' && !$('#select-nps_mission_code-' + fileName).val().length){
-        if (!confirm(`Are you sure you want to import this file without an NPS mission code selected?`)) {
-	        $missionCodeInput.focus();
-	        return false;
-        }
-    }
+	var $missionCodeInput = $('#select-operator_code-' + fileName);
+	if ($missionCodeInput.val() === 'NPS' && !$('#select-nps_mission_code-' + fileName).val().length){
+		if (!confirm(`Are you sure you want to import this file without an NPS mission code selected?`)) {
+			$missionCodeInput.focus();
+			return false;
+		}
+	}
 
-    return true;
+	return true;
 }
 
 
 function removeTemporaryImportFiles(filePath, trackInfoPath) {
-    /* if importing data failed or was canceled, make sure the temp data are deleted*/
-    $.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: filePath}, cache:false});
-    $.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: trackInfoPath}, cache:false});
+	/* if importing data failed or was canceled, make sure the temp data are deleted*/
+	$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: filePath}, cache:false});
+	$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: trackInfoPath}, cache:false});
 }
 
 
 function importData(fileName){
 
-    //var fileName = getSelectedFileName();
-    var filePath = `data/edited/${fileName}.geojson`;
-    var trackInfoPath = filePath.replace('.geojson', '_track_info.json')
+	//var fileName = getSelectedFileName();
+	var filePath = `data/edited/${fileName}.geojson`;
+	var trackInfoPath = filePath.replace('.geojson', '_track_info.json')
 
-    console.log(`python ..\\scripts\\import_from_editor.py ../web/${filePath} ../web/${filePath.replace('.geojson', '_track_info.json')} \\\\inpdenards\\overflights\\config\\poll_feature_service_params.json`)
-    // send a post request to the PHP script to run the Python script
-    var stderrPath = `errorLogs/${fileName}_${Date.now()}.log`;
-    var data = {
-        action: "importData",
-        geojsonString: filePath,
-        trackInfoString: trackInfoPath,
-        stderrPath: stderrPath
-    };
+	console.log(`python ..\\scripts\\import_from_editor.py ../web/${filePath} ../web/${filePath.replace('.geojson', '_track_info.json')} \\\\inpdenards\\overflights\\config\\poll_feature_service_params.json`)
+	// send a post request to the PHP script to run the Python script
+	var stderrPath = `errorLogs/${fileName}_${Date.now()}.log`;
+	var data = {
+		action: "importData",
+		geojsonString: filePath,
+		trackInfoString: trackInfoPath,
+		ignoreDuplicates: $('#ignore-duplicates-slider-container input[type="checkbox"]').prop('checked'),
+		stderrPath: stderrPath
+	};
 
-    
-    $.ajax({
-        url: 'geojson_io.php',
-        method: 'POST',
-        data: data,
-        cache: false,
-        success: function(importResponse) {
-            $.ajax({
-                url: 'geojson_io.php',
-                method: 'POST',
-                data: {action: 'readTextFile', textPath: data.stderrPath},
-                cache: false,
-                success: function(stderr) {
-                    if (stderr.trim().length) {
-                    	var error;
-                    	var dbErrorDetail = stderr.match(/[\r\n]DETAIL.*[\r\n]/);
-                    	if (dbErrorDetail != null) {
-                    		error = dbErrorDetail.toString().replace('DETAIL: ', '').trim();
-                    	} else {
-	                        var lines = stderr.split('\n');
-	                        var errorName = stderr.match(/[A-Z][a-z]*Error/)//standard python Exception ends in "Error" (e.g., ValueError);
-	                        
-	                        for (lineNumber in lines) {
-	                            if (lines[lineNumber].startsWith(errorName)) {
-	                                error = lines.slice(lineNumber).join('\n');//all remaining lines
-	                                break;
-	                            }
-	                        }
-	                    }
+	$.ajax({
+		url: 'geojson_io.php',
+		method: 'POST',
+		data: data,
+		cache: false,
+		success: function(importResponse) {
+			$.ajax({
+				url: 'geojson_io.php',
+				method: 'POST',
+				data: {action: 'readTextFile', textPath: data.stderrPath},
+				cache: false,
+				success: function(stderr) {
+					// Check if the script threw an error by reading the redirected stderr text file 
+					var warningsMatches = [];
+					if (stderr.trim().length) {
+						var error = '';
+						// Check for a database error. The line that gives specific info on the Postgres error will start with "DETAIL"
+						var dbErrorDetail = stderr.match(/[\r\n]DETAIL.*[\r\n]/);
+						if (dbErrorDetail != null) {
+							error = dbErrorDetail.toString().replace('DETAIL: ', '').trim();
+						} else {
+							var lines = stderr.split('\n');
+							var errorName = stderr.match(/[A-Z][a-z]*Error/)//standard python Exception ends in "Error" (e.g., ValueError);
+							
+							for (lineNumber in lines) {
+								if (lines[lineNumber].startsWith(errorName)) {
+									error = lines.slice(lineNumber).join('\n');//all remaining lines
+									break;
+								}
+							}
+						}
 
-	                    var warnings = [...stderr.matchAll('UserWarning: .*')]
-	                    	.map(s=>{ return s.toString().replace('UserWarning: ', '-')})
-	                    	.join('\n')
-	                    
-	                    // Trim period at end of warnings or error
-	                    error = error.endsWith('.') ? error.slice(0, error.length - 1) : error
-	                    if (error) {
-                        	alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
-                        	hideLoadingIndicator();
-                    	} else if (warnings) {
-                    		alert(`${importResponse.trim().replace(/\t/g, '')}\nHowever, the import operation produced the following warnings:\n${warnings}`.trim());
-                    		hideLoadingIndicator();
-                    	}
+						warningsMatches = [...stderr.matchAll('UserWarning: .*')];
+						
+						// Trim period at end of warnings or error
+						error = error.endsWith('.') ? error.slice(0, error.length - 1) : error
+						if (error) {
+							alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
+							//hideLoadingIndicator();
+							return;
+						}
+					}
 
-                    } else {
-                        alert(importResponse.replace(/\t/g, ''));
-                        
-                        // Remove the file from the menu and delete it
-                        removeFile(fileName);
-                        hideLoadingIndicator();
-                    }
-                    // delete error log
-                    //$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
-                }
-            }).fail(
-            	function(xhr, status, error) {
-    				alert(`Unknown script status. Failed to read stderr file because of a ${status} error: ${error}. You can view this file yourself at ${stderrPath}`)                        
-                	// make sure the file error log is deleted even if reading it failed
-                	//$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
-            		 hideLoadingIndicator();
-            	}
-            );
+					importResponse = importResponse.trim();
+					// A successful import will start with "<n> flight tracks imported:"
+					if (importResponse.match(/^\d* flight tracks imported/g).length){
+						if (warningsMatches.length) {
 
-            // Try to delete temp files. Don't worry about handling failures because it doesn't *really* matter if they don't get deleted
-            removeTemporaryImportFiles(filePath, trackInfoPath)
-            hideLoadingIndicator();
+							var duplicateWarning = {};
+							for (const match of warningsMatches) {
+								const warningString = match[0];
+								if (warningString.startsWith('UserWarning: {')) { //warning is a JSON string
+									duplicateWarning = $.parseJSON(warningString.replace('UserWarning: ', ''));
+									break;
+								}
+							}
+							if (Object.keys(duplicateWarning)) {
+								// Some flight segments already existed in the database
+								const duplicateDepartures = duplicateWarning.duplicate_departures.map(timestampString => {
+								    d = new Date(timestampString);
+								    return `${d.getChromeFormattedString()} ${d.getChromeFormattedTimeString()}`
+								});
+								// keep only the duplicates to show the user which ones those were
+								const $legendRows = $('#file-list .card.selected .legend-row');
+								const nTotalTracks = $legendRows.length;
+								for (const el of $legendRows) {
+									const $legendRow = $(el);
+									if (duplicateDepartures.includes($legendRow.text().trim())) {
+										// Make sure the duplicate is shown
+										$legendRow.find('.checkbox-cell > input[type=checkbox]').prop('checked', true).change();
+									} else {
+										// The track was imported so remove it
+										deleteTrack(id=el.id.replace(`legend-${fileName}-`, ''), showAlert=false);
+										$legendRow.remove();
+									}
+								}
+								alert(`${duplicateWarning.n_imported} tracks were imported, but ${duplicateWarning.duplicate_departures.length} duplicates` + 
+									' that are already in the database according to the departure time and N-number. You should reveiw' + 
+									' these duplicate tracks (and the associated N-number) to make sure these are actually duplicates.' + 
+									' If so, you can just delete this file.'
+								);
+								
 
-        }
-    })
-    .fail(
-    	function(xhr, status, error) {
-    		alert(`Failed to call import script because of a ${status} error: ${error}`)
-        	removeTemporaryImportFiles(filePath, trackInfoPath)
-    		hideLoadingIndicator();
-    	}
-    )
+							} else {
+								// There was some other warning
+								const warningString = warningsMatches
+									.map(s=>{ return s.toString().replace('UserWarning: ', '-')})
+									.join('\n');
+								alert(`${importResponse.replace(/\t/g, '')}\nHowever, the import operation produced the following warnings:\n${warningString}`.trim());
+							}	//hideLoadingIndicator();
+						} else {
+							// Everything was fine
+							alert(importResponse.replace(/\t/g, ''));
+							// Remove the file from the menu and delete it
+							removeFile(fileName);
+						}
+
+						//hideLoadingIndicator();
+					}
+					// delete error log
+					$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
+				}
+			}).fail(
+				function(xhr, status, error) {
+					alert(`Unknown script status. Failed to read stderr file because of a ${status} error: ${error}. You can view this file yourself at ${stderrPath}`)                        
+					// make sure the file error log is deleted even if reading it failed
+					$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
+					 //hideLoadingIndicator();
+				}
+			).always(() => {hideLoadingIndicator();});
+
+			// Try to delete temp files. Don't worry about handling failures because it doesn't *really* matter if they don't get deleted
+			removeTemporaryImportFiles(filePath, trackInfoPath)
+			hideLoadingIndicator();
+
+		}
+	})
+	.fail(
+		function(xhr, status, error) {
+			alert(`Failed to call import script because of a ${status} error: ${error}`)
+			removeTemporaryImportFiles(filePath, trackInfoPath)
+			hideLoadingIndicator();
+		}
+	)
 
 }
 
 function onImportDataClick(fileName=undefined){
 
-    if (!validateTrackInfo()) {
-    	return;	
-    } 
+	if (!validateTrackInfo()) {
+		return; 
+	} 
 
 	var fileName = fileName === undefined ? getSelectedFileName() : fileName;
 	var filePath = `data/edited/${fileName}.geojson`;
@@ -2188,21 +2279,21 @@ function onImportDataClick(fileName=undefined){
 	var hiddenTracks = [];
 	for (segmentID in pointGeojsonLayers[fileName]) {
 		var geojson = pointGeojsonLayers[fileName][segmentID].toGeoJSON();
-        features = features.concat(geojson.features)
-        if (!trackInfo[fileName][segmentID].visible) {
-            hiddenTracks.push(segmentID);
-        }
-    }
+		features = features.concat(geojson.features)
+		if (!trackInfo[fileName][segmentID].visible) {
+			hiddenTracks.push(segmentID);
+		}
+	}
 
-    if (hiddenTracks.length) {
-        var continueImporting = confirm(`There are ${hiddenTracks.length} track segments currently hidden, but all tracks listed for this file will be imported. Are you sure you want to continue?`)
-        if (!continueImporting) {
-        	//removeTemporaryImportFiles(filePath, trackInfoPath);
-            return;
-        }
-    }
+	if (hiddenTracks.length) {
+		var continueImporting = confirm(`There are ${hiddenTracks.length} track segments currently hidden, but all tracks listed for this file will be imported. Are you sure you want to continue?`)
+		if (!continueImporting) {
+			//removeTemporaryImportFiles(filePath, trackInfoPath);
+			return;
+		}
+	}
 
-    // Create a proper geojson object for the import script to read
+	// Create a proper geojson object for the import script to read
 	var thisGeojson = {
 		type: "FeatureCollection",
 		crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },//wgs84
@@ -2224,8 +2315,8 @@ function onImportDataClick(fileName=undefined){
 			thisTrackInfo[key] = val;
 		}
 	}
-    //var thisTrackInfo = {...trackInfo[fileName][]}
-    thisTrackInfo['track_editor'] = $('#textbox-track_editor-' + fileName).val()//set here because it might not have been
+	//var thisTrackInfo = {...trackInfo[fileName][]}
+	thisTrackInfo['track_editor'] = $('#textbox-track_editor-' + fileName).val()//set here because it might not have been
 	
 	showLoadingIndicator(timeout=false);
 	$.when(
@@ -2233,38 +2324,38 @@ function onImportDataClick(fileName=undefined){
 			url: 'geojson_io.php',
 			method: 'POST',
 			data: data,
-	        cache: false
+			cache: false
 		}).fail(
 			function(xhr, status, error) {
-	            alert(`JSON track failed to save because of the following error: ${error}`);
-	            hideLoadingIndicator();
-	        }
-	    ),
+				alert(`JSON track failed to save because of the following error: ${error}`);
+				hideLoadingIndicator();
+			}
+		),
 		$.ajax({
 			url: 'geojson_io.php',
 			method: 'POST',
-            cache: false,
+			cache: false,
 			data: {
 				action: 'writeFile',
 				filePath: filePath.replace('.geojson', '_track_info.json'),
 				jsonString: JSON.stringify(thisTrackInfo)
 			}
 		}).fail(
-        	function(xhr, status, error) {
-            	alert(`JSON track failed to save because of the following error: ${error}`);
-            	hideLoadingIndicator();
-        	}
-        )
+			function(xhr, status, error) {
+				alert(`JSON track failed to save because of the following error: ${error}`);
+				hideLoadingIndicator();
+			}
+		)
 	).then(
-    	// With temporary files written, import the data
-    	(geojsonDeferred, trackInfoDeferred) => {
-    		if (geojsonDeferred[0] == false || trackInfoDeferred[0] == false) {
+		// With temporary files written, import the data
+		(geojsonDeferred, trackInfoDeferred) => {
+			if (geojsonDeferred[0] == false || trackInfoDeferred[0] == false) {
 				alert('Unable to create temporary files for import. Check your network connection and try again.');
 				hideLoadingIndicator();
-    		} else {
-    			importData(fileName);
-    		}
-    	}
-    ); 
+			} else {
+				importData(fileName);
+			}
+		}
+	); 
 
 }
