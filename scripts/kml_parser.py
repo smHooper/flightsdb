@@ -2,7 +2,7 @@ import os
 import xml.sax
 
 
-class KMLParser(xml.sax.ContentHandler):
+class ForeflightKMLParser(xml.sax.ContentHandler):
     '''
     Adapted from https://gist.github.com/timabell/8791116
 
