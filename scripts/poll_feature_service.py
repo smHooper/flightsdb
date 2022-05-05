@@ -543,7 +543,7 @@ def validate_excel_landings(df, engine, row_offset=9, error_handling='raise'):
 
     # If errors should be raised, raise for either errors or warnings
     # Otherwise, errors and warnings will be handled differently
-    if len(excel_errors + excel_warnings) and error_handling == 'raise':
+    if len(excel_errors) and error_handling == 'raise':
         raise ValueError('Invalid or missing values found in file:\n\t-%s' % '\n\t-'.join(excel_errors + excel_warnings))
 
     return excel_errors, excel_warnings
@@ -552,12 +552,18 @@ def validate_excel_landings(df, engine, row_offset=9, error_handling='raise'):
 def process_excel_landings(excel_path, landings_conn, submitted_info, data_steward,
                            flights_agol_columns, error_handling=None, row_offset=9, data_sheet_name='data', info_sheet_name='info'):
 
-    # Read data from the downloaded
-    data = pd.read_excel(excel_path, data_sheet_name)\
-        .dropna(subset=['departure_datetime', 'registration'])
+    # Read data from the downloaded Excel file
+    #   Get the column names from the 'data' sheet
+    columns = ['departure_date', 'departure_time'] + pd.read_excel(excel_path, 'data').columns.tolist()[1:]
+    data = pd.read_excel(excel_path, 'landings', skiprows=row_offset - 1, header=None, names=columns, usecols=range(len(columns)))\
+        .dropna(subset=['departure_date', 'departure_time', 'registration'])
     info = pd.read_excel(excel_path, info_sheet_name).squeeze()
     ticket = submitted_info.ticket
     agol_id = submitted_info.parentglobalid
+
+    # Combine date and time
+    data['departure_datetime'] = pd.to_datetime(data.departure_date.dt.date.astype(str) + ' ' + data.departure_time.astype(str))
+    data.drop(columns=['departure_date', 'departure_time'], inplace=True)
 
     excel_errors, excel_warnings = validate_excel_landings(data, landings_conn, row_offset, error_handling=error_handling)
     # If there were any errors, the data shouldn't be processed. Add an error to the notifications email and return
@@ -626,6 +632,41 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
     flights.submission_time = submitted_info.submission_time
 
     return flights, landings
+
+
+def process_excel_submission(excel_path, landings_conn, flight_info, param_dict, flight_columns, error_handling=None):
+    '''
+    Helper function to process a single row of the flight table that's an Excel landing submission. The main reason
+    for the helper is to wrap process_excel_landings() to conveniently call it from multiple places
+
+    :param excel_path: path to the downloaded Excel (or zipped Excel) file
+    :param landings_conn: SQLAlchemy DBAPI connection
+    :param flight_info: Pandas.Series of the flight table row
+    :param param_dict: parameters from poll_feature_service_params.json
+    :param flight_columns: all columns for the flight table
+    :param error_handling: flag to set the error logging level
+    :return: whatever process_excel_landings() returns
+    '''
+    if excel_path.endswith('.zip'):
+        zip_path = excel_path
+        with zipfile.ZipFile(excel_path) as z:
+            # Zipping the Excel file is only necessary to get beyond Survey123's file type filter so just
+            #   process the first file because there shouldn't be more than one
+            excel_path = z.extract(z.namelist()[0], path=os.path.dirname(excel_path))
+        os.remove(zip_path)
+
+    result = process_excel_landings(
+        excel_path,
+        landings_conn,
+        flight_info,
+        param_dict['landing_data_stewards'],
+        flight_columns,
+        error_handling=error_handling,
+        **param_dict['excel_landing_template']
+    )
+    os.remove(excel_path)
+
+    return result
 
 
 def import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir, receipt_template,
@@ -979,6 +1020,7 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
     for ext in import_track.READ_FUNCTIONS:
         for path in glob(os.path.join(attachment_dir, '*%s' % ext)):
             fname = os.path.basename(path)
+
             if fname in submitted_files.values() or fname in processed_unzipped_files:
                 continue
 
@@ -1080,8 +1122,7 @@ def compose_error_notifications(tickets, param_dict):
         else:
             submission_info = tickets.loc[
                 (tickets.ticket == int(ticket)) & (tickets.submission_type == submission_type)].squeeze()
-            email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[
-                -1].strip('>')
+            email_address = get_submitter_email(submission_info.submitter, param_dict['agol_users']).split('<')[-1].strip('>')
             # if submission_type == 'tracks':
             concluding_message = r'<br><br><span>If you cannot resolve the issue(s), try contacting the submitter directly if they are an NPS employee. If the submitter is a commercial flight operator, notify Commercial Services of the problem and they will contact the submitter. </span>'
             # else:
@@ -1279,16 +1320,15 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
         for _, info in excel_landing_flights.iterrows():
             excel_path = os.path.join(download_dir, 'attachments', info['name'])
             excel_flights = []
+
             try:
-                excel_flights, excel_landings = process_excel_landings(
+                excel_flights, excel_landings = process_excel_submission(
                     excel_path,
                     landings_conn,
                     info,
-                    param_dict['landing_data_stewards'],
-                    all_flights.columns,
-                    **param_dict['excel_landing_template']
+                    param_dict,
+                    all_flights.columns
                 )
-                os.remove(excel_path)
             except Exception as e:
                 html_li = '<li>The Excel file {filename} could not be processed because {error}</li>'\
                     .format(filename=info['name'], error=e)
@@ -1319,8 +1359,8 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
             # If there were errors, the flights and landing DataFrames will be empty
             if len(excel_flights):
                 excel_landings.CreationDate = info.CreationDate
-                all_flights = pd.concat([all_flights, excel_flights])
-                all_landings = pd.concat([all_landings, excel_landings])
+                all_flights = pd.concat([all_flights, excel_flights], ignore_index=True)
+                all_landings = pd.concat([all_landings, excel_landings], ignore_index=True)
 
             # Remove the flight record that just had the Excel file because it
             all_flights = all_flights.loc[all_flights.objectid != info.objectid]
@@ -1619,7 +1659,7 @@ def main(config_json):
         if not sent:
             msg_info['server'] = server
             failed = send_email_per_recipient(msg_info)
-            failed_emails.extend(failed)#'''
+            failed_emails.extend(failed)
 
     # Write the log file
     log_file, log = write_log(params['log_dir'], params['download_dir'], timestamp, DATA_PROCESSED)

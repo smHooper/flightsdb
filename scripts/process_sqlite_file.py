@@ -61,7 +61,7 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
         attachments = attachments.loc[attachments.parentglobalid.isin(global_ids)]
         if len(all_landings):
             all_landings.loc[all_landings.parentglobalid.isin(global_ids)]
-
+	
     # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
     connection_info = params['db_credentials']
     connection_template = 'postgresql://{username}:{password}@{ip_address}:{port}/{db_name}'
@@ -75,7 +75,7 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
 
     for _, file_info in attachments.iterrows():
         attachment_path = os.path.join(attachment_dir, file_info['name'])
-        if os.path.isfile(attachment_path) and overwrite_attachments:
+        if os.path.isfile(attachment_path) and not overwrite_attachments:
             continue
         _, extension = os.path.splitext(attachment_path)
 
@@ -105,10 +105,13 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
 
         # Create separate tickets for each user for both landing and track data
         submissions['submission_time'] = [datetime.fromtimestamp(round(ts/1000)) for _, ts in submissions['CreationDate'].items()]
+        if 'tracks_nps_email' in submissions:
+            creator_blank_mask = submissions.Creator.isna() | (submissions.Creator == '')
+            submissions.loc[creator_blank_mask, 'Creator'] = submissions.loc[creator_blank_mask, 'tracks_nps_email']
         submissions.rename(columns={'Creator': 'submitter'}, inplace=True)
-        submissions.loc[submissions.submitter == '', 'submitter'] = [operator_codes[o] for _, o in submissions.loc[submissions.submitter == '', 'operator'].items()]
+        submissions.loc[(submissions.submitter == '') | submissions.submitter.isna(), 'submitter'] = [operator_codes[o] for _, o in submissions.loc[(submissions.submitter == '') | submissions.submitter.isna(), 'operator'].items()]
 
-        connection_dict = {'tracks': tracks_conn, 'landings':landings_conn}
+        connection_dict = {'tracks': tracks_conn, 'landings': landings_conn}
         submissions = pd.concat([get_ticket(g, connection_dict)
                                  for _, g in submissions.groupby(['submitter', 'submission_type'])])
         merged = all_flights.merge(submissions, on='globalid')
@@ -125,14 +128,13 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
             for _, info in excel_landing_flights.iterrows():
                 excel_path = os.path.join(download_dir, 'attachments', info['name'])
                 try:
-                    excel_flights, excel_landings = process_excel_landings(
+                    excel_flights, excel_landings = process_excel_submission(
                         excel_path,
                         landings_conn,
                         info,
-                        params['landing_data_stewards'],
+                        params,
                         all_flights.columns,
-                        error_handling='raise',
-                        **params['excel_landing_template']
+                        error_handling='raise'
                     )
                 except Exception as e:
                     raise RuntimeError('Could not process {excel_path} because {error}'.format(excel_path=excel_path, error=e))
