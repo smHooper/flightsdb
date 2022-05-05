@@ -196,7 +196,7 @@ def download_attachments(agol_ids, token, layer, layer_info, service_url, out_di
         if not overwrite:
             counter = 1
             while os.path.isfile(attachment_path):
-                attachment_path = re.sub(r'-*\d*\{}$'.format(extension), '-{}{}'.format(counter, extension), attachment_path)
+                attachment_path = re.sub(r'(_-){1}\d+\{}$'.format(extension), '_-{}{}'.format(counter, extension), attachment_path)
                 counter += 1
             filename = os.path.basename(attachment_path)
             df.loc[i, 'name'] = filename
@@ -281,7 +281,6 @@ def download_from_replica(out_dir, token, layers, service_info, service_url, ssl
         check_http_error('get createReplica result', result_response)
         content = result_response.content
     else:
-        import pdb; pdb.set_trace()
         content = replica_response.content
 
     service_name = service_info['serviceDescription']
