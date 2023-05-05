@@ -562,7 +562,8 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
     agol_id = submitted_info.parentglobalid
 
     # Combine date and time
-    data['departure_datetime'] = pd.to_datetime(data.departure_date.dt.date.astype(str) + ' ' + data.departure_time.astype(str))
+    data.departure_time = pd.to_datetime(data.departure_time.astype(str)).dt.time # make sure all departure_times are times and not datetimes
+    data['departure_datetime'] = data.apply(lambda row: pd.datetime.combine(row.departure_date, row.departure_time), axis=1)
     data.drop(columns=['departure_date', 'departure_time'], inplace=True)
 
     excel_errors, excel_warnings = validate_excel_landings(data, landings_conn, row_offset, error_handling=error_handling)
