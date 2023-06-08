@@ -193,10 +193,11 @@ def download_attachments(agol_ids, token, layer, layer_info, service_url, out_di
         content = result_response.content
         attachment_path = os.path.join(attachments_dir, row['name'])
 
-        if not overwrite:
-            counter = 1
+        counter = 1
+        if not overwrite and os.path.isfile(attachment_path):
+            attachment_path = attachment_path.replace(extension, f'_-{counter}{extension}')
             while os.path.isfile(attachment_path):
-                attachment_path = re.sub(r'(_-){1}\d+\{}$'.format(extension), '_-{}{}'.format(counter, extension), attachment_path)
+                attachment_path = re.sub(fr'(_-)?\d*{extension}$', f'_-{counter}{extension}', attachment_path)
                 counter += 1
             filename = os.path.basename(attachment_path)
             df.loc[i, 'name'] = filename
