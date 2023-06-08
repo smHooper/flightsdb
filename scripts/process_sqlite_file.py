@@ -61,7 +61,7 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
         attachments = attachments.loc[attachments.parentglobalid.isin(global_ids)]
         if len(all_landings):
             all_landings.loc[all_landings.parentglobalid.isin(global_ids)]
-	
+    
     # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
     connection_info = params['db_credentials']
     connection_template = 'postgresql://{username}:{password}@{ip_address}:{port}/{db_name}'
@@ -134,7 +134,7 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
                         info,
                         params,
                         all_flights.columns,
-                        error_handling='raise'
+                        error_handling='warn'
                     )
                 except Exception as e:
                     raise RuntimeError('Could not process {excel_path} because {error}'.format(excel_path=excel_path, error=e))
@@ -150,6 +150,8 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
 
             # sqlite treats ISO datetimes as string, so explicitly cast as pandas datetime
             all_flights.landing_datetime = pd.to_datetime(all_flights.landing_datetime)
+
+        
 
         # Get operator emails from landings DB
         operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email',
