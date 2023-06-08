@@ -116,7 +116,7 @@ ERROR_EMAIL_ADDRESSES = ['samuel_hooper@nps.gov']
 # Columns to use to verify that the file was read correctly
 VALIDATION_COLUMNS = pd.Series(['geometry', 'utc_datetime', 'altitude_ft', 'longitude', 'latitude', 'x_albers', 'y_albers', 'diff_m', 'diff_seconds', 'm_per_sec', 'knots', 'previous_lat', 'previous_lon', 'heading'])
 
-ARCHIVE_DIR = r'\\inpdenards\overflights\imported_files\tracks'
+ARCHIVE_DIR = r'\\inpdenaterm01\overflights\imported_files\tracks'
 
 REGISTRATION_REGEX = r'(?i)N\d{1,5}[A-Z]{0,2}'
 
@@ -325,10 +325,58 @@ def parse_inreach_xml(parser, seg_time_diff=15):
     return gdf
 
 
+def parse_flightradar_xml(parser, seg_time_diff):
+    points = []
+    placemarks = parser.find('Folder').find('name', text='Route').find_next_siblings('Placemark')
+    for placemark_ in  placemarks:
+        key_tags = bs4.BeautifulSoup(placemark_.description.text, 'xml').select('span > b')
+        content = {tag.text.strip(': '): tag.parent.find_next_sibling('span').text.strip() for tag in key_tags}
+
+        content['utc_datetime'] = pd.to_datetime(placemark_.select_one('TimeStamp > when').text)
+        point = placemark_.find('Point')
+        altitude_mode = point.find('altitudeMode').text 
+        if not altitude_mode == 'absolute':
+            raise RuntimeError(f'Altitude mode for this KML is {altitude_mode}, not absolute. Cannot determine actual altitude')
+        longitude, latitude, altitude = [c.strip() for c in point.find('coordinates').text.split(',')]
+        content['longitude'] = float(longitude)
+        content['latitude'] = float(latitude)
+        content['altitude_m'] = float(altitude)
+        
+        if 'Speed' in content:
+            try:
+                content['knots'] = float(re.match('\d*', content['Speed']).group()[0])
+            except:
+                pass
+        
+        if 'Heading' in content:
+            try:
+                content['heading'] = float(re.match('\d*', content['Heading']).group()[0])
+            except:
+                pass
+        points.append(content)
+
+    df = pd.DataFrame(points)
+    df['altitude_ft'] = df.altitude_m * FEET_PER_METER
+    geometry = df.apply(lambda row: shapely_Point(row.longitude, row.latitude, row.altitude_ft), axis=1)
+    gdf = gpd.GeoDataFrame(df, geometry=geometry)
+
+    gdf['diff_m'] = calc_distance_to_last_pt(gdf)
+    gdf['diff_seconds'] = gdf.utc_datetime.diff().dt.seconds
+    gdf.loc[gdf.diff_seconds.isnull() | (gdf.diff_seconds == 0) | (gdf.diff_seconds > (seg_time_diff * 60)), 'diff_seconds'] = -1
+    gdf['m_per_sec'] = gdf.diff_m / gdf.diff_seconds
+    if 'knots' not in gdf:
+        gdf['knots'] = (gdf.m_per_sec * M_PER_S_TO_KNOTS).fillna(-1).round().astype(int)# 1m/s == 1.94384 knots
+    gdf.loc[(gdf.knots < 0) | gdf.knots.isnull(), 'knots'] = 0
+
+    gdf['previous_lat'] = gdf.shift().latitude
+    gdf['previous_lon'] = gdf.shift().longitude
+
+    return gdf
+
+
 def read_kml(path, seg_time_diff=15):
     '''
-    KMLs come in two accepted variants, Foreflight and Web Sentinel. If the file is of the Foreflight variant, convert
-    KML to GPX, then just use read_gpx() function. Otherwise, parse the file and convert directly to a GeoDataframe.
+    KMLs come in three accepted variants: Foreflight, FlightRadar, and Web Sentinel. If the file is of the Foreflight variant, convert KML to GPX, then just use read_gpx() function. Otherwise, parse the file and convert directly to a GeoDataframe.
     KML formats are:
         1. Foreflight:
             <Placemark>
@@ -368,6 +416,7 @@ def read_kml(path, seg_time_diff=15):
             return parse_web_sentinel_xml(soup, seg_time_diff)
         except Exception as e:
             raise RuntimeError('Could not parse Web Sentinel KML file %s: %s' % (path, e))
+
     elif soup.find('kml:Data', attrs={'name': 'IMEI'}):
         try:
             return parse_inreach_xml(soup, seg_time_diff)
@@ -375,6 +424,13 @@ def read_kml(path, seg_time_diff=15):
             raise RuntimeError('Could not process %s because %s' % (path, e))
         except Exception as e:
             raise RuntimeError('Could not parse InReach KML file %s: %s' % (path, e))
+    
+    elif soup.find(lambda tag: tag.name == 'description' and 'www.flightradar24.com' in tag.text):
+        try:
+            return parse_flightradar_xml(soup, seg_time_diff)
+        except Exception as e:
+            raise RuntimeError('Could not parse Flight Radar KML file %s: %s' % (path, e))
+
     elif soup.find('gx:Track'):
         try:
             parser = kml_parser.ForeflightKMLParser()
