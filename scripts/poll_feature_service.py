@@ -699,11 +699,12 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
 
     # Check for flights with no landings
     landings_per_flight = landing_flights \
-        .loc[~landing_flights.is_from_excel]\
+        .loc[~(landing_flights.is_from_excel.astype(bool))]\
         .merge(landings, left_on='agol_global_id', right_on='parentglobalid', how='left') \
         .groupby('flight_id') \
         .parentglobalid \
         .count()
+
     no_landings = landings_per_flight[landings_per_flight == 0]
     if len(no_landings):
         flights_without_landings = landing_flights.loc[landing_flights.flight_id.isin(no_landings.index)] \
@@ -981,7 +982,13 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
         with zipfile.ZipFile(zip_path) as z:
             for fname in z.namelist():
                 try:
-                    z.extract(fname, attachment_dir)
+                    if fname.endswith('/'):
+                        unzipped_dir_path = os.path.join(attachment_dir, fname)
+                        if not os.path.isdir(unzipped_dir_path):
+                            os.makedirs(unzipped_dir_path)
+                    else:
+                        z.extract(fname, attachment_dir)
+                        unzipped_files.append(fname)
                 except Exception as e:
                     html_li = (
                         '<li>An error occurred while trying to extract {file} from {zip}: {error}. AGOL flight table Object ID: {agol_id}.</li>').format(
@@ -990,7 +997,6 @@ def prepare_track_data(param_dict, download_dir, tracks_conn, submissions):
                         {'ticket': attachment_info['ticket'], 'message': html_li, 'recipients': data_steward,
                          'type': 'tracks', 'level': 'error'})
                     ERRORS.append(traceback.format_exc())
-                unzipped_files.append(fname)
 
         for fname in unzipped_files:
             basename, ext = os.path.splitext(fname)
@@ -1369,7 +1375,7 @@ def poll_feature_service(log_dir, download_dir, param_dict, ssl_cert, landings_c
     # For some reason Pandas v 1.x doesn't read the departure_datetime column as Pandas datetimes even though they're
     #   all datetime.Datetimes. Instead, they're objects so explicitly cast them as datetimes
     all_flights.landing_datetime = pd.to_datetime(all_flights.landing_datetime)
-
+        
     # Get operator emails from landings DB
     operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email',
                                                 conn=landings_conn)
