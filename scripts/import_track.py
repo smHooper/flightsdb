@@ -722,7 +722,8 @@ def get_flight_id(gdf, seg_time_diff):
     
     departure_times = gdf.groupby('segment_id').ak_datetime.min().to_frame().rename(columns={'ak_datetime': 'departure_datetime'})
     gdf = gdf.merge(departure_times, on='segment_id')
-    gdf['timestamp_str'] = gdf.departure_datetime.dt.floor('%smin' % seg_time_diff).dt.strftime('%Y%m%d%H%M')
+    timezone = pytz.timezone('US/Alaska')
+    gdf['timestamp_str'] = pd.to_datetime(gdf.departure_datetime, utc=True).dt.tz_convert(timezone).dt.floor('%smin' % seg_time_diff).dt.strftime('%Y%m%d%H%M')
     gdf['flight_id'] = gdf.registration + '_' + gdf.timestamp_str#gdf.date_str + '_' + segment_id.astype(str)
 
     return gdf
