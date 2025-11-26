@@ -18,6 +18,12 @@ def main(geojson_path, track_info_json, config_json, ignore_duplicates=False):
     with open(config_json) as j:
         params = json.load(j)
 
+
+    # import shutil
+    # dirname = os.path.dirname(geojson_path)
+    # shutil.copy(geojson_path, os.path.join(dirname, "saved", os.path.basename(geojson_path)))
+    # shutil.copy(track_info_json, os.path.join(dirname, "saved", os.path.basename(track_info_json)))
+
     # duplicate points get created when a segment is split and the only thing distinguishing 
     #   them is the mapID, a value created by the track editing app, so sort by both timestamp
     #   and mapID

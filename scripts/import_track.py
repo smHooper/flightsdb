@@ -122,7 +122,6 @@ REGISTRATION_REGEX = r'(?i)N\d{1,5}[A-Z]{0,2}'
 
 FEET_PER_METER = 3.2808399
 M_PER_S_TO_KNOTS = 1.94384
-MPH_TO_KNOTS = 0.86897624
 
 def calc_bearing(lat1, lon1, lat2, lon2):
     '''
@@ -224,14 +223,14 @@ def parse_web_sentinel_xml(parser, seg_time_diff=15):
 
     points = []
     for placemark in parser.find_all('Placemark'):
-        if placemark.find('Point'):
+        if placemark.find('styleUrl').text == '#waypt':
             if not placemark.description:
-                raise ValueError('No description in Placemark\n%s' % placemark.prettify())
+                raise ValueError
             content = {
                 k.strip(): v.strip() for k, v in
                 [
                     [j for j in i.split(':', 1)]
-                    for i in placemark.description.text.replace('<br />', '\n').split('\n')
+                    for i in placemark.description.text.split('\n')
                     if ':' in i
                 ]
             }
@@ -245,24 +244,12 @@ def parse_web_sentinel_xml(parser, seg_time_diff=15):
                 content['altitude_ft'] = float(coordinates[2])
             elif 'Feet' in content:
                 content['altitude_ft'] = float(content['Feet'])
-            elif 'Altitude' in content:
-                content['altitude_ft'] = float(content['Altitude'])
             else:
                 raise RuntimeError('No altitude value for point in KML file:\n%s' % placemark.prettify())
 
             if 'Knots' in content:
                 content['knots'] = float(content['Knots'])
-
-            if 'Speed' in content and 'mi/h' in content['Speed']:
-                mph = re.findall(r'\d+', content['Speed'])
-                if len(mph):
-                    content['knots'] = int(mph[0]) * MPH_TO_KNOTS
-
-            utc_key = [k for k in content.keys() if re.match('UTC', k)]
-            if len(utc_key):
-                content['utc_datetime'] = pd.to_datetime(content[utc_key[0]])
-            else:
-                raise  RuntimeError('No UTC time value for point in KML file:\n%s' % placemark.prettify())
+            content['utc_datetime'] = pd.to_datetime(content['UTC'])
 
             points.append(content)
 
@@ -424,7 +411,7 @@ def read_kml(path, seg_time_diff=15):
     with open(path, encoding='utf-8') as f:
         soup = bs4.BeautifulSoup(f, 'xml')
 
-    if soup.find('name', text=re.compile('www.websentinel.net|Spidertracks')):
+    if soup.find('name', text='www.websentinel.net'):
         try:
             return parse_web_sentinel_xml(soup, seg_time_diff)
         except Exception as e:
@@ -623,7 +610,7 @@ def read_excel(path):
     :param path: Excel track
     :return: GeoDataFrame of the track file
     """
-    df = pd.read_excel(path)
+    df = pd.read_excel(path, engine='openpyxl')
     _, ext = os.path.splitext(path)
     csv_path = path.replace(ext, '.csv')
     df.to_csv(csv_path, index=False)
@@ -840,7 +827,8 @@ def format_track(path, seg_time_diff=15, min_point_distance=200, registration=''
         .reset_index() 
 
     # Validate the registration
-    if 'registration' in gdf.columns and not force_registration: # Already in a column in the data
+
+    if 'registration' in gdf.columns:# and not force_registration: # Already in a column in the data
         if registration:
             warnings.warn('registration %s was given but the registration column found in the data will be '
                           'used instead' % registration)

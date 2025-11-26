@@ -26,8 +26,9 @@ Options:
 
 
 import sqlalchemy
-from poll_feature_service import * # all modules and constants impored in poll_feature_service
+from poll_feature_service import * # all modules and constants imported in poll_feature_service
 from utils import get_cl_args
+
 
 def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None):
 
@@ -56,12 +57,15 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
                 object_ids = [int(id_str.strip()) for id_str in object_ids.split(',')]
             except Exception as e:
                 raise ValueError(f'Could not parse object_ids string {object_ids} because {e}')
-        all_flights = all_flights.loc[all_flights.objectid.isin(object_ids)]
+        elif type(object_ids) == int:
+            object_ids = [object_ids]
+        all_flights = all_flights.loc[all_flights.objectid.isin(object_ids)]\
+            .reset_index()
         global_ids = all_flights.globalid
         attachments = attachments.loc[attachments.parentglobalid.isin(global_ids)]
         if len(all_landings):
             all_landings.loc[all_landings.parentglobalid.isin(global_ids)]
-    
+
     # Open connections to the DBs and begin transactions so that if there's an exception, no data are inserted
     connection_info = params['db_credentials']
     connection_template = 'postgresql://{username}:{password}@{ip_address}:{port}/{db_name}'
@@ -134,12 +138,13 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
                         info,
                         params,
                         all_flights.columns,
-                        error_handling='warn'
+                        error_handling='raise'
                     )
                 except Exception as e:
                     raise RuntimeError('Could not process {excel_path} because {error}'.format(excel_path=excel_path, error=e))
 
                 # If there were errors, the flights and landing DataFrames will be empty
+                
                 if len(excel_flights):
                     excel_landings.CreationDate = info.CreationDate
                     all_flights = pd.concat([all_flights, excel_flights], ignore_index=True)
@@ -150,8 +155,6 @@ def main(sqlite_path, config_json, overwrite_attachments=False, object_ids=None)
 
             # sqlite treats ISO datetimes as string, so explicitly cast as pandas datetime
             all_flights.landing_datetime = pd.to_datetime(all_flights.landing_datetime)
-
-        
 
         # Get operator emails from landings DB
         operator_emails = db_utils.get_lookup_table(table='operators', index_col='agol_username', value_col='email',

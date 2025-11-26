@@ -482,8 +482,13 @@ def validate_excel_landings(df, engine, row_offset=9, error_handling='raise'):
         excel_errors.append('There are flights without departure dates/times or with dates/times in invalid formats')
         return excel_errors, excel_warnings
 
+    # In case there were blank rows (that were dropped), the index has the row number the row_str_id will be blank
+    #   unless the index is reset. Capture the index in a column, and then reset it
+    df['row'] = df.index
+    df = df.reindex()
+
     df['row_str_id'] = df.departure_datetime.dt.strftime('%m/%d/%y %I:%M') + \
-                       pd.Series(df.index + row_offset).apply(lambda x: ' (row %s)' % x)
+                       pd.Series(df.row + row_offset).apply(lambda x: ' (row %s)' % x)
 
     for i, row in df.drop('n_passengers', axis=1).iterrows():
         location_cols = row[df.columns[df.columns.str.contains(r'\d_location')]].dropna().index
@@ -527,6 +532,7 @@ def validate_excel_landings(df, engine, row_offset=9, error_handling='raise'):
         scenic_landings.scenic_1_location.isin(needs_justification['name']) &
         scenic_landings.notes.isnull()
         ]
+    
     if len(without_justification):
         excel_warnings.append('Flights that departed at the following times need justification for scenic landing'
                         ' locations: %s' % ', '.join(without_justification.row_str_id))
@@ -559,7 +565,6 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
         .dropna(subset=['departure_date', 'departure_time', 'registration'])
     info = pd.read_excel(excel_path, info_sheet_name).squeeze()
     ticket = submitted_info.ticket
-    agol_id = submitted_info.parentglobalid
 
     # Combine date and time
     data.departure_time = pd.to_datetime(data.departure_time.astype(str)).dt.time # make sure all departure_times are times and not datetimes
@@ -616,15 +621,13 @@ def process_excel_landings(excel_path, landings_conn, submitted_info, data_stewa
     grouped_landings['parentglobalid'] = grouped_landings\
         .merge(landings.drop_duplicates(subset=['flight_id']), on='flight_id').globalid
 
-    landing_locations = db_utils.get_lookup_table(table='landing_locations', index_col='name', value_col='code',
-                                               conn=landings_conn)
+    landing_locations = pd.read_sql('SELECT lower(name) AS name, code FROM landing_locations', landings_conn).set_index('name').squeeze(axis=1)
     landings = grouped_landings.rename(columns={v: k for k, v in LANDINGS_COLUMNS.items()})\
-        .reindex(columns=AGOL_LANDING_COLUMNS)\
-        .replace({'landing_location': landing_locations}) # data come as names, not codes
+        .reindex(columns=AGOL_LANDING_COLUMNS)
+    landings.landing_location = landings.landing_location.str.lower().replace(landing_locations) # data come as names, not codes
     landings.globalid = [str(uuid.uuid4()) for _ in range(len(landings))]
 
-    aircraft_types = db_utils.get_lookup_table(table='aircraft_types', index_col='name', value_col='code',
-                                               conn=landings_conn)
+    aircraft_types = pd.read_sql('SELECT lower(name) AS name, code FROM landing_locations', landings_conn).set_index('name').squeeze(axis=1)
     flights = data.rename(columns={v: k for k, v in LANDINGS_FLIGHT_COLUMNS.items()})\
         .reindex(columns=flights_agol_columns)\
         .replace({'landing_aircraft_type': aircraft_types}) # data come as names, not codes
@@ -671,7 +674,7 @@ def process_excel_submission(excel_path, landings_conn, flight_info, param_dict,
 
 
 def import_landings(flights, ticket, landings_conn, sqlite_path, landings, receipt_dir, receipt_template,
-                    receipt_header, sheet_password, data_steward):
+                    receipt_header, sheet_password, data_steward, submission_method='survey123'):
     '''
     Process and import landing data into Postgres backend. Send receipt to the submitter
 
@@ -704,7 +707,6 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
         .groupby('flight_id') \
         .parentglobalid \
         .count()
-
     no_landings = landings_per_flight[landings_per_flight == 0]
     if len(no_landings):
         flights_without_landings = landing_flights.loc[landing_flights.flight_id.isin(no_landings.index)] \
@@ -718,6 +720,8 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
         new_flights = new_flights.loc[~new_flights.flight_id.isin(no_landings.index)]
 
     # Check if there are any new flights. If not, warn the submitter(s) that no new flights were found
+    #import pdb; pdb.set_trace()
+
     if len(new_flights) == 0:
         html_li = (
             '<li>All landings submitted with this ticket were already reported (according to the tail number and departure time). Flights submitted with this ticket:<br>{table}<br></li>').format(
@@ -745,7 +749,7 @@ def import_landings(flights, ticket, landings_conn, sqlite_path, landings, recei
         MESSAGES.append(
             {'ticket': ticket, 'message': html_li, 'recipients': data_steward, 'type': 'landings', 'level': 'warning'})
 
-    new_flights['submission_method'] = 'survey123'
+    new_flights['submission_method'] = submission_method
     new_flights['source_file'] = sqlite_path
     new_flights['fee_per_passenger'] = fee_per_passenger
     new_flights.reindex(columns=LANDINGS_FLIGHT_COLUMNS.values()) \

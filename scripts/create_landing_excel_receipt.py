@@ -12,6 +12,11 @@ def main(poll_feature_service_param_path, output_dir, flight_ids=None, tickets=N
     operators = pd.read_sql('SELECT * FROM operators', engine)
     fees = pd.read_sql(f'SELECT * FROM concession_fees_view WHERE flight_id IN ({flight_ids})', engine)
 
+<<<<<<< Updated upstream
+=======
+    import pdb; pdb.set_trace()
+
+>>>>>>> Stashed changes
     receipt_paths = []
     for ticket, submission in flights.groupby('ticket'):
         operator_code = submission.operator_code.iloc[0]

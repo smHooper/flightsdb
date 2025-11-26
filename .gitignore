@@ -12,4 +12,5 @@ web/data/*
 *Thumbs.db
 
 scripts/__pycache__/*
+scripts/.ipynb_checkpoints/*
 *.pyc
