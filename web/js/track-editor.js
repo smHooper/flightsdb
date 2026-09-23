@@ -2136,130 +2136,114 @@ function importData(fileName){
 		stderrPath: stderrPath
 	};
 
-	$.ajax({
+	return $.post({
 		url: 'geojson_io.php',
-		method: 'POST',
 		data: data,
-		cache: false,
-		success: function(importResponse) {
-			$.ajax({
-				url: 'geojson_io.php',
-				method: 'POST',
-				data: {action: 'readTextFile', textPath: data.stderrPath},
-				cache: false,
-				success: function(stderr) {
-					// Check if the script threw an error by reading the redirected stderr text file 
-					var warningsMatches = [];
-					if (stderr.trim().length) {
-						var error = '';
-						// Check for a database error. The line that gives specific info on the Postgres error will start with "DETAIL"
-						var dbErrorDetail = stderr.match(/[\r\n]DETAIL.*[\r\n]/);
-						if (dbErrorDetail != null) {
-							error = dbErrorDetail.toString().replace('DETAIL: ', '').trim();
-						} else {
-							var lines = stderr.split('\n');
-							var errorName = stderr.match(/[A-Z][a-z]*Error/)//standard python Exception ends in "Error" (e.g., ValueError);
-							
-							for (lineNumber in lines) {
-								if (lines[lineNumber].startsWith(errorName)) {
-									error = lines.slice(lineNumber).join('\n');//all remaining lines
-									break;
-								}
-							}
-						}
-
-						warningsMatches = [...stderr.matchAll('UserWarning: .*')];
-						
-						// Trim period at end of warnings or error
-						error = error.endsWith('.') ? error.slice(0, error.length - 1) : error
-						if (error) {
-							alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
-							//hideLoadingIndicator();
-							return;
-						}
-					}
-
-					importResponse = importResponse.trim();
-					// A successful import will start with "<n> flight tracks imported:"
-					if (importResponse.match(/^\d* flight tracks imported/g).length){
-						if (warningsMatches.length) {
-
-							var duplicateWarning = {};
-							for (const match of warningsMatches) {
-								const warningString = match[0];
-								if (warningString.startsWith('UserWarning: {')) { //warning is a JSON string
-									duplicateWarning = $.parseJSON(warningString.replace('UserWarning: ', ''));
-									break;
-								}
-							}
-							if (Object.keys(duplicateWarning)) {
-								// Some flight segments already existed in the database
-								const duplicateDepartures = duplicateWarning.duplicate_departures.map(timestampString => {
-								    d = new Date(timestampString);
-								    return `${d.getChromeFormattedString()} ${d.getChromeFormattedTimeString()}`
-								});
-								// keep only the duplicates to show the user which ones those were
-								const $legendRows = $('#file-list .card.selected .legend-row');
-								const nTotalTracks = $legendRows.length;
-								for (const el of $legendRows) {
-									const $legendRow = $(el);
-									if (duplicateDepartures.includes($legendRow.text().trim())) {
-										// Make sure the duplicate is shown
-										$legendRow.find('.checkbox-cell > input[type=checkbox]').prop('checked', true).change();
-									} else {
-										// The track was imported so remove it
-										deleteTrack(id=el.id.replace(`legend-${fileName}-`, ''), showAlert=false);
-										$legendRow.remove();
-									}
-								}
-								alert(`${duplicateWarning.n_imported} tracks were imported, but ${duplicateWarning.duplicate_departures.length} duplicates` + 
-									' that are already in the database according to the departure time and N-number. You should reveiw' + 
-									' these duplicate tracks (and the associated N-number) to make sure these are actually duplicates.' + 
-									' If so, you can just delete this file.'
-								);
-								
-
-							} else {
-								// There was some other warning
-								const warningString = warningsMatches
-									.map(s=>{ return s.toString().replace('UserWarning: ', '-')})
-									.join('\n');
-								alert(`${importResponse.replace(/\t/g, '')}\nHowever, the import operation produced the following warnings:\n${warningString}`.trim());
-							}	//hideLoadingIndicator();
-						} else {
-							// Everything was fine
-							alert(importResponse.replace(/\t/g, ''));
-							// Remove the file from the menu and delete it
-							removeFile(fileName);
-						}
-
-						//hideLoadingIndicator();
-					}
-					// delete error log
-					$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
-				}
-			}).fail(
-				function(xhr, status, error) {
-					alert(`Unknown script status. Failed to read stderr file because of a ${status} error: ${error}. You can view this file yourself at ${stderrPath}`)                        
-					// make sure the file error log is deleted even if reading it failed
-					$.ajax({url:'geojson_io.php', method:'POST', data:{action: 'deleteFile', filePath: stderrPath},cache:false});
-					 //hideLoadingIndicator();
-				}
-			).always(() => {hideLoadingIndicator();});
-
-			// Try to delete temp files. Don't worry about handling failures because it doesn't *really* matter if they don't get deleted
-			removeTemporaryImportFiles(filePath, trackInfoPath)
-			hideLoadingIndicator();
-
-		}
-	})
-	.fail(
+	}).fail(
 		function(xhr, status, error) {
 			alert(`Failed to call import script because of a ${status} error: ${error}`)
-			removeTemporaryImportFiles(filePath, trackInfoPath)
-			hideLoadingIndicator();
 		}
-	)
+	).done(importResponse => {
+		return $.post({
+			url: 'geojson_io.php',
+			data: {action: 'readTextFile', textPath: data.stderrPath},
+		}).done(stderr => {
+			// Check if the script threw an error by reading the redirected stderr text file 
+			var warningsMatches = [];
+			if (stderr.trim().length) {
+				var error = '';
+				// Check for a database error. The line that gives specific info on the Postgres error will start with "DETAIL"
+				var dbErrorDetail = stderr.match(/[\r\n]DETAIL.*[\r\n]/);
+				if (dbErrorDetail != null) {
+					error = dbErrorDetail.toString().replace('DETAIL: ', '').trim();
+				} else {
+					var lines = stderr.split('\n');
+					var errorName = stderr.match(/[A-Z][a-z]*Error/)//standard python Exception ends in "Error" (e.g., ValueError);
+					
+					for (lineNumber in lines) {
+						if (lines[lineNumber].startsWith(errorName)) {
+							error = lines.slice(lineNumber).join('\n');//all remaining lines
+							break;
+						}
+					}
+				}
+
+				warningsMatches = [...stderr.matchAll('UserWarning: .*')];
+				
+				// Trim period at end of warnings or error
+				error = error.endsWith('.') ? error.slice(0, error.length - 1) : error
+				if (error) {
+					alert(`An error occurred while trying to import the data: ${error}. If you can't resolve this issue yourself, please contact the overflight data steward at ${dataSteward}`);
+					//hideLoadingIndicator();
+					return;
+				}
+			}
+
+			importResponse = importResponse.trim();
+			// A successful import will start with "<n> flight tracks imported:"
+			if ((importResponse.match(/^\d* flight track[s]? imported/g) || '').length){
+				if (warningsMatches.length) {
+
+					var duplicateWarning = {};
+					for (const match of warningsMatches) {
+						const warningString = match[0];
+						if (warningString.startsWith('UserWarning: {')) { //warning is a JSON string
+							duplicateWarning = $.parseJSON(warningString.replace('UserWarning: ', ''));
+							break;
+						}
+					}
+					if (Object.keys(duplicateWarning)) {
+						// Some flight segments already existed in the database
+						const duplicateDepartures = duplicateWarning.duplicate_departures.map(timestampString => {
+							d = new Date(timestampString);
+							return `${d.getChromeFormattedString()} ${d.getChromeFormattedTimeString()}`
+						});
+						// keep only the duplicates to show the user which ones those were
+						const $legendRows = $('#file-list .card.selected .legend-row');
+						const nTotalTracks = $legendRows.length;
+						for (const el of $legendRows) {
+							const $legendRow = $(el);
+							if (duplicateDepartures.includes($legendRow.text().trim())) {
+								// Make sure the duplicate is shown
+								$legendRow.find('.checkbox-cell > input[type=checkbox]').prop('checked', true).change();
+							} else {
+								// The track was imported so remove it
+								deleteTrack(el.id.replace(`legend-${fileName}-`, ''), false);
+								$legendRow.remove();
+							}
+						}
+						alert(`${duplicateWarning.n_imported} tracks were imported, but ${duplicateWarning.duplicate_departures.length} duplicates` + 
+							' that are already in the database according to the departure time and N-number. You should reveiw' + 
+							' these duplicate tracks (and the associated N-number) to make sure these are actually duplicates.' + 
+							' If so, you can just delete this file.'
+						);
+						
+
+					} else {
+						// There was some other warning
+						const warningString = warningsMatches
+							.map(s=>{ return s.toString().replace('UserWarning: ', '-')})
+							.join('\n');
+						alert(`${importResponse.replace(/\t/g, '')}\nHowever, the import operation produced the following warnings:\n${warningString}`.trim());
+					}	//hideLoadingIndicator();
+				} else {
+					// Everything was fine
+					alert(importResponse.replace(/\t/g, ''));
+					// Remove the file from the menu and delete it
+					removeFile(fileName);
+				}
+			}
+			// delete error log
+			$.post({
+				url:'geojson_io.php', 
+				data:{action: 'deleteFile', filePath: stderrPath}
+			});
+		})
+	}).always(() => {
+		// Try to delete temp files. Don't worry about handling failures because it doesn't *really* matter if they don't get deleted
+		removeTemporaryImportFiles(filePath, trackInfoPath)
+		hideLoadingIndicator();
+	})
 
 }
 

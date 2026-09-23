@@ -1,5 +1,11 @@
 #ignore all files in data dir
 web/data/*
+web/errorLogs/*
+web/temp_files/*
+web/packages/*
+
+# this file is for testing purposes only
+web/phpinfo.php
 
 #ignore any geojsons
 *.geojson

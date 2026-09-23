@@ -2,7 +2,10 @@
 
 <?php
 
-include '../config/track-editor-config.php';
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+include '../../config/track-editor-config.php';
 
 
 function runQuery($ipAddress, $port, $dbName, $username, $password, $queryStr, $parameters=array()) {
@@ -34,43 +37,41 @@ function runQueryWithinTransaction($conn, $queryStr, $parameters=array()) {
 
 
 function runCmd($cmd) {
-	// can't get this to work for python commands because conda throws
-	// an error in conda-script (can't import cli.main)
-	$process = proc_open(
-		$cmd, 
-		array(
-			0 => array("pipe", "w"), //STDIN
-		    1 => array('pipe', 'w'), // STDOUT
-		    2 => array('pipe', 'w')  // STDERR
-		), 
-		$pipes,
-		NULL,
-		NULL,
-		array('bypass_shell' => true)
-	);
+    $pipes = array();
+    $spec = array(
+        0 => array("pipe", "r"),
+        1 => array("pipe", "w"),
+        2 => array("pipe", "w"),
+    );
 
-	$resultObj; 
+    $process = proc_open($cmd, $spec, $pipes, NULL, NULL);
 
-	if (is_resource($process)) {
+    if (!is_resource($process)) {
+        return array(
+            "stdout" => null,
+            "stderr" => null,
+            "returnCode" => null,
+            "is_resource" => false,
+        );
+    }
 
-	    $resultObj->stdout = stream_get_contents($pipes[1]);
-	    fclose($pipes[1]);
+    fclose($pipes[0]); // close STDIN immediately since we never write to it
 
-	    $resultObj->stderr = stream_get_contents($pipes[2]);
-	    fclose($pipes[2]);
+    $stdout = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
 
-	    $returnCode = proc_close($process);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
 
-	    if ($returnCode) {
-	    	echo json_encode($resultObj);
-	    } else {
-	    	echo 'nothing';//false;
-	    }
-	} else {
-		echo json_encode($_SERVER);
-	}
+    $returnCode = proc_close($process);
+
+    return array(
+        "stdout" => $stdout,
+        "stderr" => $stderr,
+        "returnCode" => $returnCode,
+        "is_resource" => true,
+    );
 }
-
 
 function deleteFile($filePath) {
 
@@ -196,9 +197,20 @@ if (isset($_POST['action'])) {
 			$trackInfo = $_POST['trackInfoString'];
 			$stderrPath = $_POST['stderrPath'];
 			$ignoreDuplicates = $_POST['ignoreDuplicates'] === 'true' ? 'True' : '';
-			$cmd = "conda activate overflights && python ..\\scripts\\import_from_editor.py $geojson $trackInfo $import_param_file $ignoreDuplicates 2> $stderrPath && conda deactivate";
+			$cmd = "conda activate overflights && python ../scripts/import_from_editor.py $geojson $trackInfo $import_param_file $ignoreDuplicates 2> $stderrPath";
+			// $output = null;
+
+			// $success = exec($cmd, $output);
+			// $result = array("success" => $success, "stdout" => $output);
+			// echo json_encode($result);
 			echo shell_exec($cmd);
 		}
+	}
+
+	if ($_POST['action'] == 'whoami') {
+		echo json_encode(runCmd('conda info --envs'));
+		//echo json_encode(runCmd('conda init'));
+
 	}
 
 	if ($_POST['action'] == 'readTextFile') {
@@ -215,6 +227,53 @@ if (isset($_POST['action'])) {
 			echo 'filepath not set or is null';
 		}
 	}
+
+	// import an Excel file directly from scenic-landing-query.html
+	if ($_POST['action'] == 'importExcelFile') {
+		
+		//echo json_encode(runCmd('whoami'));
+
+		$updloadedFile = $_FILES['uploadedFile'];
+		$submissionTime = $_POST['submissionTime'];
+		// replace special characters in the filename
+		$fileName = preg_replace('/[^\w.]+/', '_', basename($_FILES['uploadedFile']['name']));
+		$tempFilePath = "temp_files/$fileName";
+
+
+		// write to temporary file
+		if (move_uploaded_file($_FILES['uploadedFile']['tmp_name'], $tempFilePath)) {
+
+			// for some reason, the copied file doesn't inherit since the move to keydb01
+			$cmd = "icacls \"$tempFilePath\" /inheritance:e";
+			$result = runCmd($cmd);
+			if ($result['returnCode'] !== 0) {
+			    error_log("icacls failed: " . $result['stderr']);
+			}
+
+			// if successful, import the data
+			$cmd = "conda run -p ../../overflights python ../scripts/import_excel_landings.py \"$tempFilePath\" \"$submissionTime\" $import_param_file --ignore_warnings";
+			$output = $cmd;//null;
+			$resultCode = null;
+
+			$result = runCmd($cmd);
+
+			$result["cmd"] = $cmd;
+			$result["stdout"] = json_decode($result["stdout"]);
+
+			deleteFile($tempFilePath);
+
+			//$escapedCmd = addslashes($cmd);	
+			// for some reason, $output is an array with one element, the stdout string
+			//	In order to return just the stdout string (which is a JSON object encoded 
+			//	as a string!), I have to get the 0th element, convert to a JSON object,
+			//	then convert back to a string to send the respoonse back to the browser
+			//$jsonOutput = json_decode($output[0]);
+			//echo(json_encode("{\"result\": $jsonOutput, \"resultCode\": $resultCode }"));
+			echo(json_encode($result));
+		} else {
+			echo('{"result": {"errors": "move_uploaded_file() failed"} }');
+		}
+	} 
 }
 
 ?>

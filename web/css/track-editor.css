@@ -47,7 +47,8 @@ body {
 	overflow-y: auto;
 }
 #menu-content-container {
-	overflow-x: auto; 
+	overflow-x: auto;
+	overflow-y: hidden; 
 	align-items:stretch;
 }
 

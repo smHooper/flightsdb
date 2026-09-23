@@ -1,10 +1,6 @@
-
-/*body {
-	font-size: 30px;
-}*/
-
-
-
+:root{
+	--button-background-color: hsl(195, 84%, 45%);
+}
 
 body { 
   background-image: url('../imgs/scenic_landing_bg.jpg');
@@ -16,6 +12,21 @@ body {
   /*font-family: 'Work Sans', sans-serif;*/
   /*background-size: contain;*/
 }
+
+#main-container {
+	display: flex; 
+	justify-content: center; 
+	width: 100%;
+}
+#main-content-wrapper {
+	padding-top: 10px; 
+	display: flex; 
+	flex-wrap: wrap; 
+	min-width: 1200px; 
+	max-width: 80%; 
+	height: 100%;
+}
+
 
 #header-menu {
 	height: 40px;
@@ -41,6 +52,9 @@ body {
   align-items: center;
   justify-content: flex-start;
   display: flex;
+}
+.slider-label {
+	margin-left: 15px 
 }
 
 #username-container {
@@ -76,18 +90,20 @@ body {
 }
 
 
-
-
 .query-form-row {
 	width: 100%;
 	justify-content: space-between;
 	padding-bottom: 30px;
 	align-content: center;
+	align-items: center;
 }
-.query-input-container {
-	display: inline-block; 
-	width: 32%; 
+.query-input-container.col-4 {
+	padding-left: 0;
+	padding-right: 30px;
+	/*display: flex;
+	flex-wrap: wrap; */
 	/*padding-right: 4%;*/
+
 }
 
 .query-input-label {
@@ -95,7 +111,12 @@ body {
 	margin-bottom: 10px;
 }
 
-.query-input, .select2-selection--multiple, .select2-container--default .select2-selection--multiple, .select2-container--default.select2-container--focus .select2-selection--multiple {
+
+.query-input, 
+.modal .input,
+.select2-selection--multiple, 
+.select2-container--default .select2-selection--multiple, 
+.select2-container--default.select2-container--focus .select2-selection--multiple {
 	width: 100%;
 	height: 50px;
 	padding-left: 10px;
@@ -105,11 +126,13 @@ body {
 	border-radius: 0px;
 }
 
-.query-input:focus, .select2-container--default.select2-container--focus .select2-selection--multiple{
-	border: 2px solid hsl(195, 84%, 45%);
+.query-input:focus, 
+.select2-container--default.select2-container--focus .select2-selection--multiple{
+	border: 2px solid var(--button-background-color);
 }
 
-.select2, .select2-container, .select2-container--default {
+.select2, .select2-container, 
+.select2-container--default {
 	width: 100% !important;
 }
 
@@ -125,11 +148,23 @@ body {
 	border: none;
 }
 
+.checkbox-group-container {
+	display: flex; 
+	width: 100%;
+	align-items: center; 
+	justify-content: space-between; 
+	background-color: hsl(218, 15%, 95%); 
+	height: 50px; 
+	padding-left: 10px; 
+	padding-right: 10px;
+}
+
 input {
 	transition: 0.3s;
 }
 
-input[type=date]::-webkit-inner-spin-button, input[type=time]::-webkit-inner-spin-button {
+input[type=date]::-webkit-inner-spin-button, 
+input[type=time]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     display: none;
 }
@@ -142,7 +177,8 @@ input[type="date"] {
 }
 
 /* make the native arrow invisible and stretch it over the whole field so you can click anywhere in the input field to trigger the native datepicker*/
-input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator {
+input[type="date"]::-webkit-calendar-picker-indicator, 
+input[type="time"]::-webkit-calendar-picker-indicator {
     position: absolute;
     top: 0;
     left: 0;
@@ -155,12 +191,14 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 }
 
 /* adjust increase/decrease button */
-input[type="date"]::-webkit-inner-spin-button, input[type="time"]::-webkit-calendar-picker-indicator {
+input[type="date"]::-webkit-inner-spin-button, 
+input[type="time"]::-webkit-calendar-picker-indicator {
     z-index: 1;
 }
 
  /* adjust clear button */
- input[type="date"]::-webkit-clear-button, input[type="time"]::-webkit-calendar-picker-indicator {
+ input[type="date"]::-webkit-clear-button, 
+ input[type="time"]::-webkit-calendar-picker-indicator {
      z-index: 1;
  }
 
@@ -169,10 +207,13 @@ input[type="date"]::-webkit-inner-spin-button, input[type="time"]::-webkit-calen
     -webkit-appearance: none; /* turn off default browser styling */
 }
 
-input[type="submit"], button {
-	background-color: hsl(195, 84%, 45%); 
+input[type="submit"], 
+.generic-button,
+button {
+	background-color: var(--button-background-color); 
 	color: white;
 	border-radius: 7px;
+	cursor: pointer;
 }
 
 input[type="submit"]:hover, #export-file-button:hover {
@@ -185,11 +226,14 @@ input[type="submit"]:focus, button:focus {
 	outline: -webkit-focus-ring-color auto 0px;
 }
 
-#export-file-button {
+.query-input-container.submit-container {
+	padding-right: 0; 
+	width: 100%;  
+	display: flex; 
+	justify-content: center;
+}
+input[type="submit"] {
 	width: 250px;
-	height: 50px;
-	border: none;
-	margin-bottom: 35px;
 }
 
 #result-table {
@@ -199,7 +243,19 @@ input[type="submit"]:focus, button:focus {
 	overflow-x: hidden; 
 	flex-wrap: wrap;
 }
-
+#query-result-place-holder {
+	width: 100%; 
+	text-align: center; 
+	height: 40px; 
+	padding: 8px;
+}
+#result-table-body {
+	overflow-x: hidden;
+}
+#flight-result-container {
+	overflow-y: auto;
+	width: 100%;
+}
 
 .edit-button, .delete-flight-button, #save-edits-button {
 	width: 50px;
@@ -271,6 +327,10 @@ input[type="submit"]:focus, button:focus {
 	min-width: 160px;
 }
 
+#column-ticket {
+	min-width: 100px;
+}
+
 .result-table-cell, .landing-table-cell {
 }
 
@@ -327,6 +387,9 @@ input[type="submit"]:focus, button:focus {
 
 .landing-table-cell > select {
 	text-align-last: center;
+}
+.landing-table-cell > select > option {
+	text-align: left;
 }
 
 .truncatable {
@@ -469,7 +532,7 @@ span.truncatable {
 }
 
 .add-landing-button, .add-flight-button {
-	color: hsl(195, 84%, 45%);
+	color: var(--button-background-color);
 	margin-right: 15px;
 	cursor: pointer;
 	display: flex;
@@ -510,8 +573,12 @@ span.truncatable {
 
 .card-header {
 	background-color: #936262e6;/*#946d6d;/*hsla(217, 5%, 50%, 0.1);*/
+	width: 100%; 
+	position: relative;
 }
 .card-header a {
+	width: 100%;
+	height: 100%;
 	color: black;
 	display: flex;
 	align-items: center;
@@ -528,7 +595,10 @@ span.truncatable {
 .card-header .collapsed .fa {
 	transform: rotate(90deg);
 }
-
+.card .collapse {
+	width: 100%;
+	padding-left: 5%;
+} 
 .anchor-content {
 	width: 100%;
 	justify-content: right;
@@ -586,6 +656,31 @@ td {
 	width: 10%;
 }
 
+#export-button-container {
+	margin-top: 50px; 
+	width: 100%; 
+	display: none; 
+	justify-content: center;
+}
+#import-from-excel-file-input {
+	opacity: 0;
+	width: 0px;
+} 
+.generic-button,
+#export-file-button {
+	min-width: 250px;
+	height: 50px;
+	border: none;
+}
+label.generic-button {
+	line-height: 50px;
+	text-align: center;
+	cursor: pointer;
+	margin-bottom: 0;
+}
+#export-file-button {
+	margin-bottom: 35px;
+}
 
 
 
@@ -628,14 +723,14 @@ th {
 	height: 20px;
 	width: 20px;
 	background-color: none;
-	border: 2px solid hsl(195, 84%, 45%);
+	border: 2px solid var(--button-background-color);
 	vertical-align: center;
 	horizontal-align: center;
 }
 
 /*When the checkbox is checked, fill in background*/ 
 .checkmark-container input:checked ~ .checkmark {
-	background-color: hsl(195, 84%, 45%);
+	background-color: var(--button-background-color);
 	border: none;
 }
 
@@ -666,10 +761,41 @@ th {
 	transform: rotate(45deg);
 	vertical-align: center;
 }
+
+.input-checkbox:focus ~ .checkmark,
+input[type=submit]:focus {
+	box-shadow: 1px 1px 6px 2px rgb(0 0 0 / 30%);
+}
 /*th {
 	background-color: hsl(217, 5%, 77%);
 }*/
 
+
+/*
+Generic modal
+*/
+.modal.fade > .modal-dialog {
+	max-width: 90%;
+}
+.modal > .modal-dialog .modal-footer > .generic-button {
+	min-width: 75px;
+}
+.modal > .modal-dialog .modal-footer > .modal-button.secondary-button {
+	background-color: #7c7d83;
+}
+
+#import-from-excel-modal > .modal-dialog {
+	width: 650px;
+}
+#import-from-excel-modal .modal-content {
+	background: #e0e3e8;
+}
+#import-from-excel-modal .modal-header {
+	border-bottom: 1px solid #cbcfd5;
+}
+#import-from-excel-modal .modal-footer {
+	border-top: 1px solid #cbcfd5;
+}
 /* Modal expanded text (that exceeds the width of the cell)*/
 /* modal background */
 .modal-background {
@@ -692,7 +818,7 @@ th {
 	display: block;
 }
 
-.modal-content {
+.modal-content.truncated-text-container {
   position: fixed;
   z-index: 9999;
   top: 50%;
@@ -762,6 +888,11 @@ th {
 	/*transform: translate(0px, -5px);*/
 	text-decoration: none;
 	cursor: pointer;
+}
+
+.import-message-container {
+	overflow: auto;
+	max-height: 450px;
 }
 
 /* animations */

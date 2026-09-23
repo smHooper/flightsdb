@@ -4,6 +4,17 @@
 //const dataSteward = 'dena_flight_data@nps.gov';
 //import {Color, Solver} from './color-filter.js';
 
+// On adding new flight:
+//	x scroll to new flight
+//	- add new ticket if none given
+//	x make fee default fee
+
+
+// cancel button for queries that take a long time 
+//	x maybe just warn user that loading the data might take a while
+
+// search by ticket doesn't show operator
+
 const flightColumns = [
 	'ticket',
 	'departure date',
@@ -24,20 +35,19 @@ const landingColumns = [
 
 const editors = [
 	'shooper',
-	'amaki',
-	'llabahn',
-	'jlebel'
+	'jlebel',
+	'srburton',
+	'mmorimoto'
 ];
 
 var landingQueryResult = {}; //global var to store result for writing CSV  
-var currentControlVal; // used in .change() events to decide whether function should be fired
 var editedFlights = []; // global var to keep track of data that have been edited (stores flight IDs)
 var landingTypeOptions = ''; // Store results of query
 var landingLocationOptions = [];
 var cloneableLanding;
 var cloneableFlight;
 var username = '';
-
+var currentFees = {};
 
 
 
@@ -170,7 +180,7 @@ function getSanitizedFieldName(fieldName) {
 
 
 function queryFlights() {
-	const searchByTicket = $(`#search-by-slider-container input[type='checkbox']`).get(0).checked
+	const searchByTicket = $(`#search-by-slider-container input[type='checkbox']`).prop('checked');
 	const ticketNumbers = searchByTicket ? $('#select-tickets-only').val().join(',') : $('#select-tickets').val().join(',');
 	const operator_code = $('#select-operator').val();
 	if (searchByTicket) {
@@ -193,6 +203,8 @@ function queryFlights() {
 
 	const start_date = $('#input-start_date').val();
 	const end_date = $('#input-end_date').val();
+	const landingTypes = $('.input-checkbox').map((_, el) => {if (el.checked) return el.id.replace('checkmark-', '');}).get();
+	const landingTypeClause = landingTypes.length ? ` AND landing_type IN ('${landingTypes.join("', '")}')` : '';
 	let conditions; 
 	if (searchByTicket) {
 		conditions = ` ticket IN (${ticketNumbers}) `
@@ -202,6 +214,7 @@ function queryFlights() {
 			flights.operator_code = '${operator_code}'
 			${ticketSearchClause}
 			${locationSearchClause}
+			${landingTypeClause}
 		`;
 	}
 
@@ -250,7 +263,8 @@ function queryFlights() {
 			var queryResult = queryResultString.trim().startsWith('ERROR') ? false : $.parseJSON(queryResultString);
 			if (queryResult)  {
 				if (queryResult[0] === 'query returned an empty result') {
-					alert(`There were no scenic landings for ${$('#select-operator option:selected').text()} during the selected date range`);
+					const selectedOperator = $('#select-operator option:selected').text() || 'the selected operator';
+					alert(`There were no scenic landings for ${selectedOperator} during the selected date range`);
 					hideLoadingIndicator();
 				} else {
 					//landingQueryResult['operator'] = $('#select-operator option:selected').text();
@@ -260,6 +274,11 @@ function queryFlights() {
 						'landings': {}
 					};
 					landingQueryResult.data = {};
+					const nLandings = queryResult.length;
+					if (nLandings > 200) {
+						const loadData = confirm(`You're about to load data for ${nLandings} landings, which might take a while. Are you sure you want to continue?`)
+						if (!loadData) return;
+					}
 					for (i in queryResult) {
 						let row = queryResult[i];
 						let thisFlightID = row.id;
@@ -289,7 +308,7 @@ function queryFlights() {
 							}
 						}
 						landingQueryResult.data[thisFlightID].landings[row.landing_id] = thisLanding;
-						landingQueryResult.data[thisFlightID].landingsOrder.push(row.landing_id);
+						landingQueryResult.data[thisFlightID].landingsOrder.push(row.landing_id);						
 					}
 
 
@@ -328,13 +347,13 @@ function queryFlights() {
 }
 
 
-function onRunClick(event) {
+function onRunClick(e) {
 
 	// prevent the form from resetting
-	event.returnValue = false;
+	(e || event).returnValue = false;
 
 	// If there are unsaved edits, ask if the user wants to save them
-	let deferred = $.when(function() {return true});
+	let deferred = $.Deferred().resolve(); // default to a resolved promise
 	if ($('.flight-data-dirty').length) {
 		if (confirm(`You have unsaved edits. Click 'OK' to save them or 'Cancel' to discard them`)) {
 			deferred = saveEdits($('.flight-data-dirty').attr('id').replace('flight-card-', ''))
@@ -414,7 +433,7 @@ function showExpandedText(cellID) {
 	}
 	$(`
 		<div class="modal-background"></div>
-		<div class="modal-content" style="${truncatableStyle}" data-parent="${truncatable.attr('id')}">
+		<div class="modal-content truncated-text-container" style="${truncatableStyle}" data-parent="${truncatable.attr('id')}">
 			<div class="modal-button-container">
 				<span class="${saveButtoContainerClass}">
 					<img class="save-modal-text-button slide-up-on-hover" src="imgs/save_icon_30px.svg" data-text-source="${truncatable.attr('id')}" style="${filterString}">
@@ -1205,6 +1224,115 @@ function onEditButtonClick() {
 }
 
 
+function onShowImportModalButtonClick() {
+	// make sure any previous error messages are hidden
+	$('.import-message-container').addClass('hidden');
+	// show the modal
+	$('#import-from-excel-modal').modal()
+}
+
+
+function onExcelInputFileChange() {
+	const input = $('#import-from-excel-file-input')[0];
+	const file = (input.files || [])[0];
+
+	if (file) {
+		$('#import-filename-label').text(file.name);
+	}
+}
+
+
+function clearExcelImportMessages() {
+	/*
+	Wrapper to clear messages from the import modal. Use the wrapper 
+	in case the html structure changes, then only the function needs 
+	to change but all calls to it will still work as intended
+	*/
+	$('.excel-import-message-list').empty();
+	$('.import-message-container').addClass('hidden');
+}
+
+function onImportExcelFileButtonClick() {
+	
+	const input = $('#import-from-excel-file-input')[0];
+	const uploadedFile = (input.files || [])[0];
+
+	if (!uploadedFile) {
+		//TODO: change to a more user-friendly message
+		alert('You have not selected a file to import yet. Click the "Select file" button to choose one.');
+		return;
+	}
+	const submissionTime = $('#input-submission_time').val();
+	if (!submissionTime) {
+		alert('You must select a submission time before you can import the data');
+		return;
+	}
+
+	clearExcelImportMessages();
+	
+	showLoadingIndicator(30000);
+
+	const formData = new FormData();
+	formData.append('action', 'importExcelFile');
+	formData.append('submissionTime', submissionTime);
+	formData.append('uploadedFile', uploadedFile);
+
+	$.post({
+		url: 'geojson_io.php',
+		data: formData,
+		dataType: false,
+		processData: false,
+		contentType: false // set these last 2 properties to pass as application/x-www-form-urlencoded; charset=UTF-8
+	}).done(responseString => {
+		var response = {};
+		try {
+			response = $.parseJSON(responseString);
+		} catch {
+			alert('There was a problem importing the Excel file: ' + responseString);
+			return;
+		}
+
+		const error = response?.stderr || response?.stdout?.error;
+		if (error) {
+			$('#excel-import-error-message-container').removeClass('hidden')
+				.find('.excel-import-message-list')
+					.empty()
+					.append(error);
+			return;
+		}
+
+		const result = response.stdout;
+		if (result?.warnings) {
+			$('#excel-import-warning-message-container').removeClass('hidden')
+				.find('.excel-import-message-list')
+					.empty()
+					.append(result.warnings);
+		} else {
+			$('#import-from-excel-modal').modal('hide');
+		}
+		const ticket = result.ticket;
+		if (ticket) {
+			const operatorName = result.operator_name;
+			$('#search-by-slider-container input[type=checkbox]')
+				.prop('checked', true)
+				.change();
+			$('#select-tickets-only').append(
+				`<option value=${ticket}>${ticket} (${operatorName})</option>`
+			).val(ticket)
+			.change();
+
+			onRunClick();
+		}
+
+	}).fail((xhr, status, error) => {
+		console.log(error);
+	}).always(() => {
+		hideLoadingIndicator();
+	})
+
+}
+
+
 function deleteFlightFromDB(flightID) {
 	$.ajax({
         url: 'geojson_io.php',
@@ -1290,14 +1418,19 @@ function onAddNewFlightClick() {
 						.attr('type', 'number')
 					$('#save-edits-button').removeClass('hidden');
 				}, 500)
-			} )
+			});
+		// The new flight will be at the bottom so scroll to it so it's visible
+		newFlight[0].scrollIntoView();
 
-		newFlight.find('.flight-result-input')
-			.each(function() {
-				$(this).val('');
-			})
+		for (const input of newFlight.find('.flight-result-input')) {
+			input.value = '';
+		}
 		
-		updateCardIDs(newFlight, 'cloned')
+		const currentFeePerPax = currentFees[$('#select-operator').val()]
+		newFlight.find('.flight-result-input[data-column-id="fee_passenger"]')
+			.val(`$${currentFeePerPax}`);
+
+		updateCardIDs(newFlight, 'cloned');
 		newFlight.find('.cell-ticket > .flight-result-input')
 			.removeClass('flight-result-input-disabled') // This should be editable in case the user wants to add the flight to another ticket
 			.attr('type', 'number')
@@ -1372,7 +1505,7 @@ function recalcTotalFee(cardHeader) {
 async function showQueryResult(selectedAnchor=false) {
 
 	$('#result-header-row').empty();
-	$('#place-holder').css('display', 'none');
+	$('#query-result-place-holder').css('display', 'none');
 	$('#result-table-body').empty();
 	$('.result-table-footer').remove();
 	$('.add-flight-container').remove();
@@ -1385,7 +1518,7 @@ async function showQueryResult(selectedAnchor=false) {
 	landingColumnRow += 
 	`<th class="landing-table-column-header cell-landing-button" id="column-landing-buttons">
 		<div class="add-landing-container">
-			<div class="add-landing-button slide-up-on-hover hidden"><span style="font-size: 35px; margin-top: -8px;">+</span> landing</div>
+			<div class="add-landing-button slide-up-on-hover hidden"><span class="add-landing-button-symbol">+</span> landing</div>
 		</div>
 	</th>`
 
@@ -1406,10 +1539,9 @@ async function showQueryResult(selectedAnchor=false) {
 		for (i in flightColumns) {
 			let fieldName = flightColumns[i];
 			let columnID = getSanitizedFieldName(fieldName);
-			let style = ''//column.includes(' notes') ? 'style="width: 30%"' : ""
 			//let columnID = //column.replace(/[\W]+/g, '_');
 			if (!$(`#column-${columnID}`).length) {
-				$(`<div class="result-table-column-header" id="column-${columnID}" ${style}>${fieldName}</div>`)
+				$(`<div class="result-table-column-header" id="column-${columnID}">${fieldName}</div>`)
 					.appendTo('#result-header-row')
 			}
 			//input class="query-input" type="date" id="input-end_date" value="2019-01-01"
@@ -1419,13 +1551,16 @@ async function showQueryResult(selectedAnchor=false) {
 						thisValue == null ? 0 : thisValue
 					).toFixed(2) : 
 				thisValue;
-			let inputType = 'text';
-			if (fieldName.endsWith(' date')) inputType = 'date';
-			if (fieldName.endsWith(' time')) inputType = 'time'; 
+			let inputType = 
+				fieldName === 'ticket' ? 'number' :
+				fieldName.endsWith(' date') ? 'date' :
+				fieldName.endsWith(' time') ? 'time' :
+				'text'; 
+			let truncatableClass = inputType === 'text' ? 'truncatable' : '';
 
 			tableCells += 
 				`<div class="result-table-cell cell-${columnID}" id="result-table-${id}-${columnID}">
-					<input class="truncatable flight-result-input flight-result-input-disabled" type="${inputType}" id="result-input-${id}-${columnID}" data-column-id="${columnID}" value="${cellValue}">
+					<input class="${truncatableClass} flight-result-input flight-result-input-disabled" type="${inputType}" id="result-input-${id}-${columnID}" data-column-id="${columnID}" value="${cellValue}">
 				</div>
 				`;
 
@@ -1475,7 +1610,7 @@ async function showQueryResult(selectedAnchor=false) {
 		//
 		$(`
 			<div class="card" id="flight-card-${id}"> 
-				<div class="card-header max-0 px-0" id="cardHeader-${id}" style="width:100%; position: relative;">
+				<div class="card-header max-0 px-0" id="cardHeader-${id}">
 					<div class="row result-table-row">
 						<div class="flight-cell-container">
 							${tableCells}
@@ -1485,13 +1620,13 @@ async function showQueryResult(selectedAnchor=false) {
 							<button class="edit-button slide-up-on-hover" id="edit-${id}"></button>
 						</div>
 					</div>
-					<a class="collapsed card-link" data-toggle="collapse" href="#cardContent-${id}" style="width: 100%; height:100%">
+					<a class="collapsed card-link" data-toggle="collapse" href="#cardContent-${id}">
 						<div class="row anchor-content">
 							<i class="fa fa-chevron-down pull-right"></i>
 						</div>
 					</a>
 				</div>
-				<div class="collapse" id="cardContent-${id}" aria-labeledby="cardHeader-${id}" data-parent="result-table-body" style="width: 100%; padding-left: 5%;">
+				<div class="collapse" id="cardContent-${id}" aria-labeledby="cardHeader-${id}" data-parent="result-table-body">
 					<div class="landing-content-container">
 						<table class="landings-table">
 							<thead>
@@ -1515,8 +1650,8 @@ async function showQueryResult(selectedAnchor=false) {
 			<div class="add-flight-button slide-up-on-hover"><span>+</span> flight</div>
 		</div>
 		`
-	)
-	$('.add-flight-button').click(onAddNewFlightClick)
+	);
+	$('.add-flight-button').click(onAddNewFlightClick);
 
 
 	$('.card-header').click(function(e) {

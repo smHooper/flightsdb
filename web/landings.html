@@ -2,7 +2,7 @@
 <html>
 		
 <head>      
-	<meta charset='utf-8'>
+	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width,height=device-height, user-scalable=no" />
 	<title>Scenic landing query</title>
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
@@ -15,7 +15,7 @@
 	<link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet" />
 	<script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
 
-	<link rel="stylesheet" href="css/scenic-landing-query.css"/>
+	<link rel="stylesheet" href="css/landings.css"/>
 	<link rel="stylesheet" href="css/flights.css"/>
 	
 </head>
@@ -28,10 +28,11 @@
 		<div id="loading-indicator-spinner"></div>
 	</div>
 
-	<div style="display: flex; justify-content: center; width: 100%; ">
-		<div id="main-container" style="padding-top: 10px; display: flex; flex-wrap: wrap; min-width: 1200px; max-width: 80%; height: 100%;">
+	<div id="main-container">
+		<div id="main-content-wrapper">
 			<div id="header-menu">
 				<div id="header-menu-content-container">
+					<button id="show-import-modal-button" class="generic-button mx-3">Import Excel file</button>
 					<div class="header-menu-item" id="username-container">
 						<img id="username-icon" src="imgs/user_icon_50px.svg">
 						<span id="username"></span>
@@ -44,13 +45,13 @@
 					<input type="checkbox">
 					<span class="slider round"></span>
 				</label>
-				<span style="margin-left: 15px">Search by ticket only</span>
+				<span class="slider-label" style="">Search by ticket only</span>
 			</div>
 
-			<form class="row mx-0 px-0" style="width: 100%;">
+			<form class="row mx-0 px-0 w-100">
 				
 				<div class="row mx-0 px-0 form-input-container hidden" id="ticket-search-container">
-					<div class="query-input-container">
+					<div class="query-input-container col-6">
 						<label class="query-input-label">Ticket numbers</label>
 						<select class="query-input select2-tag" multiple="multiple" id="select-tickets-only"></select>
 					</div>
@@ -58,17 +59,17 @@
 
 				<div class="row mx-0 px-0 form-input-container" id="datetime-search-container">
 					<div class="row query-form-row">
-						<div class="query-input-container">
+						<div class="query-input-container col-4">
 							<label class="query-input-label">Start date</label>
 							<input class="query-input" type="date" id="input-start_date">
 						</div>
 
-						<div class="query-input-container">
+						<div class="query-input-container col-4">
 							<label class="query-input-label">End date</label>
 							<input class="query-input" type="date" id="input-end_date" value="2019-01-01">
 						</div>
 						
-						<div class="query-input-container">
+						<div class="query-input-container col-4">
 							<label class="query-input-label">Flight operator</label>
 							<select class="query-input" id="select-operator">
 								<option value="">Select an operator</option>
@@ -77,11 +78,11 @@
 
 					</div>
 
-					<div class="row query-form-row" style="align-items: center;">
+					<div class="row query-form-row">
 						<!-- checkboxes -->
-						<div class="query-input-container">
+						<div class="query-input-container col-4">
 							<label class="query-input-label">Landing types</label>
-							<div style="display: flex; align-items: center; justify-content: space-between; background-color: hsl(218, 15%, 95%); height: 50px; padding-left: 10px; padding-right: 10px;">
+							<div class="checkbox-group-container">
 								<label class="checkmark-container">scenic
 									<input class="input-checkbox" type="checkbox" checked="checked" id="checkmark-scenic">
 									<span class="checkmark"></span>
@@ -98,12 +99,12 @@
 						</div>
 
 
-						<div class="query-input-container">
+						<div class="query-input-container col-4">
 							<label class="query-input-label">Ticket numbers</label>
 							<select class="query-input select2-no-tag" multiple="multiple" id="select-tickets"></select>
 						</div>
 
-						<div class="query-input-container">
+						<div class="query-input-container col-4">
 							<label class="query-input-label">Landing locations</label>
 							<select class="query-input select2-no-tag" multiple="multiple" id="select-locations"></select>
 						</div>
@@ -112,9 +113,9 @@
 				</div> <!-- <datetime-search>-->
 
 				<!--submit button-->
-				<div class="row query-form-row" style="align-items: center;">
-					<div class="query-input-container" style="padding-right: 0; width: 100%;  display: flex; justify-content: center;">
-						<input class="query-input" type="submit" style="width: 250px; justify-content: center; border:none;" value="Search flights" onclick="onRunClick(event)">
+				<div class="row query-form-row">
+					<div class="query-input-container submit-container">
+						<input class="query-input" type="submit" value="Search flights" onclick="onRunClick(event)">
 					</div>
 				</div>
 			</form>
@@ -122,32 +123,75 @@
 			<div id="save-edits-button-container">
 				<button class="slide-up-on-hover hidden" id="save-edits-button" onclick="onSaveEditsButtonClick()"></button>
 			</div>
-			<div id='result-table'>
+			<div id="result-table">
 				<div class="row result-table-header">
 					<div class="result-header-cell-container" id="result-header-row">
-						<div class="result-table-cell" style="width: 100%;"></div>
+						<div class="result-table-cell w-100"></div>
 					</div>
 				</div>
-				<div id="flight-result-container" style="overflow-y: auto; width:100%;">
-					<div id="place-holder" style="width: 100%; text-align: center; height: 40px; padding: 8px;">Select an operator and click 'Search flights' to show landing fees</div>
-					<div class='accordion' id='result-table-body' style="overflow-x: hidden">
+				<div id="flight-result-container">
+					<div id="query-result-place-holder">Select an operator and click 'Search flights' to show landing fees</div>
+					<div class="accordion" id="result-table-body">
 						<!--items added dynamically when query is run -->
 					</div>
 				</div>
 			</div>
 
-			<div id="export-button-container" style="margin-top: 50px; width: 100%; display: none; justify-content: center;">
+			<div id="export-button-container">
 				<button id="export-file-button">Export search results</button>
 				<!--<input id="file-input" type="file" name="export-save-path" style="display: none;" />-->
 			</div>
 		</div>
 		
+		<!-- import modal -->
+		<div class="modal fade" id="import-from-excel-modal" tabindex="-1" role="dialog" aria-labelledby="" aria-hidden="true">
+			<div class="modal-dialog modal-dialog-centered" role="document">
+				<div class="modal-content">
+			    	<div class="modal-header">
+				    	<h5 class="modal-title">Import Excel File</h5>
+						<button type="button" class="close close-modal" data-dismiss="modal" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+						</button>
+					</div>
+					<div class="modal-body">
+						<div class="w-100 mb-0">
+							<label for="input-submission_time">Submission time</label>
+						</div>
+						<div class="d-flex">
+							<input class="input-field col-6" id="input-submission_time" name="submission_time" type="datetime-local">
+							<div class="col-6 d-flex justify-content-end px-0">
+								<label class="generic-button" for="import-from-excel-file-input">Select file</label>
+								<input id="import-from-excel-file-input" type="file" accept=".xls,.xlsx,.xlsm,.zip" name="uploadedFile">
+							</div>
+							<!-- <label class="import-data-row-item text-center generic-button file-input-label mx-0" for="file-upload">browse</label>
+							<input id="file-upload" type="file" accept=".csv, .xls, .xlsx" name="uploadedFile"> -->
+						</div>
+						<div class="import-data-modal-row w-100 mt-3 text-right">
+							<label class="w-100 import-data-text-item" id="import-filename-label"></label>
+						</div>
+
+						<div id="excel-import-error-message-container" class="import-message-container hidden">
+							<h6>The Excel file could not be imported because of the following errors:</h5>
+							<ul class="excel-import-message-list"></ul>
+						</div>
+						<div id="excel-import-warning-message-container" class="import-message-container hidden">
+							<h6>The Excel file was imported successfully, but it produced the following warnings:</h5>
+							<ul class="excel-import-message-list"></ul>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button class="generic-button secondary-button modal-button close-modal" data-dismiss="modal" title="Cancel import">Cancel</button>
+						<button class="generic-button d-inline" id="import-excel-file-button" title="Import">Import</button>
+					</div>
+				</div>
+			</div>
+		</div>
 	</div>
 
 
 	<!--<script src="js/color-filter.js" type="module"></script>-->
 	<script src="js/flights.js"></script>
-	<script src="js/scenic-landing-query.js"></script>
+	<script src="js/landings.js"></script>
 	<script src="js/jquery.csv.min.js"></script>
 	<script type="text/javascript">
 		
@@ -159,15 +203,36 @@
 			$('#input-end_date').val(today.getChromeFormattedString(today));
 			$('#input-start_date').val(today.addDays(-14).getChromeFormattedString());
 
+			$('#save-edits-button-container button').click(() => {onSaveEditsButtonClick()})
+
 			showLoadingIndicator();
+
+			// Query current fees per passenger for each operator
+			var deferred = $.ajax({
+				url: 'geojson_io.php',
+				method: 'POST',
+				data: {
+					action: 'query', 
+					dbname: 'scenic_landings', 
+					queryString: 'SELECT fee_per_passenger, code FROM operators'},
+				cache: false,
+				success: function(queryResultString){
+					for (const row of $.parseJSON(queryResultString)) {
+						currentFees[row.code] = row.fee_per_passenger
+					}
+				}
+			})
+
 			const ticketSQL = `
-				SELECT DISTINCT submissions.ticket as name, submissions.ticket AS value 
-				FROM submissions LEFT JOIN flights ON submissions.ticket = flights.ticket
+				SELECT DISTINCT submissions.ticket || ' (' || operators.name || ')' as name, submissions.ticket AS value 
+				FROM submissions 
+				LEFT JOIN flights ON submissions.ticket = flights.ticket 
+				INNER JOIN operators ON operators.code = flights.operator_code 
 				WHERE flights.ticket IS NOT NULL
 				ORDER BY submissions.ticket DESC;
 			`;
 			$.when(
-				fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators ORDER BY sort_order;", 'scenic_landings'),
+				fillSelectOptions('select-operator', "SELECT name, code AS value FROM operators WHERE sort_order IS NOT NULL ORDER BY sort_order;", 'scenic_landings'),
 				fillSelectOptions('select-locations', "SELECT name, code AS value FROM landing_locations ORDER BY name;", 'scenic_landings'),
 				fillSelectOptions('select-tickets-only', ticketSQL, 'scenic_landings'),
 				$.ajax({
@@ -196,6 +261,10 @@
 			//var landingQueryResult = {}; //global var to store result for writing CSV
 
 			//$('#file-input').change(onFileInputChange);
+			$('#show-import-modal-button').click(onShowImportModalButtonClick);
+			$('#import-from-excel-file-input').change(onExcelInputFileChange);
+			$('#import-excel-file-button').click(onImportExcelFileButtonClick);
+			$('#import-from-excel-file-input').change(() => {clearExcelImportMessages()})
 			$('#export-file-button').click(onExportDataClick);
 			$('.input-checkbox').click(onCheckboxClick);
 			$(".select2-tag").select2({
